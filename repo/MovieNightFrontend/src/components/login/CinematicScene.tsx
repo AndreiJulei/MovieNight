@@ -68,7 +68,7 @@ export default function CinematicScene({
   }, [stage, onFinished]);
 
   return (
-    <div className="absolute inset-0 h-full w-full overflow-hidden bg-[#070b16]">
+    <div className="absolute inset-0 h-full w-full overflow-hidden bg-[#020307]">
       <style>{`
         /* Neon power-on: bright flash, brief dip, second flare, settle */
         @keyframes neonOn {
@@ -92,12 +92,12 @@ export default function CinematicScene({
         }
       `}</style>
 
-      {/* ── Unified Fullscreen Bluish Background Canvas ── */}
+      {/* ── Unified Fullscreen Dark Canvas ── */}
       <div
-        className="absolute inset-0 transition-opacity duration-1000"
+        className="absolute inset-0 h-full w-full"
         style={{
           background:
-            "radial-gradient(ellipse 90% 90% at 50% 50%, #0c1228 0%, #070b16 65%, #04060d 100%)",
+            "radial-gradient(ellipse 90% 90% at 50% 50%, #050813 0%, #020308 65%, #010204 100%)",
         }}
       />
 
@@ -133,47 +133,50 @@ export default function CinematicScene({
             : "opacity-0 pointer-events-none"
         }`}
       >
-        {/* "Welcome to" — top, above the ring */}
-        <span
-          className={`neon-text text-[12px] font-bold uppercase tracking-[0.4em] text-zinc-300 mb-2 md:mb-4 ${
-            stage >= 3 ? "on" : ""
-          }`}
-        >
-          Welcome to
-        </span>
+        {/* Combined Header above cards: "Welcome to" then "Movie Night" */}
+        <div className="flex flex-col items-center justify-center text-center mb-3 md:mb-5 z-10">
+          {/* "Welcome to" */}
+          <span
+            className={`neon-text text-xs md:text-sm font-bold uppercase tracking-[0.45em] text-zinc-400 mb-1 md:mb-2 ${
+              stage >= 3 ? "on" : ""
+            }`}
+          >
+            Welcome to
+          </span>
+
+          {/* "Movie Night" - bigger typography */}
+          <div
+            className={`neon-text flex items-baseline justify-center gap-2 md:gap-3 ${
+              stage >= 3 ? "on" : ""
+            }`}
+            style={{ animationDelay: "180ms" }}
+          >
+            <span
+              className="text-4xl font-black tracking-tight text-white md:text-5xl lg:text-6xl"
+              style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
+            >
+              Movie
+            </span>
+            <span
+              className="text-4xl font-black tracking-tight text-accent md:text-5xl lg:text-6xl"
+              style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
+            >
+              Night
+            </span>
+          </div>
+        </div>
 
         {/* 3D ring — ample height, overflow visible so bottom of cards never clips */}
         <div
           className={`relative w-full overflow-visible transition-transform duration-1000 ${
-            stage >= 3 ? "scale-[0.82]" : "scale-100"
+            stage >= 3 ? "scale-[0.92]" : "scale-100"
           }`}
           style={{
-            height: "clamp(340px, 54vh, 500px)",
+            height: "clamp(360px, 54vh, 520px)",
             transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
           <PosterCarousel3D play={stage >= 2} onAllPlaced={handleAllPlaced} />
-        </div>
-
-        {/* "Movie Night" — bottom wordmark */}
-        <div
-          className={`neon-text mt-3 flex items-baseline justify-center gap-2 md:mt-5 ${
-            stage >= 3 ? "on" : ""
-          }`}
-          style={{ animationDelay: "200ms" }}
-        >
-          <span
-            className="text-3xl font-black tracking-tight text-white md:text-4xl"
-            style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
-          >
-            Movie
-          </span>
-          <span
-            className="text-3xl font-black tracking-tight text-accent md:text-4xl"
-            style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
-          >
-            Night
-          </span>
         </div>
       </div>
 

@@ -73,7 +73,7 @@ const posterList: PosterEntry[] = [
   {
     title: "Superbad",
     posterUrl: mockPosters[9].posterUrl,
-    clipUrl: superbadClip, // 8s McLovin fake ID scene (0:24 to 0:32)
+    clipUrl: superbadClip, // 7s McLovin fake ID scene (0:25 to 0:32)
   },
 ];
 
@@ -100,6 +100,7 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
   const [revealedCount, setRevealedCount] = useState(0);
   const timers = useRef<number[]>([]);
   const firedComplete = useRef(false);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   useEffect(() => {
     timers.current.forEach(clearTimeout);
@@ -108,12 +109,37 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
     if (!play) {
       setRevealedCount(0);
       firedComplete.current = false;
+      // Pause and rewind all clips to frame 0 while idle
+      videoRefs.current.forEach((vid) => {
+        if (vid) {
+          vid.pause();
+          vid.currentTime = 0;
+        }
+      });
       return;
     }
 
+    // Reset and start all video clips from second 0 in perfect sync
+    videoRefs.current.forEach((vid) => {
+      if (vid) {
+        vid.currentTime = 0;
+        vid.play().catch(() => {});
+      }
+    });
+
     const schedule = buildSchedule();
     schedule.forEach((delay, i) => {
-      timers.current.push(window.setTimeout(() => setRevealedCount(i + 1), delay));
+      timers.current.push(
+        window.setTimeout(() => {
+          setRevealedCount(i + 1);
+          // When this specific card flies in, ensure its playback is fresh from start
+          const vid = videoRefs.current[i];
+          if (vid) {
+            vid.currentTime = 0;
+            vid.play().catch(() => {});
+          }
+        }, delay),
+      );
     });
 
     const totalDuration = schedule[schedule.length - 1] + SETTLE_BUFFER;
@@ -138,11 +164,11 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
       <style>{`
         /* ---- 16:9 Widescreen Ring Container ---- */
         .carousel-ring {
-          --card-w: 160px;
-          --card-h: 90px;
-          --radius: 290px;
+          --card-w: 200px;
+          --card-h: 112px;
+          --radius: 340px;
           --tilt: -8deg;
-          --persp: 1200px;
+          --persp: 1300px;
           position: relative;
           width: var(--card-w);
           height: var(--card-h);
@@ -156,9 +182,9 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
 
         @media (min-width: 768px) {
           .carousel-ring {
-            --card-w: 230px;
-            --card-h: 130px;
-            --radius: 410px;
+            --card-w: 320px;
+            --card-h: 180px;
+            --radius: 540px;
             --tilt: -8deg;
           }
         }
@@ -179,20 +205,20 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
         .ring-card {
           position: absolute;
           inset: 0;
-          border-radius: 10px;
+          border-radius: 12px;
           overflow: hidden;
-          border: 1.5px solid rgba(255, 255, 255, 0.18);
+          border: 1.5px solid rgba(255, 255, 255, 0.2);
           box-shadow:
-            0 14px 40px rgba(0, 0, 0, 0.85),
-            0 0 15px rgba(79, 70, 229, 0.18);
+            0 18px 48px rgba(0, 0, 0, 0.9),
+            0 0 20px rgba(79, 70, 229, 0.22);
           backface-visibility: visible;
           transform-style: preserve-3d;
 
           /* ---- Pre-reveal pose ---- */
           opacity: 0;
           transform:
-            translateX(-550px)
-            translateZ(300px)
+            translateX(-680px)
+            translateZ(360px)
             rotateY(-45deg)
             scale(1.4);
           filter: blur(10px) brightness(1.4);
@@ -251,8 +277,10 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
               <div className={`ring-card bg-[#0e1320] ${isRevealed ? "revealed" : ""}`}>
                 {poster.clipUrl ? (
                   <video
+                    ref={(el) => {
+                      videoRefs.current[index] = el;
+                    }}
                     src={poster.clipUrl}
-                    autoPlay
                     loop
                     muted
                     playsInline
