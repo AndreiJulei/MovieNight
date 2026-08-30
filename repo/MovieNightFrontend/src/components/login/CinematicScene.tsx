@@ -3,7 +3,7 @@ import loopVideo from "../../assets/login-loop.mp4";
 import climaxVideo from "../../assets/login-climax.mp4";
 import PosterCarousel3D from "./PosterCarousel3D";
 
-const TEXT_HOLD_MS = 3400; // Extra second of animation hold
+const TEXT_HOLD_MS = 3900; // Hold ring + neon text for 3.9s before dissolving
 const FADE_MS = 800;
 
 export default function CinematicScene({

@@ -3,14 +3,19 @@ import { mockPosters } from "../../assets/posters";
 import goodBadUglyClip from "../../imports/good-bad-ugly-clip.mp4";
 import darkKnightClip from "../../imports/dark-knight-clip.mp4";
 import taxiDriverClip from "../../imports/taxi-driver-clip.mp4";
+import theShiningClip from "../../imports/the-shining-clip.mp4";
 import starWarsClip from "../../imports/star-wars-clip.mp4";
 import laHaineClip from "../../imports/la-haine-clip.mp4";
+import rockyClip from "../../imports/rocky-clip.mp4";
 import godfatherClip from "../../imports/godfather-clip.mp4";
+import pulpFictionClip from "../../imports/pulp-fiction-clip.mp4";
+import superbadClip from "../../imports/superbad-clip.mp4";
 
 interface PosterEntry {
   title: string;
   posterUrl: string;
   clipUrl?: string;
+  clipFit?: "cover" | "contain";
 }
 
 interface PosterCarousel3DProps {
@@ -18,7 +23,7 @@ interface PosterCarousel3DProps {
   onAllPlaced?: () => void;
 }
 
-// 10 posters for the ring - Video cards at Card #0, #1, #2, #4, #5, #7
+// 10 posters for the ring - All 10 cards are video screens
 const posterList: PosterEntry[] = [
   {
     title: "The Good, the Bad and the Ugly",
@@ -35,7 +40,11 @@ const posterList: PosterEntry[] = [
     posterUrl: mockPosters[2].posterUrl,
     clipUrl: taxiDriverClip, // 11s training scene (sec 44 to 55)
   },
-  mockPosters[3], // Goodfellas
+  {
+    title: "The Shining",
+    posterUrl: mockPosters[3].posterUrl,
+    clipUrl: theShiningClip, // 8s "Here's Johnny!" scene (1:57 to 2:05)
+  },
   {
     title: "Star Wars: Episode V",
     posterUrl: mockPosters[4].posterUrl,
@@ -46,14 +55,26 @@ const posterList: PosterEntry[] = [
     posterUrl: mockPosters[5].posterUrl,
     clipUrl: laHaineClip, // 7s mirror scene (sec 25 to 32)
   },
-  mockPosters[6], // Memories of Murder
+  {
+    title: "Rocky",
+    posterUrl: mockPosters[6].posterUrl,
+    clipUrl: rockyClip, // 10s training montage scene (2:15 to 2:25)
+  },
   {
     title: "The Godfather",
     posterUrl: mockPosters[7].posterUrl,
     clipUrl: godfatherClip, // 8s opening scene (2:56 to 3:04)
   },
-  mockPosters[8], // Schindler's List
-  mockPosters[9], // Apocalypse Now
+  {
+    title: "Pulp Fiction",
+    posterUrl: mockPosters[8].posterUrl,
+    clipUrl: pulpFictionClip, // 10s "I shot Marvin in the face" scene (0:50 to 1:00)
+  },
+  {
+    title: "Superbad",
+    posterUrl: mockPosters[9].posterUrl,
+    clipUrl: superbadClip, // 8s McLovin fake ID scene (0:24 to 0:32)
+  },
 ];
 
 const TOTAL = posterList.length;
@@ -115,13 +136,13 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-visible">
       <style>{`
-        /* ---- Ring container ---- */
+        /* ---- 16:9 Widescreen Ring Container ---- */
         .carousel-ring {
-          --card-w: 110px;
-          --card-h: 165px;
-          --radius: 250px;
-          --tilt: -12deg;
-          --persp: 1100px;
+          --card-w: 160px;
+          --card-h: 90px;
+          --radius: 290px;
+          --tilt: -8deg;
+          --persp: 1200px;
           position: relative;
           width: var(--card-w);
           height: var(--card-h);
@@ -135,9 +156,10 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
 
         @media (min-width: 768px) {
           .carousel-ring {
-            --card-w: 140px;
-            --card-h: 210px;
-            --radius: 330px;
+            --card-w: 230px;
+            --card-h: 130px;
+            --radius: 410px;
+            --tilt: -8deg;
           }
         }
 
@@ -153,26 +175,26 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
           transform-style: preserve-3d;
         }
 
-        /* ---- The poster card ---- */
+        /* ---- The 16:9 screen card ---- */
         .ring-card {
           position: absolute;
           inset: 0;
           border-radius: 10px;
           overflow: hidden;
-          border: 1.5px solid rgba(255, 255, 255, 0.15);
+          border: 1.5px solid rgba(255, 255, 255, 0.18);
           box-shadow:
             0 14px 40px rgba(0, 0, 0, 0.85),
-            0 0 15px rgba(79, 70, 229, 0.15);
+            0 0 15px rgba(79, 70, 229, 0.18);
           backface-visibility: visible;
           transform-style: preserve-3d;
 
           /* ---- Pre-reveal pose ---- */
           opacity: 0;
           transform:
-            translateX(-450px)
-            translateZ(260px)
+            translateX(-550px)
+            translateZ(300px)
             rotateY(-45deg)
-            scale(1.5);
+            scale(1.4);
           filter: blur(10px) brightness(1.4);
 
           /* ---- Arrival transition ---- */
@@ -234,6 +256,8 @@ export default function PosterCarousel3D({ play, onAllPlaced }: PosterCarousel3D
                     loop
                     muted
                     playsInline
+                    style={{ objectFit: poster.clipFit ?? "cover" }}
+                    className={poster.clipFit === "contain" ? "bg-black" : ""}
                   />
                 ) : (
                   <img
