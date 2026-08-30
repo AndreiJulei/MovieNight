@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { authApi } from "../api/auth";
 import {
   entries as seedEntries,
   friendships as seedFriendships,
@@ -34,12 +35,12 @@ type StoreValue = {
   movies: Movie[];
 
   // auth
-  login: (username: string, password: string) => { ok: boolean; error?: string };
+  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signup: (u: {
     username: string;
     displayName: string;
     password: string;
-  }) => { ok: boolean; error?: string };
+  }) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   checkName: (name: string) => Promise<boolean>; // true = available
 
@@ -107,56 +108,58 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   });
 
   const login = useCallback<StoreValue["login"]>(
-    (username, password) => {
-      const u = users.find(
-        (x) => x.username.toLowerCase() === username.trim().toLowerCase(),
-      );
-      if (!u || u.password !== password) {
-        return { ok: false, error: "That username or password isn't right." };
+    async (username, password) => {
+      const res = await authApi.login(username, password);
+      if (!res.ok || !res.user) {
+        return { ok: false, error: res.error || "Invalid credentials." };
       }
+      const u: User = {
+        id: String(res.user.id),
+        username: res.user.username,
+        displayName: res.user.displayName,
+        password: "",
+      };
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       return { ok: true };
     },
-    [users],
+    [],
   );
 
   const signup = useCallback<StoreValue["signup"]>(
-    ({ username, displayName, password }) => {
-      const uname = username.trim().toLowerCase();
-      if (!uname) return { ok: false, error: "Pick a username." };
-      if (users.some((x) => x.username.toLowerCase() === uname)) {
-        return { ok: false, error: "That username is taken." };
+    async ({ username, displayName, password }) => {
+      const res = await authApi.signup({ username, displayName, password });
+      if (!res.ok || !res.user) {
+        return { ok: false, error: res.error || "Unable to create account." };
       }
-      const dn = displayName.trim();
-      if (!dn) return { ok: false, error: "Display name can't be empty." };
-      if (users.some((x) => x.displayName.toLowerCase() === dn.toLowerCase())) {
-        return { ok: false, error: "That name's already in use — try another." };
+      // Automatically log the user in upon successful registration
+      const loginRes = await authApi.login(username, password);
+      if (loginRes.ok && loginRes.user) {
+        const u: User = {
+          id: String(loginRes.user.id),
+          username: loginRes.user.username,
+          displayName: loginRes.user.displayName,
+          password: "",
+        };
+        setCurrentUser(u);
+        sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       }
-      const u: User = { id: freshId("u"), username: uname, displayName: dn, password };
-      setUsers((prev) => [...prev, u]);
-      setCurrentUser(u);
-      sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       return { ok: true };
     },
-    [users],
+    [],
   );
 
   const logout = useCallback(() => {
+    authApi.logout();
     setCurrentUser(null);
     sessionStorage.removeItem(AUTH_KEY);
   }, []);
 
   const checkName = useCallback<StoreValue["checkName"]>(
-    (name) =>
-      new Promise((resolve) => {
-        // simulate a server round-trip
-        setTimeout(() => {
-          const dn = name.trim().toLowerCase();
-          resolve(!users.some((x) => x.displayName.toLowerCase() === dn));
-        }, 380);
-      }),
-    [users],
+    async (name) => {
+      return await authApi.checkDisplayName(name);
+    },
+    [],
   );
 
   const movieById = useCallback(

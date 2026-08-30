@@ -54,15 +54,15 @@ export default function LoginPage() {
     setNameState(ok ? "available" : "taken");
   };
 
-  const handleLoginSubmit = (e: FormEvent) => {
+  const handleLoginSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const res = login(loginUser, loginPass);
+    const res = await login(loginUser, loginPass);
     if (!res.ok) return setError(res.error ?? "Invalid credentials.");
     runSuccess();
   };
 
-  const handleSignupSubmit = (e: FormEvent) => {
+  const handleSignupSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!signupDisplay.trim()) {
@@ -70,7 +70,7 @@ export default function LoginPage() {
       return;
     }
     if (nameState === "taken") return;
-    const res = signup({
+    const res = await signup({
       username: signupUser,
       displayName: signupDisplay,
       password: signupPass,
