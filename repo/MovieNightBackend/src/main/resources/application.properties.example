@@ -20,3 +20,14 @@ spring.jpa.properties.hibernate.format_sql=true
 # JWT Secret (Base64 encoded 256-bit key for HMAC-SHA256)
 app.jwt.secret=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
 app.jwt.expiration-ms=86400000
+
+# ==========================================
+# External Movie API Keys (Paste your keys here)
+# ==========================================
+app.tmdb.api-key=PASTE_YOUR_TMDB_API_KEY_HERE
+app.omdb.api-key=PASTE_YOUR_OMDB_API_KEY_HERE
+
+# Base URLs
+app.tmdb.base-url=https://api.themoviedb.org/3
+app.tmdb.image-base-url=https://image.tmdb.org/t/p
+app.omdb.base-url=https://www.omdbapi.com
