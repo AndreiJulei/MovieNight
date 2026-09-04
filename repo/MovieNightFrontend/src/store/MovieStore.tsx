@@ -9,6 +9,7 @@ import {
 } from "react";
 import { authApi } from "../api/auth";
 import { moviesApi, type ApiUserMovieEntryResponse } from "../api/movies";
+import { friendsApi, type ApiFriendProfile } from "../api/friends";
 import {
   entries as seedEntries,
   friendships as seedFriendships,
@@ -109,65 +110,98 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   });
 
   /**
-   * Sync library data from Spring Boot backend.
+   * Sync library and friends data from Spring Boot backend.
    */
   const refreshLibrary = useCallback(async () => {
     const token = authApi.getToken();
     if (!token || !currentUser) return;
 
     try {
+      // 1. Fetch user's movie library
       const backendEntries: ApiUserMovieEntryResponse[] = await moviesApi.getLibrary();
-      if (!backendEntries || backendEntries.length === 0) return;
+      if (backendEntries && backendEntries.length > 0) {
+        const loadedMovies: Movie[] = [];
+        const loadedEntries: Entry[] = [];
 
-      const loadedMovies: Movie[] = [];
-      const loadedEntries: Entry[] = [];
+        for (const item of backendEntries) {
+          const m = item.movie;
+          const movieId = String(m.id ?? m.tmdbId);
 
-      for (const item of backendEntries) {
-        const m = item.movie;
-        const movieId = String(m.id ?? m.tmdbId);
+          loadedMovies.push({
+            id: movieId,
+            tmdbId: m.tmdbId,
+            title: m.title,
+            year: m.releaseYear ?? 2020,
+            posterSeed: null,
+            posterUrl: m.posterUrl ?? null,
+            imdb: m.imdbRating ?? null,
+            rt: m.rottenTomatoesRating ?? null,
+            overview: m.overview ?? "",
+            genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
+            director: m.director,
+            trailerKey: m.trailerKey,
+          });
 
-        loadedMovies.push({
-          id: movieId,
-          tmdbId: m.tmdbId,
-          title: m.title,
-          year: m.releaseYear ?? 2020,
-          posterSeed: null,
-          posterUrl: m.posterUrl ?? null,
-          imdb: m.imdbRating ?? null,
-          rt: m.rottenTomatoesRating ?? null,
-          overview: m.overview ?? "",
-          genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
-          director: m.director,
-          trailerKey: m.trailerKey,
+          loadedEntries.push({
+            id: String(item.id),
+            userId: String(currentUser.id),
+            movieId,
+            status: item.status === "WATCHED" ? "watched" : "watchlist",
+            rating: item.personalRating ?? null,
+            description: item.notes ?? "",
+            addedAt: item.createdAt ?? new Date().toISOString(),
+          });
+        }
+
+        // Merge backend movies with local catalog
+        setMovies((prev) => {
+          const map = new Map(prev.map((m) => [m.id, m]));
+          for (const m of loadedMovies) {
+            map.set(m.id, m);
+          }
+          return Array.from(map.values());
         });
 
-        loadedEntries.push({
-          id: String(item.id),
-          userId: String(currentUser.id),
-          movieId,
-          status: item.status === "WATCHED" ? "watched" : "watchlist",
-          rating: item.personalRating ?? null,
-          description: item.notes ?? "",
-          addedAt: item.createdAt ?? new Date().toISOString(),
+        // Update entries for current user
+        setEntries((prev) => {
+          const others = prev.filter((e) => e.userId !== currentUser.id);
+          return [...others, ...loadedEntries];
         });
       }
 
-      // Merge backend movies with seed/local catalog movies
-      setMovies((prev) => {
-        const map = new Map(prev.map((m) => [m.id, m]));
-        for (const m of loadedMovies) {
-          map.set(m.id, m);
-        }
-        return Array.from(map.values());
-      });
+      // 2. Fetch user's friends list
+      const backendFriends: ApiFriendProfile[] = await friendsApi.getFriends();
+      if (backendFriends && backendFriends.length > 0) {
+        const newFriends: User[] = backendFriends.map((f) => ({
+          id: String(f.id),
+          username: f.username,
+          displayName: f.displayName,
+          password: "",
+        }));
 
-      // Update entries for current user
-      setEntries((prev) => {
-        const others = prev.filter((e) => e.userId !== currentUser.id);
-        return [...others, ...loadedEntries];
-      });
+        setUsers((prev) => {
+          const map = new Map(prev.map((u) => [u.id, u]));
+          for (const u of newFriends) {
+            map.set(u.id, u);
+          }
+          return Array.from(map.values());
+        });
+
+        const newFriendships: Friendship[] = backendFriends.map((f) => ({
+          a: String(currentUser.id),
+          b: String(f.id),
+        }));
+
+        setFriendships((prev) => {
+          const map = new Map(prev.map((f) => [pairKey(f.a, f.b), f]));
+          for (const f of newFriendships) {
+            map.set(pairKey(f.a, f.b), f);
+          }
+          return Array.from(map.values());
+        });
+      }
     } catch (err) {
-      console.warn("Failed to sync library with backend:", err);
+      console.warn("Failed to sync library and friends with backend:", err);
     }
   }, [currentUser]);
 
@@ -456,11 +490,29 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addFriend = useCallback<StoreValue["addFriend"]>(
-    (userId) => {
-      if (!currentUser || userId === currentUser.id) return;
-      const key = pairKey(currentUser.id, userId);
+    (userIdOrIdentifier) => {
+      if (!currentUser || userIdOrIdentifier === currentUser.id) return;
+      
+      // Call backend
+      friendsApi.addFriend(userIdOrIdentifier).then((res) => {
+        if (res.ok && res.friend) {
+          const newFriend: User = {
+            id: String(res.friend.id),
+            username: res.friend.username,
+            displayName: res.friend.displayName,
+            password: "",
+          };
+          setUsers((prev) => [...prev.filter((u) => u.id !== newFriend.id), newFriend]);
+          setFriendships((prev) => [
+            ...prev.filter((f) => pairKey(f.a, f.b) !== pairKey(currentUser.id, newFriend.id)),
+            { a: currentUser.id, b: newFriend.id },
+          ]);
+        }
+      }).catch((err) => console.warn("Could not add friend on backend:", err));
+
+      const key = pairKey(currentUser.id, userIdOrIdentifier);
       if (friendships.some((f) => pairKey(f.a, f.b) === key)) return;
-      setFriendships((prev) => [...prev, { a: currentUser.id, b: userId }]);
+      setFriendships((prev) => [...prev, { a: currentUser.id, b: userIdOrIdentifier }]);
     },
     [currentUser, friendships],
   );
@@ -468,6 +520,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const removeFriend = useCallback<StoreValue["removeFriend"]>(
     (friendId) => {
       if (!currentUser) return;
+      friendsApi.removeFriend(friendId).catch((err) => console.warn("Could not remove friend on backend:", err));
       setFriendships((prev) =>
         prev.filter((f) => {
           const key = pairKey(f.a, f.b);
