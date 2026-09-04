@@ -2,11 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { authApi } from "../api/auth";
+import { moviesApi, type ApiUserMovieEntryResponse } from "../api/movies";
 import {
   entries as seedEntries,
   friendships as seedFriendships,
@@ -21,13 +23,25 @@ import {
   type User,
 } from "./data";
 
-// In-memory mock store. The pixel companion is always-on, so there are no
-// persisted settings here anymore.
 const AUTH_KEY = "movienight.currentUser";
 
 export type FriendRating = { user: User; rating: number };
-
 export type Stats = { count: number; avg: number | null };
+
+export type AddMovieInput = {
+  tmdbId?: number;
+  title: string;
+  year?: number;
+  posterSeed?: number | null;
+  posterUrl?: string | null;
+  imdb?: number | null;
+  rt?: number | null;
+  overview?: string;
+  status: Status;
+  rating?: number | null;
+  description?: string;
+  existingMovieId?: string; // when adding a canonical movie you don't own yet
+};
 
 type StoreValue = {
   currentUser: User | null;
@@ -66,23 +80,9 @@ type StoreValue = {
 
   // selectors for suggestions
   allEntries: () => Entry[];
+  refreshLibrary: () => Promise<void>;
 };
 
-export type AddMovieInput = {
-  title: string;
-  year?: number;
-  posterSeed?: number | null;
-  posterUrl?: string | null;
-  imdb?: number | null;
-  rt?: number | null;
-  overview?: string;
-  status: Status;
-  rating?: number | null;
-  description?: string;
-  existingMovieId?: string; // when adding a canonical movie you don't own yet
-};
-
-// Single context instance for the whole app.
 const StoreContext = createContext<StoreValue | null>(null);
 
 function pairKey(a: string, b: string) {
@@ -94,6 +94,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>(seedMovies);
   const [entries, setEntries] = useState<Entry[]>(seedEntries);
   const [friendships, setFriendships] = useState<Friendship[]>(seedFriendships);
+
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const raw = sessionStorage.getItem(AUTH_KEY);
@@ -106,6 +107,76 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
+
+  /**
+   * Sync library data from Spring Boot backend.
+   */
+  const refreshLibrary = useCallback(async () => {
+    const token = authApi.getToken();
+    if (!token || !currentUser) return;
+
+    try {
+      const backendEntries: ApiUserMovieEntryResponse[] = await moviesApi.getLibrary();
+      if (!backendEntries || backendEntries.length === 0) return;
+
+      const loadedMovies: Movie[] = [];
+      const loadedEntries: Entry[] = [];
+
+      for (const item of backendEntries) {
+        const m = item.movie;
+        const movieId = String(m.id ?? m.tmdbId);
+
+        loadedMovies.push({
+          id: movieId,
+          tmdbId: m.tmdbId,
+          title: m.title,
+          year: m.releaseYear ?? 2020,
+          posterSeed: null,
+          posterUrl: m.posterUrl ?? null,
+          imdb: m.imdbRating ?? null,
+          rt: m.rottenTomatoesRating ?? null,
+          overview: m.overview ?? "",
+          genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
+          director: m.director,
+          trailerKey: m.trailerKey,
+        });
+
+        loadedEntries.push({
+          id: String(item.id),
+          userId: String(currentUser.id),
+          movieId,
+          status: item.status === "WATCHED" ? "watched" : "watchlist",
+          rating: item.personalRating ?? null,
+          description: item.notes ?? "",
+          addedAt: item.createdAt ?? new Date().toISOString(),
+        });
+      }
+
+      // Merge backend movies with seed/local catalog movies
+      setMovies((prev) => {
+        const map = new Map(prev.map((m) => [m.id, m]));
+        for (const m of loadedMovies) {
+          map.set(m.id, m);
+        }
+        return Array.from(map.values());
+      });
+
+      // Update entries for current user
+      setEntries((prev) => {
+        const others = prev.filter((e) => e.userId !== currentUser.id);
+        return [...others, ...loadedEntries];
+      });
+    } catch (err) {
+      console.warn("Failed to sync library with backend:", err);
+    }
+  }, [currentUser]);
+
+  // Sync library on login / user change
+  useEffect(() => {
+    if (currentUser) {
+      refreshLibrary();
+    }
+  }, [currentUser, refreshLibrary]);
 
   const login = useCallback<StoreValue["login"]>(
     async (username, password) => {
@@ -132,7 +203,6 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       if (!res.ok || !res.user) {
         return { ok: false, error: res.error || "Unable to create account." };
       }
-      // Automatically log the user in upon successful registration
       const loginRes = await authApi.login(username, password);
       if (loginRes.ok && loginRes.user) {
         const u: User = {
@@ -239,7 +309,6 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       if (!currentUser) return "";
       let movieId = input.existingMovieId;
       if (!movieId) {
-        // Reuse a catalog movie if the title/year matches, else create one.
         const match = movies.find(
           (m) =>
             m.title.toLowerCase() === input.title.trim().toLowerCase() &&
@@ -250,6 +319,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         } else {
           const m: Movie = {
             id: freshId("m"),
+            tmdbId: input.tmdbId,
             title: input.title.trim(),
             year: input.year ?? new Date().getFullYear(),
             posterSeed: null,
@@ -262,6 +332,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           movieId = m.id;
         }
       }
+
       const existing = entries.find(
         (e) => e.userId === currentUser.id && e.movieId === movieId,
       );
@@ -274,11 +345,29 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         description: input.description ?? "",
         addedAt: new Date().toISOString(),
       };
+
       setEntries((prev) =>
         existing
           ? prev.map((e) => (e.id === existing.id ? entry : e))
           : [...prev, entry],
       );
+
+      // Async backend call
+      moviesApi
+        .addMovie({
+          tmdbId: input.tmdbId,
+          title: input.title.trim(),
+          releaseYear: input.year,
+          posterUrl: input.posterUrl ?? undefined,
+          overview: input.overview,
+          imdbRating: input.imdb ?? undefined,
+          rottenTomatoesRating: input.rt ?? undefined,
+          status: input.status === "watched" ? "WATCHED" : "WATCHLIST",
+          personalRating: input.rating ? Math.round(input.rating) : undefined,
+          notes: input.description,
+        })
+        .catch((err) => console.warn("Background movie save error:", err));
+
       return movieId!;
     },
     [currentUser, entries, movies],
@@ -286,28 +375,48 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
   const markWatched = useCallback<StoreValue["markWatched"]>(
     (entryId, rating, description) => {
-      setEntries((prev) =>
-        prev.map((e) =>
+      setEntries((prev) => {
+        const entry = prev.find((e) => e.id === entryId);
+        if (entry) {
+          moviesApi.updateEntry(entry.movieId, {
+            status: "WATCHED",
+            personalRating: Math.round(rating),
+            notes: description,
+          });
+        }
+        return prev.map((e) =>
           e.id === entryId
             ? { ...e, status: "watched", rating, description }
             : e,
-        ),
-      );
+        );
+      });
     },
     [],
   );
 
   const updateDescription = useCallback<StoreValue["updateDescription"]>(
     (entryId, description) => {
-      setEntries((prev) =>
-        prev.map((e) => (e.id === entryId ? { ...e, description } : e)),
-      );
+      setEntries((prev) => {
+        const entry = prev.find((e) => e.id === entryId);
+        if (entry) {
+          moviesApi.updateEntry(entry.movieId, {
+            notes: description,
+          });
+        }
+        return prev.map((e) => (e.id === entryId ? { ...e, description } : e));
+      });
     },
     [],
   );
 
   const removeEntry = useCallback<StoreValue["removeEntry"]>((entryId) => {
-    setEntries((prev) => prev.filter((e) => e.id !== entryId));
+    setEntries((prev) => {
+      const entry = prev.find((e) => e.id === entryId);
+      if (entry) {
+        moviesApi.removeMovie(entry.movieId);
+      }
+      return prev.filter((e) => e.id !== entryId);
+    });
   }, []);
 
   const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(
@@ -315,6 +424,21 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       if (!currentUser) return;
       if (entries.some((e) => e.userId === currentUser.id && e.movieId === movieId))
         return;
+
+      const movie = movies.find((m) => m.id === movieId);
+      if (movie) {
+        moviesApi.addMovie({
+          tmdbId: movie.tmdbId,
+          title: movie.title,
+          releaseYear: movie.year,
+          posterUrl: movie.posterUrl ?? undefined,
+          overview: movie.overview,
+          imdbRating: movie.imdb ?? undefined,
+          rottenTomatoesRating: movie.rt ?? undefined,
+          status: "WATCHLIST",
+        });
+      }
+
       setEntries((prev) => [
         ...prev,
         {
@@ -328,7 +452,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         },
       ]);
     },
-    [currentUser, entries],
+    [currentUser, entries, movies],
   );
 
   const addFriend = useCallback<StoreValue["addFriend"]>(
@@ -416,6 +540,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       changePassword,
       changeDisplayName,
       allEntries,
+      refreshLibrary,
     }),
     [
       currentUser,
@@ -442,6 +567,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       changePassword,
       changeDisplayName,
       allEntries,
+      refreshLibrary,
     ],
   );
 

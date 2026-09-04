@@ -11,6 +11,7 @@ export type User = {
 
 export type Movie = {
   id: string;
+  tmdbId?: number;
   title: string;
   year: number;
   posterSeed: number | null;
@@ -21,6 +22,7 @@ export type Movie = {
   genres?: string[];
   cast?: CastMember[];
   trailerKey?: string;
+  director?: string;
 };
 
 export type Entry = {

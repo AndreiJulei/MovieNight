@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
-import type { Movie, Status } from "../store/data";
+import { freshId, type Movie, type Status } from "../store/data";
+import { moviesApi } from "../api/movies";
 import AppShell from "../components/AppShell";
 import PixelPoster from "../components/PixelPoster";
 import SegmentedRadio from "../components/SegmentedRadio";
@@ -28,15 +29,82 @@ export default function AddMoviePage() {
   const [posterMode, setPosterMode] = useState<PosterMode>("url");
   const [posterUrl, setPosterUrl] = useState("");
 
-  // search
+  // search state
   const [query, setQuery] = useState("");
-  const results = store.searchMovies(query);
+  const [searchResults, setSearchResults] = useState<Movie[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const pick = (m: Movie) => {
+  // Debounced live search against backend & TMDB
+  useEffect(() => {
+    if (!query.trim() || mode !== "search") {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const apiResults = await moviesApi.search(query.trim());
+        if (apiResults && apiResults.length > 0) {
+          const mapped: Movie[] = apiResults.map((m) => ({
+            id: String(m.id ?? m.tmdbId ?? freshId("m")),
+            tmdbId: m.tmdbId,
+            title: m.title,
+            year: m.releaseYear ?? 2020,
+            posterSeed: null,
+            posterUrl: m.posterUrl ?? null,
+            imdb: m.imdbRating ?? null,
+            rt: m.rottenTomatoesRating ?? null,
+            overview: m.overview ?? "",
+            director: m.director,
+            trailerKey: m.trailerKey,
+          }));
+          setSearchResults(mapped);
+        } else {
+          // Fallback to local catalog
+          setSearchResults(store.searchMovies(query));
+        }
+      } catch {
+        setSearchResults(store.searchMovies(query));
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [query, mode, store]);
+
+  const pick = async (m: Movie) => {
     setSelected(m);
     setTitle(m.title);
     setYear(String(m.year));
     setOverview(m.overview ?? "");
+
+    // If it has a TMDB ID, enrich full details in background
+    if (m.tmdbId) {
+      try {
+        const details = await moviesApi.getByTmdbId(m.tmdbId);
+        if (details) {
+          if (details.overview) setOverview(details.overview);
+          if (details.releaseYear) setYear(String(details.releaseYear));
+          setSelected((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  overview: details.overview ?? prev.overview,
+                  imdb: details.imdbRating ?? prev.imdb,
+                  rt: details.rottenTomatoesRating ?? prev.rt,
+                  director: details.director ?? prev.director,
+                  trailerKey: details.trailerKey ?? prev.trailerKey,
+                }
+              : null,
+          );
+        }
+      } catch (e) {
+        console.warn("Could not enrich movie from TMDB ID:", e);
+      }
+    }
   };
 
   const submit = () => {
@@ -44,13 +112,17 @@ export default function AddMoviePage() {
 
     const parsedYear = Number(year) || new Date().getFullYear();
     store.addMovie({
+      tmdbId: selected?.tmdbId,
       title: title.trim(),
       year: parsedYear,
       overview: overview.trim() || undefined,
       posterSeed: selected?.posterSeed,
-      posterUrl: posterMode === "url" && posterUrl ? posterUrl : null,
+      posterUrl: posterMode === "url" && posterUrl ? posterUrl : selected?.posterUrl ?? null,
+      imdb: selected?.imdb,
+      rt: selected?.rt,
       status: target,
       rating: target === "watched" ? rating : undefined,
+      description: overview.trim() || undefined,
       existingMovieId: selected?.id,
     });
 
@@ -98,8 +170,12 @@ export default function AddMoviePage() {
               autoFocus
             />
 
+            {isSearching && (
+              <p className="mt-3 text-center text-xs text-text-muted">Searching live catalog...</p>
+            )}
+
             <ul className="mt-4 space-y-2">
-              {results.map((m) => (
+              {searchResults.map((m) => (
                 <li key={m.id}>
                   <button
                     type="button"
@@ -129,7 +205,7 @@ export default function AddMoviePage() {
                   </button>
                 </li>
               ))}
-              {query.trim() && results.length === 0 && (
+              {query.trim() && !isSearching && searchResults.length === 0 && (
                 <li className="px-2 py-4 text-center text-sm text-text-muted">
                   No matches found. Switch to Manual Entry to add your custom title.
                 </li>
