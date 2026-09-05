@@ -267,7 +267,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const movieById = useCallback(
-    (id: string) => movies.find((m) => m.id === id),
+    (id: string) => movies.find((m) => m.id === id || String(m.tmdbId) === id),
     [movies],
   );
 
