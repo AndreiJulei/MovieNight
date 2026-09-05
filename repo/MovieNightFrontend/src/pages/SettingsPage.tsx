@@ -132,10 +132,10 @@ export default function SettingsPage() {
     window.dispatchEvent(new Event("background_changed"));
   };
 
-  const handleProfileSubmit = (e: FormEvent) => {
+  const handleProfileSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setProfileMsg(null);
-    const res = store.changeDisplayName(displayName);
+    const res = await store.changeDisplayName(displayName);
     if (res.ok) {
       setProfileMsg({ type: "success", text: "Display name updated successfully!" });
     } else {
@@ -143,14 +143,14 @@ export default function SettingsPage() {
     }
   };
 
-  const handlePasswordSubmit = (e: FormEvent) => {
+  const handlePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSecurityMsg(null);
     if (newPassword !== confirmPassword) {
       setSecurityMsg({ type: "error", text: "New passwords do not match." });
       return;
     }
-    const res = store.changePassword(oldPassword, newPassword);
+    const res = await store.changePassword(oldPassword, newPassword);
     if (res.ok) {
       setSecurityMsg({ type: "success", text: "Password changed successfully!" });
       setOldPassword("");

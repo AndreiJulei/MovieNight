@@ -115,6 +115,64 @@ export const authApi = {
   },
 
   /**
+   * Update user display name.
+   */
+  async updateDisplayName(displayName: string): Promise<{ ok: boolean; user?: ApiUser; error?: string }> {
+    try {
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE}/api/users/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ displayName }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.message || (data.errors ? Object.values(data.errors).join(", ") : "Could not update display name."),
+        };
+      }
+
+      return { ok: true, user: data };
+    } catch {
+      return { ok: false, error: "Network error. Is the backend running?" };
+    }
+  },
+
+  /**
+   * Change user password.
+   */
+  async changePassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE}/api/users/password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.message || (data.errors ? Object.values(data.errors).join(", ") : "Could not change password."),
+        };
+      }
+
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Network error. Is the backend running?" };
+    }
+  },
+
+  /**
    * Helper to retrieve the current JWT token.
    */
   getToken(): string | null {

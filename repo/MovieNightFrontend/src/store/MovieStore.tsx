@@ -76,8 +76,8 @@ type StoreValue = {
   addToWatchlist: (movieId: string) => void;
   addFriend: (userId: string) => void;
   removeFriend: (friendId: string) => void;
-  changePassword: (oldPw: string, newPw: string) => { ok: boolean; error?: string };
-  changeDisplayName: (newName: string) => { ok: boolean; error?: string };
+  changePassword: (oldPw: string, newPw: string) => Promise<{ ok: boolean; error?: string }>;
+  changeDisplayName: (newName: string) => Promise<{ ok: boolean; error?: string }>;
 
   // selectors for suggestions
   allEntries: () => Entry[];
@@ -533,36 +533,40 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const changePassword = useCallback<StoreValue["changePassword"]>(
-    (oldPw, newPw) => {
+    async (oldPw, newPw) => {
       if (!currentUser) return { ok: false, error: "Not logged in." };
-      if (currentUser.password !== oldPw) {
-        return { ok: false, error: "Current password is incorrect." };
+      if (!oldPw) return { ok: false, error: "Current password is required." };
+      if (!newPw || newPw.length < 6) {
+        return { ok: false, error: "New password must be at least 6 characters." };
       }
-      if (!newPw || newPw.length < 3) {
-        return { ok: false, error: "New password must be at least 3 characters." };
+
+      const res = await authApi.changePassword(oldPw, newPw);
+      if (!res.ok) {
+        return { ok: false, error: res.error || "Could not change password." };
       }
-      const updated = { ...currentUser, password: newPw };
-      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
-      setCurrentUser(updated);
+
       return { ok: true };
     },
     [currentUser],
   );
 
   const changeDisplayName = useCallback<StoreValue["changeDisplayName"]>(
-    (newName) => {
+    async (newName) => {
       if (!currentUser) return { ok: false, error: "Not logged in." };
       const dn = newName.trim();
       if (!dn) return { ok: false, error: "Display name can't be empty." };
-      if (users.some((x) => x.id !== currentUser.id && x.displayName.toLowerCase() === dn.toLowerCase())) {
-        return { ok: false, error: "That name's already in use." };
+
+      const res = await authApi.updateDisplayName(dn);
+      if (!res.ok) {
+        return { ok: false, error: res.error || "Could not update display name." };
       }
+
       const updated = { ...currentUser, displayName: dn };
       setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
       setCurrentUser(updated);
       return { ok: true };
     },
-    [currentUser, users],
+    [currentUser],
   );
 
   const allEntries = useCallback(() => entries, [entries]);

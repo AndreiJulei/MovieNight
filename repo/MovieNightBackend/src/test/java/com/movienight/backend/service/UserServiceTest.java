@@ -144,4 +144,51 @@ class UserServiceTest {
         assertThrows(IllegalArgumentException.class, () -> userService.login(request));
         verify(jwtTokenProvider, never()).generateToken(anyString(), anyLong(), anyString());
     }
+
+    @Test
+    void updateDisplayName_success() {
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(userRepository.existsByDisplayNameIgnoreCase("JohnBabaYaga")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenReturn(sampleUser);
+
+        UserResponse response = userService.updateDisplayName("john@example.com", "JohnBabaYaga");
+
+        assertNotNull(response);
+        assertEquals("JohnBabaYaga", sampleUser.getDisplayName());
+        verify(userRepository).save(sampleUser);
+    }
+
+    @Test
+    void updateDisplayName_duplicateName_throwsException() {
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(userRepository.existsByDisplayNameIgnoreCase("TakenName")).thenReturn(true);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                userService.updateDisplayName("john@example.com", "TakenName")
+        );
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void changePassword_success() {
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(passwordEncoder.matches("oldSecret123", "hashed_password_123")).thenReturn(true);
+        when(passwordEncoder.encode("newSecret456")).thenReturn("hashed_new_secret");
+
+        userService.changePassword("john@example.com", "oldSecret123", "newSecret456");
+
+        assertEquals("hashed_new_secret", sampleUser.getPassword());
+        verify(userRepository).save(sampleUser);
+    }
+
+    @Test
+    void changePassword_wrongOldPassword_throwsException() {
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(passwordEncoder.matches("wrongOldPw", "hashed_password_123")).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                userService.changePassword("john@example.com", "wrongOldPw", "newSecret456")
+        );
+        verify(userRepository, never()).save(any());
+    }
 }

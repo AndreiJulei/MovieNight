@@ -123,6 +123,68 @@ public class UserService {
                 .build();
     }
 
+    /**
+     * Get current user's profile details.
+     */
+    @Transactional(readOnly = true)
+    public UserResponse getCurrentUserProfile(String username) {
+        String clean = username.trim().toLowerCase();
+        User user = userRepository.findByUsername(clean)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + clean));
+        return mapToUserResponse(user);
+    }
+
+    /**
+     * Update user's display name, checking uniqueness first.
+     */
+    @Transactional
+    public UserResponse updateDisplayName(String username, String newDisplayName) {
+        if (newDisplayName == null || newDisplayName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Display name cannot be blank");
+        }
+
+        String cleanNewName = newDisplayName.trim();
+        if (cleanNewName.length() < 2 || cleanNewName.length() > 50) {
+            throw new IllegalArgumentException("Display name must be between 2 and 50 characters");
+        }
+
+        String cleanUsername = username.trim().toLowerCase();
+        User user = userRepository.findByUsername(cleanUsername)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + cleanUsername));
+
+        // If the name is changed, verify uniqueness
+        if (!user.getDisplayName().equalsIgnoreCase(cleanNewName)) {
+            if (userRepository.existsByDisplayNameIgnoreCase(cleanNewName)) {
+                throw new IllegalArgumentException("Display name is already taken: " + cleanNewName);
+            }
+            user.setDisplayName(cleanNewName);
+            user = userRepository.save(user);
+        }
+
+        return mapToUserResponse(user);
+    }
+
+    /**
+     * Change user's password after verifying the old password hash.
+     */
+    @Transactional
+    public void changePassword(String username, String oldPassword, String newPassword) {
+        String cleanUsername = username.trim().toLowerCase();
+        User user = userRepository.findByUsername(cleanUsername)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + cleanUsername));
+
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new IllegalArgumentException("Current password is incorrect.");
+        }
+
+        if (newPassword == null || newPassword.trim().length() < 6) {
+            throw new IllegalArgumentException("New password must be at least 6 characters.");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
     public UserResponse mapToUserResponse(User user) {
         return UserResponse.builder()
                 .id(user.getId())
