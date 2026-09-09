@@ -8,6 +8,8 @@ import MovieDetailPage from "./pages/MovieDetailPage";
 import AddMoviePage from "./pages/AddMoviePage";
 import SuggestionsPage from "./pages/SuggestionsPage";
 import SuggestionCategoryPage from "./pages/SuggestionCategoryPage";
+import ExplorePage from "./pages/ExplorePage";
+import ExploreContentPage from "./pages/ExploreContentPage";
 import FriendsPage from "./pages/FriendsPage";
 import FriendProfilePage from "./pages/FriendProfilePage";
 import SettingsPage from "./pages/SettingsPage";
@@ -34,6 +36,8 @@ function Routes() {
   if (path === "/movies") return <MoviesPage />;
   if (matchPath("/suggestions/:category", path)) return <SuggestionCategoryPage />;
   if (path === "/suggestions") return <SuggestionsPage />;
+  if (matchPath("/explore/:type", path)) return <ExploreContentPage />;
+  if (path === "/explore") return <ExplorePage />;
   if (matchPath("/friends/:id", path)) return <FriendProfilePage />;
   if (path === "/friends") return <FriendsPage />;
   if (path === "/settings") return <SettingsPage />;

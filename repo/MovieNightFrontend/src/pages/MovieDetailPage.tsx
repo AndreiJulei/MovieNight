@@ -83,6 +83,7 @@ export default function MovieDetailPage() {
           director: res.director || movie?.director,
           trailerKey: res.trailerKey || movie?.trailerKey,
           cast: movie?.cast && movie.cast.length > 0 ? movie.cast : parsedCast,
+          mediaType: movie?.mediaType ?? "MOVIE",
         };
 
         setMovie((prev) => (prev ? { ...prev, ...enriched } : enriched));

@@ -1,15 +1,19 @@
 import { useMemo } from "react";
 import { useQuery, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
-import type { Entry, Movie, Status } from "../store/data";
+import type { Entry, Movie, Status, MediaType } from "../store/data";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
-import TopBar, { type Filters, type SortBy, type MinRating, type DateRange, type ViewMode } from "../components/TopBar";
+import TopBar, { type Filters, type SortBy, type MinRating, type DateRange, type ViewMode, type MediaTypeFilter } from "../components/TopBar";
 
 const VALID_SORTS: SortBy[] = ["addedAt", "title", "year", "rating"];
 const VALID_RATINGS: MinRating[] = [0, 6, 8];
 const VALID_DATES: DateRange[] = ["all", "month", "year"];
 const VALID_VIEWS: ViewMode[] = ["grid", "compact"];
+const VALID_MEDIA_TYPES: MediaTypeFilter[] = ["ALL", "MOVIE", "TV", "ANIME"];
+
+/** Anime movies show in BOTH Movies and Anime filters */
+const ANIME_MOVIE_IDS = new Set(["anime-demon-slayer-movie"]);
 
 export default function MoviesPage() {
   const { currentUser, entriesFor, movieById } = useStore();
@@ -34,17 +38,23 @@ export default function MoviesPage() {
       ? storedView
       : "grid";
 
+  const mediaType: MediaTypeFilter = VALID_MEDIA_TYPES.includes(query.get("type") as MediaTypeFilter)
+    ? (query.get("type") as MediaTypeFilter)
+    : "ALL";
+
   const filters: Filters = { sortBy, minRating, dateRange, viewMode };
 
   // Build the URL with current filter & view state
-  const buildUrl = (newFilters?: Filters) => {
+  const buildUrl = (newFilters?: Filters, newMediaType?: MediaTypeFilter) => {
     const f = newFilters ?? filters;
+    const mt = newMediaType ?? mediaType;
     const params = new URLSearchParams();
     if (status === "watchlist") params.set("status", "watchlist");
     if (f.sortBy !== "addedAt") params.set("sort", f.sortBy);
     if (f.minRating > 0) params.set("minRating", String(f.minRating));
     if (f.dateRange !== "all") params.set("dateRange", f.dateRange);
     if (f.viewMode !== "grid") params.set("view", f.viewMode);
+    if (mt !== "ALL") params.set("type", mt);
     const qs = params.toString();
     return `/movies${qs ? `?${qs}` : ""}`;
   };
@@ -54,6 +64,20 @@ export default function MoviesPage() {
     let list = entriesFor(currentUser.id, status)
       .map((e) => ({ entry: e, movie: movieById(e.movieId)! }))
       .filter((r) => r.movie);
+
+    // Media type filter
+    if (mediaType !== "ALL") {
+      list = list.filter((r) => {
+        if (mediaType === "MOVIE") {
+          // Movies filter: show MOVIE type + anime movies
+          return r.movie.mediaType === "MOVIE" || ANIME_MOVIE_IDS.has(r.movie.id);
+        }
+        if (mediaType === "ANIME") {
+          return r.movie.mediaType === "ANIME";
+        }
+        return r.movie.mediaType === mediaType;
+      });
+    }
 
     if (status === "watched" && filters.minRating > 0) {
       list = list.filter((r) => (r.entry.rating ?? 0) >= filters.minRating);
@@ -73,7 +97,7 @@ export default function MoviesPage() {
 
     list.sort((a, b) => sortCmp(a, b, filters));
     return list;
-  }, [currentUser, entriesFor, movieById, status, filters]);
+  }, [currentUser, entriesFor, movieById, status, filters, mediaType]);
 
   const movies: Movie[] = rows.map((r) => r.movie);
 
@@ -95,6 +119,8 @@ export default function MoviesPage() {
         filters={filters}
         onChange={handleFilterChange}
         showRating={status === "watched"}
+        mediaTypeFilter={mediaType}
+        onMediaTypeChange={(mt) => navigate(buildUrl(filters, mt))}
       />
 
       <MovieGrid

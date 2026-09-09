@@ -98,6 +98,59 @@ public class TmdbClient {
     }
 
     /**
+     * Discover movies with customized sorting, vote counts, and release windows for list caching.
+     */
+    public List<TmdbSearchResponse.TmdbMovieSummary> discoverMovies(
+            String sortBy,
+            Integer minVoteCount,
+            String primaryReleaseDateGte,
+            String primaryReleaseDateLte,
+            int page
+    ) {
+        if (!isConfigured()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            TmdbSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> {
+                        var builder = uriBuilder
+                                .path("/discover/movie")
+                                .queryParam("api_key", apiKey)
+                                .queryParam("include_adult", false)
+                                .queryParam("include_video", false)
+                                .queryParam("language", "en-US")
+                                .queryParam("page", Math.max(1, page));
+
+                        if (sortBy != null && !sortBy.isBlank()) {
+                            builder.queryParam("sort_by", sortBy);
+                        }
+                        if (minVoteCount != null && minVoteCount > 0) {
+                            builder.queryParam("vote_count.gte", minVoteCount);
+                        }
+                        if (primaryReleaseDateGte != null && !primaryReleaseDateGte.isBlank()) {
+                            builder.queryParam("primary_release_date.gte", primaryReleaseDateGte);
+                        }
+                        if (primaryReleaseDateLte != null && !primaryReleaseDateLte.isBlank()) {
+                            builder.queryParam("primary_release_date.lte", primaryReleaseDateLte);
+                        }
+
+                        return builder.build();
+                    })
+                    .retrieve()
+                    .body(TmdbSearchResponse.class);
+
+            if (response != null && response.getResults() != null) {
+                return response.getResults();
+            }
+        } catch (Exception e) {
+            log.error("Failed to discover movies on TMDB (sortBy: {}, page: {}): {}", sortBy, page, e.getMessage());
+        }
+
+        return Collections.emptyList();
+    }
+
+    /**
      * Helper to construct full vertical poster URL from relative poster path.
      */
     public String buildPosterUrl(String posterPath) {

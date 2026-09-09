@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
+import SegmentedRadio from "./SegmentedRadio";
+import type { MediaType } from "../store/data";
 
 export type SortBy = "addedAt" | "title" | "year" | "rating";
 export type MinRating = 0 | 6 | 8;
@@ -12,6 +14,8 @@ export type Filters = {
   dateRange: DateRange;
   viewMode: ViewMode;
 };
+
+export type MediaTypeFilter = "ALL" | MediaType;
 
 const SORT_LABELS: Record<SortBy, string> = {
   addedAt: "Date added",
@@ -36,12 +40,16 @@ export default function TopBar({
   filters,
   onChange,
   showRating,
+  mediaTypeFilter,
+  onMediaTypeChange,
 }: {
   count: number;
   avg: number | null;
   filters: Filters;
   onChange: (f: Filters) => void;
   showRating: boolean;
+  mediaTypeFilter?: MediaTypeFilter;
+  onMediaTypeChange?: (mt: MediaTypeFilter) => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -51,7 +59,25 @@ export default function TopBar({
       : `${count} ${count === 1 ? "movie" : "movies"}`;
 
   return (
-    <div className="mb-6 flex items-center gap-3">
+    <>
+      {/* Media type segmented filter */}
+      {mediaTypeFilter !== undefined && onMediaTypeChange && (
+        <div className="mb-4">
+          <SegmentedRadio<MediaTypeFilter>
+            name="media-type"
+            value={mediaTypeFilter}
+            options={[
+              { value: "ALL", label: "All" },
+              { value: "MOVIE", label: "Movies" },
+              { value: "TV", label: "TV Series" },
+              { value: "ANIME", label: "Anime" },
+            ]}
+            onChange={onMediaTypeChange}
+          />
+        </div>
+      )}
+
+      <div className="mb-6 flex items-center gap-3">
       <p className="nums shrink-0 text-sm font-medium text-text-muted">{summary}</p>
 
       {/* Desktop: inline dropdowns */}
@@ -113,6 +139,7 @@ export default function TopBar({
         />
       )}
     </div>
+    </>
   );
 }
 

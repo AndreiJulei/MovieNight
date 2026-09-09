@@ -122,6 +122,8 @@ public class UserMovieService {
         }
 
         entry = userMovieEntryRepository.save(entry);
+        user.setNeedsRecommendationRefresh(true);
+        userRepository.save(user);
         return mapToResponse(entry);
     }
 
@@ -149,6 +151,8 @@ public class UserMovieService {
         }
 
         entry = userMovieEntryRepository.save(entry);
+        user.setNeedsRecommendationRefresh(true);
+        userRepository.save(user);
         return mapToResponse(entry);
     }
 
@@ -161,6 +165,8 @@ public class UserMovieService {
     public void removeMovieFromLibrary(String username, Long movieId) {
         User user = findUserByUsername(username);
         userMovieEntryRepository.deleteByUserIdAndMovieId(user.getId(), movieId);
+        user.setNeedsRecommendationRefresh(true);
+        userRepository.save(user);
         log.info("Removed movie ID {} from library of user {}", movieId, username);
     }
 

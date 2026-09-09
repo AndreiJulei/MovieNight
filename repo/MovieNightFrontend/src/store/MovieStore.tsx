@@ -21,6 +21,7 @@ import {
   type Friendship,
   type Movie,
   type Status,
+  type MediaType,
   type User,
 } from "./data";
 
@@ -140,6 +141,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
             genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
             director: m.director,
             trailerKey: m.trailerKey,
+            mediaType: ((m as unknown as Record<string, unknown>).mediaType as MediaType) ?? "MOVIE",
           });
 
           loadedEntries.push({
@@ -150,6 +152,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
             rating: item.personalRating ?? null,
             description: item.notes ?? "",
             addedAt: item.createdAt ?? new Date().toISOString(),
+            mediaType: ((m as unknown as Record<string, unknown>).mediaType as MediaType) ?? "MOVIE",
           });
         }
 
@@ -361,6 +364,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
             imdb: input.imdb ?? null,
             rt: input.rt ?? null,
             overview: input.overview ?? "",
+            mediaType: "MOVIE",
           };
           setMovies((prev) => [...prev, m]);
           movieId = m.id;
@@ -370,6 +374,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       const existing = entries.find(
         (e) => e.userId === currentUser.id && e.movieId === movieId,
       );
+      const existingMovie = movies.find((m) => m.id === movieId);
       const entry: Entry = {
         id: existing?.id ?? freshId("e"),
         userId: currentUser.id,
@@ -378,6 +383,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         rating: input.status === "watched" ? input.rating ?? null : null,
         description: input.description ?? "",
         addedAt: new Date().toISOString(),
+        mediaType: existingMovie?.mediaType ?? "MOVIE",
       };
 
       setEntries((prev) =>
@@ -483,6 +489,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           rating: null,
           description: "",
           addedAt: new Date().toISOString(),
+          mediaType: movie?.mediaType ?? "MOVIE",
         },
       ]);
     },

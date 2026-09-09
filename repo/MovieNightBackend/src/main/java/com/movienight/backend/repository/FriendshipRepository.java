@@ -29,4 +29,7 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
      * Delete a friendship link between two users.
      */
     void deleteByUserIdAndFriendId(Long userId, Long friendId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT f.friend.id FROM Friendship f WHERE f.user.id = :userId")
+    List<Long> findAllFriendIdsForUser(@org.springframework.data.repository.query.Param("userId") Long userId);
 }

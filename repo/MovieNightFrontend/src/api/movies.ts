@@ -212,4 +212,58 @@ export const moviesApi = {
       return [];
     }
   },
+
+  /**
+   * Fetch all suggestion category rows (for-you ML, friends consensus, popular, recent, upcoming).
+   */
+  async getSuggestions(): Promise<ApiSuggestionsResponse | null> {
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.warn("Failed to fetch suggestions from backend:", err);
+      return null;
+    }
+  },
+
+  /**
+   * Request immediate recalculation of personalized recommendations.
+   */
+  async refreshPersonalizedRecommendations(): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/personalized/refresh`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
 };
+
+export interface ApiSuggestionMovieItem {
+  tmdbId: number;
+  title: string;
+  posterUrl?: string;
+  releaseYear?: number;
+  voteAverage?: number;
+  imdbRating?: number;
+  rottenTomatoesRating?: number;
+  score?: number;
+  reason?: string;
+}
+
+export interface ApiSuggestionCategory {
+  id: "for-you" | "friends" | "popular" | "recent" | "upcoming";
+  title: string;
+  movies: ApiSuggestionMovieItem[];
+}
+
+export interface ApiSuggestionsResponse {
+  categories: ApiSuggestionCategory[];
+}
+

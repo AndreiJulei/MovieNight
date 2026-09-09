@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store/MovieStore";
+import { moviesApi, type ApiSuggestionsResponse } from "../api/movies";
 import type { Movie } from "../store/data";
 
 export type SuggestionCategory =
@@ -17,12 +18,52 @@ export interface SuggestionRow {
 
 export function useSuggestions(): SuggestionRow[] {
   const store = useStore();
+  const [backendSuggestions, setBackendSuggestions] = useState<ApiSuggestionsResponse | null>(null);
+
+  // Fetch live suggestions from backend
+  useEffect(() => {
+    let active = true;
+    moviesApi.getSuggestions().then((res) => {
+      if (active && res) {
+        setBackendSuggestions(res);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [store.currentUser]);
 
   return useMemo(() => {
     const user = store.currentUser;
     if (!user) return [];
 
-    // Set of movie IDs the current user already has on any list
+    // If backend suggestions are available, map them directly
+    if (backendSuggestions && backendSuggestions.categories && backendSuggestions.categories.length > 0) {
+      return backendSuggestions.categories.map((cat) => ({
+        id: cat.id,
+        title: cat.title,
+        movies: cat.movies.map((m) => {
+          const existing = store.movieById(String(m.tmdbId));
+          return {
+            id: String(m.tmdbId),
+            tmdbId: m.tmdbId,
+            title: m.title,
+            year: m.releaseYear ?? existing?.year ?? 2024,
+            posterSeed: null,
+            posterUrl: m.posterUrl ?? existing?.posterUrl ?? null,
+            imdb: m.imdbRating ?? m.voteAverage ?? existing?.imdb ?? null,
+            rt: m.rottenTomatoesRating ?? existing?.rt ?? null,
+            overview: existing?.overview ?? "",
+            genres: existing?.genres ?? [],
+            trailerKey: existing?.trailerKey,
+            director: existing?.director,
+            mediaType: existing?.mediaType ?? "MOVIE" as const,
+          };
+        }),
+      }));
+    }
+
+    // Fallback: local memory computation
     const myMovieIds = new Set<string>();
     const watchedEntries = store.entriesFor(user.id, "watched");
     const watchlistEntries = store.entriesFor(user.id, "watchlist");
@@ -33,7 +74,7 @@ export function useSuggestions(): SuggestionRow[] {
     const friendIds = new Set(friends.map((f) => f.id));
     const allEntries = store.allEntries();
 
-    // 1. Suggestions for you: movies friends rated highly (≥7) that user doesn't have
+    // 1. Suggestions for you
     const forYouMap = new Map<string, number>();
     for (const e of allEntries) {
       if (
@@ -50,9 +91,9 @@ export function useSuggestions(): SuggestionRow[] {
     const forYouMovies = [...forYouMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([id]) => store.movieById(id))
-      .filter(Boolean) as Movie[];
+      .filter((m): m is Movie => m != null);
 
-    // 2. Friends' Suggestions: movies on friends' watchlists that user doesn't have
+    // 2. Friends' Suggestions
     const friendWatchlistIds = new Set<string>();
     for (const e of allEntries) {
       if (
@@ -65,13 +106,13 @@ export function useSuggestions(): SuggestionRow[] {
     }
     const friendsSuggestions = [...friendWatchlistIds]
       .map((id) => store.movieById(id))
-      .filter(Boolean) as Movie[];
+      .filter((m): m is Movie => m != null);
 
-    // 3. Most Popular: all movies sorted by highest IMDB score
+    // 3. Most Popular
     const popular = [...store.movies]
-      .sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
+      .sort((a, b) => (b.imdb ?? 0) + (b.rt ? b.rt / 10 : 0) - ((a.imdb ?? 0) + (a.rt ? a.rt / 10 : 0)));
 
-    // 4. Most Recent: all movies sorted by most recently added across all users
+    // 4. Most Recent
     const recentMap = new Map<string, string>();
     for (const e of allEntries) {
       const existing = recentMap.get(e.movieId);
@@ -82,14 +123,11 @@ export function useSuggestions(): SuggestionRow[] {
     const recent = [...recentMap.entries()]
       .sort((a, b) => b[1].localeCompare(a[1]))
       .map(([id]) => store.movieById(id))
-      .filter(Boolean) as Movie[];
+      .filter((m): m is Movie => m != null);
 
-    // 5. Upcoming: simulate with available movies (placeholder until real TMDB API)
-    // Show all movies sorted by year desc as "upcoming" placeholder
-    const upcoming = [...store.movies]
-      .sort((a, b) => b.year - a.year);
+    // 5. Upcoming
+    const upcoming = [...store.movies].sort((a, b) => b.year - a.year);
 
-    // For rows with too few movies, pad with available movies to make shelves look full
     const padWithMovies = (list: Movie[], minCount: number): Movie[] => {
       if (list.length >= minCount) return list;
       const existing = new Set(list.map((m) => m.id));
@@ -116,15 +154,15 @@ export function useSuggestions(): SuggestionRow[] {
       {
         id: "recent",
         title: "Most Recent",
-        movies: recent,
+        movies: padWithMovies(recent, 4),
       },
       {
         id: "upcoming",
-        title: "Upcoming",
+        title: "Upcoming & Releases",
         movies: upcoming,
       },
     ];
-  }, [store]);
+  }, [backendSuggestions, store]);
 }
 
 export function useSuggestionsByCategory(category: SuggestionCategory): { title: string; movies: Movie[] } {

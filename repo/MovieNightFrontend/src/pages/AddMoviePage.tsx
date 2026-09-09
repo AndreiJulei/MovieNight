@@ -59,6 +59,7 @@ export default function AddMoviePage() {
             overview: m.overview ?? "",
             director: m.director,
             trailerKey: m.trailerKey,
+            mediaType: "MOVIE" as const,
           }));
           setSearchResults(mapped);
         } else {

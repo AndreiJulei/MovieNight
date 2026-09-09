@@ -9,7 +9,8 @@ function isActive(dest: Dest, path: string, search: string): boolean {
     return path.startsWith("/movies") && !path.startsWith("/movies/") && !search.includes("watchlist") && path !== "/movies/add";
   if (dest.key === "watchlist")
     return path === "/movies" && search.includes("watchlist");
-  if (dest.key === "suggestions") return path.startsWith("/suggestions");
+  if (dest.key === "suggestions") return path === "/suggestions" || path.startsWith("/suggestions/");
+  if (dest.key === "explore") return path.startsWith("/explore");
   if (dest.key === "friends") return path.startsWith("/friends");
   if (dest.key === "settings") return path.startsWith("/settings");
   return false;
@@ -32,6 +33,7 @@ export default function NavRail({
     { key: "watched", label: "Watched", to: "/movies", count: watched },
     { key: "watchlist", label: "Watchlist", to: "/movies?status=watchlist", count: watchlist },
     { key: "suggestions", label: "Suggestions", to: "/suggestions" },
+    { key: "explore", label: "Explore", to: "/explore" },
     { key: "friends", label: "Friends", to: "/friends", count: friends },
   ];
 

@@ -37,6 +37,10 @@ public class User {
     @Column(nullable = false, length = 30)
     private String role = "ROLE_USER";
 
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean needsRecommendationRefresh = true;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
