@@ -45,6 +45,12 @@ class SuggestionServiceTest {
     @Mock
     private TmdbClient tmdbClient;
 
+    @Mock
+    private MovieRepository movieRepository;
+
+    @Mock
+    private SuggestionScheduler suggestionScheduler;
+
     @InjectMocks
     private SuggestionService suggestionService;
 
@@ -117,5 +123,63 @@ class SuggestionServiceTest {
         assertThat(response.getCategories().get(1).getId()).isEqualTo("friends");
         assertThat(response.getCategories().get(1).getMovies()).hasSize(1);
         assertThat(response.getCategories().get(1).getMovies().get(0).getTitle()).isEqualTo("Goodfellas");
+    }
+
+    @Test
+    @DisplayName("getPersonalRecommendations should return only categories user has watched")
+    void testGetPersonalRecommendationsCategoryAware() {
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
+        when(userMovieEntryRepository.findTmdbIdsByUserId(1L)).thenReturn(Collections.emptySet());
+
+        // User watched only 1 movie (no TV, no anime)
+        Movie watchedMovie = Movie.builder().id(100L).mediaType("MOVIE").build();
+        UserMovieEntry watchedEntry = UserMovieEntry.builder()
+                .status(MovieStatus.WATCHED)
+                .movie(watchedMovie)
+                .build();
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(watchedEntry));
+
+        PersonalizedRecommendation movieRec = PersonalizedRecommendation.builder()
+                .tmdbId(200L)
+                .title("Inception")
+                .mediaType("MOVIE")
+                .build();
+        PersonalizedRecommendation tvRec = PersonalizedRecommendation.builder()
+                .tmdbId(300L)
+                .title("Breaking Bad")
+                .mediaType("TV")
+                .build();
+
+        when(personalizedRecommendationRepository.findByUserIdOrderByRankOrderAsc(1L))
+                .thenReturn(List.of(movieRec, tvRec));
+
+        SuggestionsResponse response = suggestionService.getPersonalRecommendations("john@example.com");
+
+        assertThat(response).isNotNull();
+        // User only watched MOVIE, so only 1 row: Movie Recommendations!
+        assertThat(response.getCategories()).hasSize(1);
+        assertThat(response.getCategories().get(0).getId()).isEqualTo("movies");
+        assertThat(response.getCategories().get(0).getTitle()).isEqualTo("Movie Recommendations");
+        assertThat(response.getCategories().get(0).getMovies()).hasSize(1);
+        assertThat(response.getCategories().get(0).getMovies().get(0).getTitle()).isEqualTo("Inception");
+    }
+
+    @Test
+    @DisplayName("getExploreMedia should return explore rows for movies")
+    void testGetExploreMediaMovies() {
+        CachedMovieList popular = CachedMovieList.builder()
+                .mediaType("MOVIE")
+                .listType(MovieListType.POPULAR)
+                .tmdbId(500L)
+                .title("The Dark Knight")
+                .build();
+        when(cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE"))
+                .thenReturn(List.of(popular));
+
+        SuggestionsResponse response = suggestionService.getExploreMedia("movies");
+        assertThat(response).isNotNull();
+        assertThat(response.getCategories()).isNotEmpty();
+        assertThat(response.getCategories().get(0).getId()).isEqualTo("popular");
     }
 }

@@ -4,5 +4,6 @@ public enum MovieListType {
     TOP_RATED,
     POPULAR,
     RECENT,
-    UPCOMING
+    UPCOMING,
+    CURRENTLY_AIRING
 }

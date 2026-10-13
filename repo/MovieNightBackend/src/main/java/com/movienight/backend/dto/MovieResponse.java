@@ -27,6 +27,9 @@ public class MovieResponse {
     private String trailerKey;
     private String director;
     private String castMembers;
+    private String mediaType;
+    private Integer seasonsCount;
+    private Integer episodesCount;
     private Double imdbRating;
     private Integer rottenTomatoesRating;
     private Double tmdbVoteAverage;

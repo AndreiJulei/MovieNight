@@ -30,6 +30,7 @@ public class UserMovieService {
     private final MovieRepository movieRepository;
     private final UserMovieEntryRepository userMovieEntryRepository;
     private final UserRepository userRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
      * Retrieve a user's movie library, optionally filtered by status (e.g. WATCHLIST, WATCHED).
@@ -70,33 +71,66 @@ public class UserMovieService {
         if (movie == null && request.getImdbId() != null && !request.getImdbId().isBlank()) {
             movie = movieRepository.findByImdbId(request.getImdbId()).orElse(null);
         }
+        if (movie == null && request.getTitle() != null && !request.getTitle().isBlank()) {
+            List<Movie> byTitle = movieRepository.findByTitleContainingIgnoreCase(request.getTitle().trim());
+            for (Movie m : byTitle) {
+                if (m.getTitle().equalsIgnoreCase(request.getTitle().trim())
+                        && (request.getReleaseYear() == null || request.getReleaseYear().equals(m.getReleaseYear()))) {
+                    movie = m;
+                    break;
+                }
+            }
+        }
 
         // If not found in catalog, persist the movie details
         if (movie == null) {
             log.info("Persisting new movie into shared catalog: {} ({})", request.getTitle(), request.getReleaseYear());
+            String safeTitle = request.getTitle() != null && request.getTitle().length() > 300
+                    ? request.getTitle().substring(0, 300) : request.getTitle();
+            String safeDirector = request.getDirector() != null && request.getDirector().length() > 300
+                    ? request.getDirector().substring(0, 300) : request.getDirector();
+            String safeGenres = request.getGenres() != null && request.getGenres().length() > 500
+                    ? request.getGenres().substring(0, 500) : request.getGenres();
+            String safePosterUrl = request.getPosterUrl() != null && request.getPosterUrl().length() > 1000
+                    ? request.getPosterUrl().substring(0, 1000) : request.getPosterUrl();
+
             movie = Movie.builder()
                     .tmdbId(request.getTmdbId())
                     .imdbId(request.getImdbId())
-                    .title(request.getTitle())
+                    .title(safeTitle)
                     .releaseYear(request.getReleaseYear())
                     .overview(request.getOverview())
-                    .posterUrl(request.getPosterUrl())
+                    .posterUrl(safePosterUrl)
                     .backdropUrl(request.getBackdropUrl())
-                    .genres(request.getGenres())
+                    .genres(safeGenres)
                     .runtimeMinutes(request.getRuntimeMinutes())
                     .trailerKey(request.getTrailerKey())
-                    .director(request.getDirector())
+                    .director(safeDirector)
                     .castMembers(request.getCastMembers())
+                    .mediaType(request.getMediaType() != null && !request.getMediaType().isBlank() ? request.getMediaType() : "MOVIE")
+                    .seasonsCount(request.getSeasonsCount())
+                    .episodesCount(request.getEpisodesCount())
                     .imdbRating(request.getImdbRating())
                     .rottenTomatoesRating(request.getRottenTomatoesRating())
                     .tmdbVoteAverage(request.getTmdbVoteAverage())
                     .tmdbVoteCount(request.getTmdbVoteCount())
                     .build();
-            movie = movieRepository.save(movie);
+            try {
+                movie = movieRepository.save(movie);
+            } catch (org.springframework.dao.DataIntegrityViolationException dive) {
+                if (request.getTmdbId() != null) {
+                    movie = movieRepository.findByTmdbId(request.getTmdbId()).orElseThrow(() -> dive);
+                } else {
+                    throw dive;
+                }
+            }
         }
 
         // Step 2: Create or update the personal journal entry
         Optional<UserMovieEntry> existingEntry = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movie.getId());
+        if (existingEntry.isEmpty() && movie.getTmdbId() != null) {
+            existingEntry = userMovieEntryRepository.findByUserIdAndMovieIdOrTmdbId(user.getId(), movie.getTmdbId());
+        }
         UserMovieEntry entry;
         if (existingEntry.isPresent()) {
             entry = existingEntry.get();
@@ -124,6 +158,22 @@ public class UserMovieService {
         entry = userMovieEntryRepository.save(entry);
         user.setNeedsRecommendationRefresh(true);
         userRepository.save(user);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(com.movienight.backend.event.MovieNightDomainEvent.of(
+                    "movie.added",
+                    user.getId(),
+                    user.getUsername(),
+                    java.util.Map.of(
+                            "entryId", entry.getId(),
+                            "movieId", movie.getId(),
+                            "tmdbId", movie.getTmdbId() != null ? movie.getTmdbId() : -1L,
+                            "title", movie.getTitle(),
+                            "status", entry.getStatus().name()
+                    )
+            ));
+        }
+
         return mapToResponse(entry);
     }
 
@@ -134,7 +184,11 @@ public class UserMovieService {
     public UserMovieEntryResponse updateMovieEntry(String username, Long movieId, UpdateMovieEntryRequest request) {
         User user = findUserByUsername(username);
 
-        UserMovieEntry entry = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movieId)
+        Optional<UserMovieEntry> entryOpt = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movieId);
+        if (entryOpt.isEmpty()) {
+            entryOpt = userMovieEntryRepository.findByUserIdAndMovieIdOrTmdbId(user.getId(), movieId);
+        }
+        UserMovieEntry entry = entryOpt
                 .orElseThrow(() -> new IllegalArgumentException("Movie entry not found in your library for movie ID: " + movieId));
 
         if (request.getStatus() != null) {
@@ -153,6 +207,21 @@ public class UserMovieService {
         entry = userMovieEntryRepository.save(entry);
         user.setNeedsRecommendationRefresh(true);
         userRepository.save(user);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(com.movienight.backend.event.MovieNightDomainEvent.of(
+                    "movie.updated",
+                    user.getId(),
+                    user.getUsername(),
+                    java.util.Map.of(
+                            "entryId", entry.getId(),
+                            "movieId", entry.getMovie().getId(),
+                            "title", entry.getMovie().getTitle(),
+                            "status", entry.getStatus().name()
+                    )
+            ));
+        }
+
         return mapToResponse(entry);
     }
 
@@ -165,8 +234,19 @@ public class UserMovieService {
     public void removeMovieFromLibrary(String username, Long movieId) {
         User user = findUserByUsername(username);
         userMovieEntryRepository.deleteByUserIdAndMovieId(user.getId(), movieId);
+        userMovieEntryRepository.deleteByUserIdAndMovieIdOrTmdbId(user.getId(), movieId);
         user.setNeedsRecommendationRefresh(true);
         userRepository.save(user);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(com.movienight.backend.event.MovieNightDomainEvent.of(
+                    "movie.deleted",
+                    user.getId(),
+                    user.getUsername(),
+                    java.util.Map.of("movieId", movieId)
+            ));
+        }
+
         log.info("Removed movie ID {} from library of user {}", movieId, username);
     }
 
@@ -180,6 +260,9 @@ public class UserMovieService {
         }
 
         List<UserMovieEntry> friendEntries = userMovieEntryRepository.findByMovieIdAndUserIdIn(movieId, friendUserIds);
+        if (friendEntries.isEmpty()) {
+            friendEntries = userMovieEntryRepository.findByMovieIdOrTmdbIdAndUserIdIn(movieId, friendUserIds);
+        }
         return friendEntries.stream()
                 .map(entry -> FriendRatingResponse.builder()
                         .userId(entry.getUser().getId())
@@ -196,9 +279,11 @@ public class UserMovieService {
     // --- Helper Methods ---
 
     private User findUserByUsername(String username) {
-        String cleanUsername = username.trim().toLowerCase();
-        return userRepository.findByUsername(cleanUsername)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + cleanUsername));
+        String clean = username != null ? username.trim() : "";
+        return userRepository.findByUsername(clean)
+                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
+                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+                .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + clean));
     }
 
     public UserMovieEntryResponse mapToResponse(UserMovieEntry entry) {
@@ -217,6 +302,9 @@ public class UserMovieService {
                 .trailerKey(movie.getTrailerKey())
                 .director(movie.getDirector())
                 .castMembers(movie.getCastMembers())
+                .mediaType(movie.getMediaType())
+                .seasonsCount(movie.getSeasonsCount())
+                .episodesCount(movie.getEpisodesCount())
                 .imdbRating(movie.getImdbRating())
                 .rottenTomatoesRating(movie.getRottenTomatoesRating())
                 .tmdbVoteAverage(movie.getTmdbVoteAverage())

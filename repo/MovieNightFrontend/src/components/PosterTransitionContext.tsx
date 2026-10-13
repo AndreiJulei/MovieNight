@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
+import type { Movie } from "../store/data";
 
 export interface PosterTransitionData {
   movieId: string;
@@ -13,6 +14,7 @@ export interface PosterTransitionData {
   title: string;
   /** The full path the user navigated from, used for back-navigation */
   referrer?: string;
+  movie?: Movie;
 }
 
 interface PosterTransitionContextValue {

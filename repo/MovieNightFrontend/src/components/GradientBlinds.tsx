@@ -348,7 +348,9 @@ void main() {
     });
 
     const loop = (t: number) => {
-      rafRef.current = requestAnimationFrame(loop);
+      if (!document.hidden) {
+        rafRef.current = requestAnimationFrame(loop);
+      }
       uniforms.iTime.value = t * 0.001;
 
       if (mouseDampening > 0) {
@@ -373,10 +375,20 @@ void main() {
         }
       }
     };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     rafRef.current = requestAnimationFrame(loop);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", handleGlobalMouseMove);
       if (canvas.parentElement === container) {

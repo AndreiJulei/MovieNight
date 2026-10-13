@@ -28,6 +28,9 @@ class MovieCatalogControllerTest {
     @Mock
     private MovieCatalogLookupService lookupService;
 
+    @Mock
+    private com.movienight.backend.service.SuggestionService suggestionService;
+
     @InjectMocks
     private MovieCatalogController controller;
 

@@ -52,7 +52,7 @@ public class SuggestionScheduler {
     }
 
     /**
-     * Ingest 300-400 movies per discover category from TMDB.
+     * Ingest discover categories from TMDB across Movies, TV Series, and Anime.
      */
     @Transactional
     public void refreshAllCachedLists() {
@@ -63,26 +63,84 @@ public class SuggestionScheduler {
 
         LocalDate today = LocalDate.now();
         DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
-
-        // 1. Popular
-        refreshCategory(MovieListType.POPULAR, "popularity.desc", 100, null, null, 15);
-
-        // 2. Top Rated
-        refreshCategory(MovieListType.TOP_RATED, "vote_average.desc", 300, null, null, 15);
-
-        // 3. Recent
-        String sixMonthsAgo = today.minusMonths(6).format(fmt);
         String todayStr = today.format(fmt);
-        refreshCategory(MovieListType.RECENT, "popularity.desc", 30, sixMonthsAgo, todayStr, 15);
-
-        // 4. Upcoming
+        String ninetyDaysAgo = today.minusDays(90).format(fmt);
         String oneYearFuture = today.plusYears(1).format(fmt);
-        refreshCategory(MovieListType.UPCOMING, "popularity.desc", 0, todayStr, oneYearFuture, 15);
 
-        log.info("TMDB Discover list cache refreshed successfully.");
+        // ── 1. MOVIES ──
+        // Newest Releases (last 90 days, min votes 10)
+        refreshMovieCategory("MOVIE", MovieListType.RECENT, "popularity.desc", 10, ninetyDaysAgo, todayStr, 3);
+        // Most Popular
+        refreshMovieCategory("MOVIE", MovieListType.POPULAR, "popularity.desc", 200, null, null, 3);
+        // Top Rated (masterpieces with >= 1000 votes)
+        refreshMovieCategory("MOVIE", MovieListType.TOP_RATED, "vote_average.desc", 1000, null, null, 3);
+        // Upcoming & Most Anticipated (12-month horizon)
+        refreshMovieCategory("MOVIE", MovieListType.UPCOMING, "popularity.desc", 0, todayStr, oneYearFuture, 3);
+
+        // ── 2. TV SERIES ──
+        // Currently Airing
+        refreshTvOnTheAirCategory("TV", MovieListType.CURRENTLY_AIRING, 3);
+        // Most Popular TV
+        refreshTvCategory("TV", MovieListType.POPULAR, "popularity.desc", 100, null, null, null, null, null, null, 3);
+        // Top Rated TV (>= 500 votes)
+        refreshTvCategory("TV", MovieListType.TOP_RATED, "vote_average.desc", 500, null, null, null, null, null, null, 3);
+        // Upcoming Seasons (future premiere dates)
+        refreshTvCategory("TV", MovieListType.UPCOMING, "popularity.desc", 0, todayStr, oneYearFuture, null, null, null, null, 3);
+
+        // ── 3. ANIME ──
+        SeasonRange currentSeason = getCurrentSeasonRange(today);
+        SeasonRange nextSeason = getNextSeasonRange(today);
+
+        // Current Season Hits (Japanese animation airing within current quarter)
+        refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", "ja", 3);
+        // Most Popular Anime
+        refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", "ja", 3);
+        // All-Time Acclaimed (>= 200 votes)
+        refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", "ja", 3);
+        // Upcoming Next Season
+        refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", "ja", 3);
+
+        log.info("TMDB Discover list cache refreshed successfully across Movies, TV Series, and Anime.");
     }
 
-    private void refreshCategory(
+    /**
+     * On-demand refresh for a specific media type (Movies, TV, or Anime).
+     */
+    @Transactional
+    public void refreshMediaType(String mediaType) {
+        if (!tmdbClient.isConfigured() || mediaType == null) {
+            return;
+        }
+
+        LocalDate today = LocalDate.now();
+        DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
+        String todayStr = today.format(fmt);
+        String ninetyDaysAgo = today.minusDays(90).format(fmt);
+        String oneYearFuture = today.plusYears(1).format(fmt);
+
+        String normalized = mediaType.trim().toUpperCase();
+        if ("MOVIE".equals(normalized)) {
+            refreshMovieCategory("MOVIE", MovieListType.RECENT, "popularity.desc", 10, ninetyDaysAgo, todayStr, 1);
+            refreshMovieCategory("MOVIE", MovieListType.POPULAR, "popularity.desc", 200, null, null, 1);
+            refreshMovieCategory("MOVIE", MovieListType.TOP_RATED, "vote_average.desc", 1000, null, null, 1);
+            refreshMovieCategory("MOVIE", MovieListType.UPCOMING, "popularity.desc", 0, todayStr, oneYearFuture, 1);
+        } else if ("TV".equals(normalized)) {
+            refreshTvOnTheAirCategory("TV", MovieListType.CURRENTLY_AIRING, 1);
+            refreshTvCategory("TV", MovieListType.POPULAR, "popularity.desc", 100, null, null, null, null, null, null, 1);
+            refreshTvCategory("TV", MovieListType.TOP_RATED, "vote_average.desc", 500, null, null, null, null, null, null, 1);
+            refreshTvCategory("TV", MovieListType.UPCOMING, "popularity.desc", 0, todayStr, oneYearFuture, null, null, null, null, 1);
+        } else if ("ANIME".equals(normalized)) {
+            SeasonRange currentSeason = getCurrentSeasonRange(today);
+            SeasonRange nextSeason = getNextSeasonRange(today);
+            refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", "ja", 1);
+            refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", "ja", 1);
+            refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", "ja", 1);
+            refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", "ja", 1);
+        }
+    }
+
+    private void refreshMovieCategory(
+            String mediaType,
             MovieListType listType,
             String sortBy,
             Integer minVotes,
@@ -103,14 +161,15 @@ public class SuggestionScheduler {
             }
 
             for (TmdbSearchResponse.TmdbMovieSummary movie : pageResults) {
-                if (movie.getId() != null && movie.getTitle() != null) {
+                if (movie.getId() != null) {
                     entries.add(CachedMovieList.builder()
+                            .mediaType(mediaType)
                             .listType(listType)
                             .tmdbId(movie.getId())
-                            .title(movie.getTitle())
+                            .title(movie.getEffectiveTitle())
                             .posterPath(movie.getPosterPath())
                             .voteAverage(movie.getVoteAverage())
-                            .releaseDate(movie.getReleaseDate())
+                            .releaseDate(movie.getEffectiveReleaseDate())
                             .rankOrder(rank++)
                             .build());
                 }
@@ -118,9 +177,127 @@ public class SuggestionScheduler {
         }
 
         if (!entries.isEmpty()) {
-            cachedMovieListRepository.deleteByListType(listType);
+            cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
             cachedMovieListRepository.saveAll(entries);
-            log.info("Cached {} movies for list type {}", entries.size(), listType);
+            log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
+        }
+    }
+
+    private void refreshTvCategory(
+            String mediaType,
+            MovieListType listType,
+            String sortBy,
+            Integer minVotes,
+            String firstAirDateGte,
+            String firstAirDateLte,
+            String airDateGte,
+            String airDateLte,
+            String withGenres,
+            String withOriginalLanguage,
+            int maxPages
+    ) {
+        List<CachedMovieList> entries = new ArrayList<>();
+        int rank = 1;
+
+        for (int page = 1; page <= maxPages; page++) {
+            List<TmdbSearchResponse.TmdbMovieSummary> pageResults = tmdbClient.discoverTv(
+                    sortBy, minVotes, firstAirDateGte, firstAirDateLte, airDateGte, airDateLte, withGenres, withOriginalLanguage, page
+            );
+
+            if (pageResults == null || pageResults.isEmpty()) {
+                break;
+            }
+
+            for (TmdbSearchResponse.TmdbMovieSummary show : pageResults) {
+                if (show.getId() != null) {
+                    entries.add(CachedMovieList.builder()
+                            .mediaType(mediaType)
+                            .listType(listType)
+                            .tmdbId(show.getId())
+                            .title(show.getEffectiveTitle())
+                            .posterPath(show.getPosterPath())
+                            .voteAverage(show.getVoteAverage())
+                            .releaseDate(show.getEffectiveReleaseDate())
+                            .rankOrder(rank++)
+                            .build());
+                }
+            }
+        }
+
+        if (!entries.isEmpty()) {
+            cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
+            cachedMovieListRepository.saveAll(entries);
+            log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
+        }
+    }
+
+    private void refreshTvOnTheAirCategory(String mediaType, MovieListType listType, int maxPages) {
+        List<CachedMovieList> entries = new ArrayList<>();
+        int rank = 1;
+
+        for (int page = 1; page <= maxPages; page++) {
+            List<TmdbSearchResponse.TmdbMovieSummary> pageResults = tmdbClient.getTvOnTheAir(page);
+            if (pageResults == null || pageResults.isEmpty()) {
+                break;
+            }
+
+            for (TmdbSearchResponse.TmdbMovieSummary show : pageResults) {
+                if (show.getId() != null) {
+                    entries.add(CachedMovieList.builder()
+                            .mediaType(mediaType)
+                            .listType(listType)
+                            .tmdbId(show.getId())
+                            .title(show.getEffectiveTitle())
+                            .posterPath(show.getPosterPath())
+                            .voteAverage(show.getVoteAverage())
+                            .releaseDate(show.getEffectiveReleaseDate())
+                            .rankOrder(rank++)
+                            .build());
+                }
+            }
+        }
+
+        if (!entries.isEmpty()) {
+            cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
+            cachedMovieListRepository.saveAll(entries);
+            log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
+        }
+    }
+
+    private static class SeasonRange {
+        final String start;
+        final String end;
+        SeasonRange(String start, String end) {
+            this.start = start;
+            this.end = end;
+        }
+    }
+
+    private SeasonRange getCurrentSeasonRange(LocalDate today) {
+        int year = today.getYear();
+        int month = today.getMonthValue();
+        if (month <= 3) {
+            return new SeasonRange(year + "-01-01", year + "-03-31");
+        } else if (month <= 6) {
+            return new SeasonRange(year + "-04-01", year + "-06-30");
+        } else if (month <= 9) {
+            return new SeasonRange(year + "-07-01", year + "-09-30");
+        } else {
+            return new SeasonRange(year + "-10-01", year + "-12-31");
+        }
+    }
+
+    private SeasonRange getNextSeasonRange(LocalDate today) {
+        int year = today.getYear();
+        int month = today.getMonthValue();
+        if (month <= 3) {
+            return new SeasonRange(year + "-04-01", year + "-06-30");
+        } else if (month <= 6) {
+            return new SeasonRange(year + "-07-01", year + "-09-30");
+        } else if (month <= 9) {
+            return new SeasonRange(year + "-10-01", year + "-12-31");
+        } else {
+            return new SeasonRange((year + 1) + "-01-01", (year + 1) + "-03-31");
         }
     }
 

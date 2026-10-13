@@ -1,5 +1,6 @@
 package com.movienight.backend.service;
 
+import com.movienight.backend.client.TmdbClient;
 import com.movienight.backend.model.*;
 import com.movienight.backend.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,12 @@ class PersonalizedRecommendationServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private TmdbClient tmdbClient;
+
+    @Mock
+    private CachedMovieListRepository cachedMovieListRepository;
+
     @InjectMocks
     private PersonalizedRecommendationService personalizedRecommendationService;
 
@@ -55,6 +62,7 @@ class PersonalizedRecommendationServiceTest {
                 .id(100L)
                 .tmdbId(27205L)
                 .title("Inception")
+                .mediaType("MOVIE")
                 .build();
     }
 
@@ -70,7 +78,7 @@ class PersonalizedRecommendationServiceTest {
                 .status(MovieStatus.WATCHED)
                 .build();
 
-        when(userMovieEntryRepository.findByUserIdAndPersonalRatingIsNotNull(1L))
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L))
                 .thenReturn(List.of(entry));
 
         // Inception has 2 neighbors: Interstellar (157336, sim=0.8) and Shutter Island (11324, sim=0.7)

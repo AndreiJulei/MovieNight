@@ -27,8 +27,8 @@ public class UpdateMovieEntryRequest {
     /**
      * Updated personal score (1 to 10).
      */
-    @Min(value = 1, message = "Personal rating must be between 1 and 10")
-    @Max(value = 10, message = "Personal rating must be between 1 and 10")
+    @Min(value = 0, message = "Personal rating must be between 0 and 10")
+    @Max(value = 10, message = "Personal rating must be between 0 and 10")
     private Integer personalRating;
 
     /**

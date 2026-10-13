@@ -1,8 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import PosterShelf from "../components/PosterShelf";
+import MovieGrid from "../components/MovieGrid";
+import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 import { useStore } from "../store/MovieStore";
+import { useToast } from "../components/Toast";
+import { useExploreMedia } from "../hooks/useSuggestions";
 import type { Movie, MediaType } from "../store/data";
 
 type ExploreMediaType = "movies" | "tv" | "anime";
@@ -17,18 +21,18 @@ const CONFIG: Record<
 > = {
   movies: {
     mediaType: "MOVIE",
-    title: "Explore Movies",
-    subtitle: "Discover top-rated films, popular picks, and upcoming releases.",
+    title: "Movies",
+    subtitle: "Explore acclaimed films, recent releases, and community favorites.",
   },
   tv: {
     mediaType: "TV",
-    title: "Explore TV Series",
-    subtitle: "Find acclaimed shows, trending series, and what's airing next.",
+    title: "TV Series",
+    subtitle: "Acclaimed series, currently airing seasons, and top-rated dramas.",
   },
   anime: {
     mediaType: "ANIME",
-    title: "Explore Anime",
-    subtitle: "Top anime, seasonal favorites, and timeless classics.",
+    title: "Anime",
+    subtitle: "Seasonal hits, timeless masterworks, and currently airing series.",
   },
 };
 
@@ -36,138 +40,260 @@ interface SuggestionRow {
   id: string;
   title: string;
   movies: Movie[];
+  subtitle?: string;
 }
 
-/**
- * Shared explore page for Movies, TV, and Anime.
- * Shows suggestion rows (Top Rated, Popular, For You, Friends') filtered
- * by the media type passed via the route.
- */
 export default function ExploreContentPage() {
   const { path } = useRouter();
-  const params = matchPath("/explore/:type", path);
-  const type = (params?.type ?? "movies") as ExploreMediaType;
+  const matchDetailed = matchPath("/explore/:type/:rowId", path);
+  const matchBase = matchPath("/explore/:type", path);
+
+  const type = ((matchDetailed?.type || matchBase?.type || "movies") as ExploreMediaType);
+  const rowId = matchDetailed?.rowId;
   const config = CONFIG[type] ?? CONFIG.movies;
-
   const store = useStore();
+  const { toast } = useToast();
 
+  const backendRows = useExploreMedia(type);
+
+  // Filters for /explore/:type/:rowId grid view
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("app_view_mode") as ViewMode) || "grid";
+    }
+    return "grid";
+  });
+  const [sortBy, setSortBy] = useState<SortBy>("rating");
+  const [minRating, setMinRating] = useState<MinRating>(0);
+
+  const filters: Filters = {
+    sortBy,
+    minRating,
+    dateRange: "all",
+    viewMode,
+  };
+
+  const handleFilterChange = (f: Filters) => {
+    setSortBy(f.sortBy);
+    setMinRating(f.minRating);
+    setViewMode(f.viewMode);
+    localStorage.setItem("app_view_mode", f.viewMode);
+  };
+
+  // Determine shelves with metadata
   const rows = useMemo<SuggestionRow[]>(() => {
-    const user = store.currentUser;
-    if (!user) return [];
+    if (backendRows && backendRows.length > 0) {
+      return backendRows.map((r) => {
+        let subtitle: string | undefined;
 
+        if (r.id === "newest") {
+          subtitle = "Released in theaters & digital in the last 90 days";
+        } else if (r.id === "popular") {
+          subtitle = "Trending global favorites and community hits";
+        } else if (r.id === "top-rated") {
+          subtitle = "Highest rated masterworks with established acclaim";
+        } else if (r.id === "upcoming") {
+          subtitle = type === "anime"
+            ? "Most anticipated anime premiering next calendar season"
+            : type === "tv"
+            ? "Upcoming new seasons and series premiering this year"
+            : "Most anticipated theatrical & streaming releases of the year";
+        } else if (r.id === "airing" || r.id === "current-season") {
+          subtitle = type === "anime"
+            ? "Currently airing animation hits this season"
+            : "Active broadcast and streaming episodes airing right now";
+        }
+
+        return {
+          ...r,
+          subtitle,
+        };
+      });
+    }
+
+    // Local fallback computation
     const targetType = config.mediaType;
+    const allOfType = store.movies.filter((m) => {
+      if (targetType === "MOVIE") return (m.mediaType || "MOVIE").toUpperCase() === "MOVIE" || m.id === "anime-demon-slayer-movie";
+      return (m.mediaType || "").toUpperCase() === targetType;
+    });
 
-    // All items of this media type
-    const allOfType = store.movies.filter((m) => m.mediaType === targetType);
+    const newest = [...allOfType].sort((a, b) => b.year - a.year || (b.imdb ?? 0) - (a.imdb ?? 0)).slice(0, 10);
+    const newestIds = new Set(newest.map((m) => m.id));
 
-    // User's own movie IDs (to exclude from suggestions)
-    const myMovieIds = new Set<string>();
-    const watchedEntries = store.entriesFor(user.id, "watched");
-    const watchlistEntries = store.entriesFor(user.id, "watchlist");
-    for (const e of watchedEntries) myMovieIds.add(e.movieId);
-    for (const e of watchlistEntries) myMovieIds.add(e.movieId);
-
-    // Friends data
-    const friends = store.friendsOf(user.id);
-    const friendIds = new Set(friends.map((f) => f.id));
-    const allEntries = store.allEntries();
-
-    // 1. Top Rated — sorted by IMDb/rating
-    const topRated = [...allOfType]
-      .sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
-
-    // 2. Popular — weighted by rating + RT score
+    const topRated = [...allOfType].sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
     const popular = [...allOfType]
-      .sort(
-        (a, b) =>
-          (b.imdb ?? 0) + (b.rt ? b.rt / 10 : 0) -
-          ((a.imdb ?? 0) + (a.rt ? a.rt / 10 : 0)),
-      );
-
-    // 3. Personalized — friend ratings ≥ 7 for this type, not in your library
-    const forYouMap = new Map<string, number>();
-    for (const e of allEntries) {
-      if (
-        friendIds.has(e.userId) &&
-        e.status === "watched" &&
-        e.rating != null &&
-        e.rating >= 7 &&
-        e.mediaType === targetType &&
-        !myMovieIds.has(e.movieId)
-      ) {
-        const current = forYouMap.get(e.movieId) ?? 0;
-        forYouMap.set(e.movieId, Math.max(current, e.rating));
-      }
-    }
-    const forYouMovies = [...forYouMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([id]) => store.movieById(id))
-      .filter((m): m is Movie => m != null);
-
-    // 4. Friends' Watchlists — of this type
-    const friendWatchlistIds = new Set<string>();
-    for (const e of allEntries) {
-      if (
-        friendIds.has(e.userId) &&
-        e.status === "watchlist" &&
-        e.mediaType === targetType &&
-        !myMovieIds.has(e.movieId)
-      ) {
-        friendWatchlistIds.add(e.movieId);
-      }
-    }
-    const friendsSuggestions = [...friendWatchlistIds]
-      .map((id) => store.movieById(id))
-      .filter((m): m is Movie => m != null);
-
-    // 5. Recent — newest by year
-    const recent = [...allOfType].sort((a, b) => b.year - a.year);
+      .filter((m) => !newestIds.has(m.id))
+      .sort((a, b) => (b.imdb ?? 0) + (b.rt ? b.rt / 10 : 0) - ((a.imdb ?? 0) + (a.rt ? a.rt / 10 : 0)));
 
     const result: SuggestionRow[] = [];
 
-    // Always show Top Rated and Popular
-    result.push({ id: "top-rated", title: "Top Rated", movies: topRated });
-    result.push({ id: "popular", title: "Popular", movies: popular });
-
-    // Show personalized only if there are results
-    if (forYouMovies.length > 0) {
-      result.push({
-        id: "for-you",
-        title: "Suggested for You",
-        movies: forYouMovies,
-      });
+    if (type === "movies") {
+      if (newest.length > 0) {
+        result.push({
+          id: "newest",
+          title: "Newest Releases",
+          movies: newest,
+          subtitle: "Released in the last 90 days",
+        });
+      }
+      if (popular.length > 0) {
+        result.push({
+          id: "popular",
+          title: "Most Popular",
+          movies: popular,
+          subtitle: "Trending global blockbusters",
+        });
+      }
+      if (topRated.length > 0) {
+        result.push({
+          id: "top-rated",
+          title: "Top Rated",
+          movies: topRated,
+          subtitle: "Acclaimed cinematic masterpieces",
+        });
+      }
+      const upcoming = [...allOfType].filter((m) => m.year >= 2025);
+      if (upcoming.length > 0) {
+        result.push({
+          id: "upcoming",
+          title: "Upcoming & Most Anticipated",
+          movies: upcoming,
+          subtitle: "Anticipated releases of the year",
+        });
+      }
+    } else if (type === "tv") {
+      const airing = allOfType.filter((m) => m.isAiring);
+      if (airing.length > 0) {
+        result.push({
+          id: "airing",
+          title: "Currently Airing",
+          movies: airing,
+          subtitle: "Episodes broadcasting now",
+        });
+      }
+      if (popular.length > 0) {
+        result.push({
+          id: "popular",
+          title: "Most Popular",
+          movies: popular,
+          subtitle: "Trending television favorites",
+        });
+      }
+      if (topRated.length > 0) {
+        result.push({
+          id: "top-rated",
+          title: "Top Rated",
+          movies: topRated,
+          subtitle: "Critically acclaimed television",
+        });
+      }
+    } else if (type === "anime") {
+      const airing = allOfType.filter((m) => m.isAiring);
+      if (airing.length > 0) {
+        result.push({
+          id: "current-season",
+          title: "Current Season Hits",
+          movies: airing,
+          subtitle: "Seasonal broadcast favorites",
+        });
+      }
+      if (popular.length > 0) {
+        result.push({
+          id: "popular",
+          title: "Most Popular",
+          movies: popular,
+          subtitle: "Fan favorites worldwide",
+        });
+      }
+      if (topRated.length > 0) {
+        result.push({
+          id: "top-rated",
+          title: "All-Time Acclaimed",
+          movies: topRated,
+          subtitle: "Timeless anime masterworks",
+        });
+      }
     }
-
-    // Show friends' suggestions only if there are results
-    if (friendsSuggestions.length > 0) {
-      result.push({
-        id: "friends",
-        title: "Friends' Picks",
-        movies: friendsSuggestions,
-      });
-    }
-
-    // Recent releases
-    result.push({
-      id: "recent",
-      title: "New & Recent",
-      movies: recent,
-    });
 
     return result;
-  }, [store, config.mediaType]);
+  }, [backendRows, config.mediaType, store.movies, type]);
 
+  // If a rowId was requested, render full grid view for that row
+  if (rowId) {
+    const matchedRow = rows.find((r) => r.id === rowId);
+    let rawMovies = matchedRow ? matchedRow.movies : [];
+
+    if (minRating > 0) {
+      rawMovies = rawMovies.filter((m) => (m.imdb ?? 0) >= minRating);
+    }
+
+    const sortedMovies = [...rawMovies].sort((a, b) => {
+      if (sortBy === "title") return a.title.localeCompare(b.title);
+      if (sortBy === "year") return b.year - a.year;
+      if (sortBy === "rating") return (b.imdb ?? 0) - (a.imdb ?? 0);
+      return 0;
+    });
+
+    const userHasMovie = (movieId: string) => {
+      if (!store.currentUser) return false;
+      return !!store.entryFor(store.currentUser.id, movieId);
+    };
+
+    return (
+      <AppShell>
+        <div className="mb-4">
+          <Link
+            to={`/explore/${type}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
+          >
+            ← Back to {config.title}
+          </Link>
+        </div>
+
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary">
+            {matchedRow?.title || "Explore"} · {config.title}
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            {matchedRow?.subtitle || "All titles in this curated shelf."}
+          </p>
+        </div>
+
+        <TopBar
+          count={sortedMovies.length}
+          avg={null}
+          filters={filters}
+          onChange={handleFilterChange}
+          showRating={true}
+          showAddButton={false}
+        />
+
+        <MovieGrid
+          movies={sortedMovies}
+          compact={viewMode === "compact"}
+          empty="No titles found in this category."
+          referrerOverride={`/explore/${type}/${rowId}`}
+          showAddToWatchlist
+          onAddToWatchlist={(movieId) => {
+            const movieObj = sortedMovies.find((sm) => sm.id === movieId);
+            store.addToWatchlist(movieId, movieObj);
+            const m = movieObj || store.movieById(movieId);
+            toast({
+              message: `"${m?.title ?? "Title"}" added to Watchlist`,
+              type: "success",
+              onUndo: () => store.removeFromWatchlist(movieId),
+            });
+          }}
+          userHasMovie={userHasMovie}
+        />
+      </AppShell>
+    );
+  }
+
+  // Shelf rows view
   return (
     <AppShell>
-      <div className="mb-4">
-        <Link
-          to="/explore"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
-        >
-          ← Back to Explore
-        </Link>
-      </div>
-
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {config.title}
@@ -178,14 +304,21 @@ export default function ExploreContentPage() {
       <div className="space-y-12 pb-16">
         {rows.map((row) => (
           <section key={row.id} className="relative">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-base font-semibold tracking-wide text-text-primary">
-                {row.title}
-              </h2>
-              {row.movies.length > 8 && (
+            <div className="mb-3 flex items-start justify-between px-1">
+              <div>
+                <h2 className="text-base font-semibold tracking-wide text-text-primary">
+                  {row.title}
+                </h2>
+                {row.subtitle && (
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    {row.subtitle}
+                  </p>
+                )}
+              </div>
+              {row.movies.length > 4 && (
                 <Link
                   to={`/explore/${type}/${row.id}`}
-                  className="group flex items-center gap-1 text-xs font-semibold text-accent transition-colors hover:text-white"
+                  className="group mt-0.5 flex items-center gap-1 text-xs font-semibold text-accent transition-colors hover:text-white"
                 >
                   <span>View all</span>
                   <span className="transition-transform group-hover:translate-x-0.5">
@@ -204,7 +337,7 @@ export default function ExploreContentPage() {
         {rows.length === 0 && (
           <div className="flex h-48 items-center justify-center">
             <p className="text-sm text-text-muted">
-              No content available yet. Check back soon.
+              Loading catalog or no titles found.
             </p>
           </div>
         )}

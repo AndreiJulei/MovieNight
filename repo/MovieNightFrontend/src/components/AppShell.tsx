@@ -6,7 +6,13 @@ import AmbientBackground from "./AmbientBackground";
  * App chrome: a fixed top nav bar on desktop (h-14), a fixed bottom strip on
  * mobile. Content reflows inside <main> with simple horizontal padding.
  */
-export default function AppShell({ children }: { children: ReactNode }) {
+export default function AppShell({
+  children,
+  fullBleed = false,
+}: {
+  children: ReactNode;
+  fullBleed?: boolean;
+}) {
   return (
     <div className="relative min-h-full bg-bg">
       {/* Ambient Interactive Background */}
@@ -21,7 +27,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <NavRail orientation="horizontal" />
       </div>
 
-      <main className="relative z-10 mx-auto max-w-[1400px] px-5 pb-20 pt-4 lg:pb-10 lg:pt-20 lg:px-8">
+      <main
+        className={
+          fullBleed
+            ? "relative z-10 w-full pb-20 pt-0 lg:pb-16 lg:pt-14"
+            : "relative z-10 mx-auto max-w-[1400px] px-5 pb-20 pt-4 lg:pb-10 lg:pt-20 lg:px-8"
+        }
+      >
         {children}
       </main>
     </div>

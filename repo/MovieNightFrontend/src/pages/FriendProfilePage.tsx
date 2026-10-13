@@ -7,9 +7,12 @@ import type { Movie, Status } from "../store/data";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
 import SegmentedRadio from "../components/SegmentedRadio";
+import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
+import { useToast } from "../components/Toast";
 
 export default function FriendProfilePage() {
   const store = useStore();
+  const { toast } = useToast();
   const { path, navigate } = useRouter();
   const params = matchPath("/friends/:id", path);
   const friendId = params?.id;
@@ -20,6 +23,9 @@ export default function FriendProfilePage() {
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Status>("watched");
   const [showConfirmRemove, setShowConfirmRemove] = useState(false);
+
+  useEscapeKey(showConfirmRemove, () => setShowConfirmRemove(false));
+  useBodyScrollLock(showConfirmRemove);
 
   // Fetch friend profile and their live library from backend
   useEffect(() => {
@@ -115,6 +121,7 @@ export default function FriendProfilePage() {
     if (friendId) {
       store.removeFriend(friendId);
       setShowConfirmRemove(false);
+      toast({ message: `Removed ${displayName ?? "friend"} from friends`, type: "info" });
       navigate("/friends");
     }
   };
@@ -185,7 +192,14 @@ export default function FriendProfilePage() {
             referrerOverride={referrerPath}
             showAddToWatchlist
             onAddToWatchlist={(movieId) => {
-              store.addToWatchlist(movieId);
+              const movieObj = displayMovies.find((dm) => dm.id === movieId);
+              store.addToWatchlist(movieId, movieObj);
+              const m = movieObj || store.movieById(movieId);
+              toast({
+                message: `"${m?.title ?? "Title"}" added to Watchlist`,
+                type: "success",
+                onUndo: () => store.removeFromWatchlist(movieId),
+              });
             }}
             userHasMovie={userHasMovie}
           />
@@ -194,7 +208,12 @@ export default function FriendProfilePage() {
 
       {/* Remove Friend Confirmation Modal */}
       {showConfirmRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Remove ${displayName}?`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+        >
           <div className="w-full max-w-sm rounded-xl border border-white/15 bg-[#0e1320] p-6 shadow-2xl">
             <h3 className="text-base font-bold text-text-primary">
               Remove {displayName}?

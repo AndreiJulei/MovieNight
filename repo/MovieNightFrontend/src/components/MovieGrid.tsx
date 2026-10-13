@@ -1,6 +1,7 @@
 import { useRef, type MouseEvent } from "react";
 import type { Movie } from "../store/data";
 import { useRouter } from "../router";
+import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "./PosterTransitionContext";
 import PixelPoster from "./PixelPoster";
 
@@ -39,11 +40,24 @@ export function MovieCard({
   const posterRef = useRef<HTMLDivElement>(null);
   const { startTransition } = usePosterTransition();
   const { navigate, path, search } = useRouter();
+  const store = useStore();
 
   const handleClick = (e: MouseEvent) => {
     e.preventDefault();
+    store.upsertMovie(movie);
+    try {
+      sessionStorage.setItem("last_selected_movie", JSON.stringify(movie));
+    } catch {
+      /* ignore */
+    }
     if (posterRef.current) {
       const rect = posterRef.current.getBoundingClientRect();
+      const ref = referrerOverride ?? `${path}${search}`;
+      try {
+        sessionStorage.setItem("last_movie_referrer", ref);
+      } catch {
+        /* ignore */
+      }
       startTransition({
         movieId: movie.id,
         startRect: {
@@ -55,15 +69,19 @@ export function MovieCard({
         posterUrl: movie.posterUrl,
         posterSeed: movie.posterSeed,
         title: movie.title,
-        referrer: referrerOverride ?? `${path}${search}`,
+        referrer: ref,
+        movie,
       });
     }
-    navigate(`/movies/${movie.id}`);
+    const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
+    navigate(targetUrl);
   };
+
+  const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
 
   return (
     <a
-      href={`/movies/${movie.id}`}
+      href={targetUrl}
       onClick={handleClick}
       title={`${movie.title} (${movie.year})`}
       className="group block cursor-pointer focus:outline-none"
@@ -108,7 +126,7 @@ export default function MovieGrid({
   empty?: string;
   referrerOverride?: string;
   showAddToWatchlist?: boolean;
-  onAddToWatchlist?: (movieId: string) => void;
+  onAddToWatchlist?: (movieId: string, movie?: Movie) => void;
   userHasMovie?: (movieId: string) => boolean;
   compact?: boolean;
 }) {
@@ -136,7 +154,7 @@ export default function MovieGrid({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onAddToWatchlist(m.id);
+                onAddToWatchlist(m.id, m);
               }}
               className="absolute top-1.5 right-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-accent hover:border-accent"
               title="Add to your watchlist"

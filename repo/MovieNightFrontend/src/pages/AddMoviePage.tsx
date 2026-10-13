@@ -59,15 +59,16 @@ export default function AddMoviePage() {
             overview: m.overview ?? "",
             director: m.director,
             trailerKey: m.trailerKey,
-            mediaType: "MOVIE" as const,
+            mediaType: (m.mediaType as any) || "MOVIE",
+            seasonsCount: m.seasonsCount,
+            episodesCount: m.episodesCount,
           }));
           setSearchResults(mapped);
         } else {
-          // Fallback to local catalog
-          setSearchResults(store.searchMovies(query));
+          setSearchResults([]);
         }
       } catch {
-        setSearchResults(store.searchMovies(query));
+        setSearchResults([]);
       } finally {
         setIsSearching(false);
       }
@@ -85,7 +86,7 @@ export default function AddMoviePage() {
     // If it has a TMDB ID, enrich full details in background
     if (m.tmdbId) {
       try {
-        const details = await moviesApi.getByTmdbId(m.tmdbId);
+        const details = await moviesApi.getByTmdbId(m.tmdbId, m.mediaType);
         if (details) {
           if (details.overview) setOverview(details.overview);
           if (details.releaseYear) setYear(String(details.releaseYear));
@@ -98,6 +99,9 @@ export default function AddMoviePage() {
                   rt: details.rottenTomatoesRating ?? prev.rt,
                   director: details.director ?? prev.director,
                   trailerKey: details.trailerKey ?? prev.trailerKey,
+                  mediaType: (details.mediaType as any) ?? prev.mediaType,
+                  seasonsCount: details.seasonsCount ?? prev.seasonsCount,
+                  episodesCount: details.episodesCount ?? prev.episodesCount,
                 }
               : null,
           );
@@ -125,6 +129,9 @@ export default function AddMoviePage() {
       rating: target === "watched" ? rating : undefined,
       description: overview.trim() || undefined,
       existingMovieId: selected?.id,
+      mediaType: selected?.mediaType || "MOVIE",
+      seasonsCount: selected?.seasonsCount,
+      episodesCount: selected?.episodesCount,
     });
 
     navigate(target === "watched" ? "/movies" : "/movies?status=watchlist");

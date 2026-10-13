@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "cached_movie_list", indexes = {
     @Index(name = "idx_cache_type_rank", columnList = "listType, rankOrder"),
+    @Index(name = "idx_cache_media_type_rank", columnList = "mediaType, listType, rankOrder"),
     @Index(name = "idx_cache_tmdb_id", columnList = "tmdbId")
 })
 @Getter
@@ -24,6 +25,10 @@ public class CachedMovieList {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String mediaType = "MOVIE";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

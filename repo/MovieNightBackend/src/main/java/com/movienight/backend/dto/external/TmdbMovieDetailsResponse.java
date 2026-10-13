@@ -16,10 +16,15 @@ public class TmdbMovieDetailsResponse {
     @JsonProperty("imdb_id")
     private String imdbId;
 
+    // Movies use "title", TV shows use "name"
     private String title;
+    private String name;
 
     @JsonProperty("release_date")
     private String releaseDate;
+
+    @JsonProperty("first_air_date")
+    private String firstAirDate;
 
     private String overview;
 
@@ -29,7 +34,27 @@ public class TmdbMovieDetailsResponse {
     @JsonProperty("backdrop_path")
     private String backdropPath;
 
+    // Movie runtime
     private Integer runtime;
+
+    // TV Series episode runtime
+    @JsonProperty("episode_run_time")
+    private List<Integer> episodeRunTime = Collections.emptyList();
+
+    @JsonProperty("number_of_seasons")
+    private Integer numberOfSeasons;
+
+    @JsonProperty("number_of_episodes")
+    private Integer numberOfEpisodes;
+
+    @JsonProperty("created_by")
+    private List<CreatedBy> createdBy = Collections.emptyList();
+
+    @JsonProperty("original_language")
+    private String originalLanguage;
+
+    @JsonProperty("origin_country")
+    private List<String> originCountry = Collections.emptyList();
 
     @JsonProperty("vote_average")
     private Double voteAverage;
@@ -42,6 +67,78 @@ public class TmdbMovieDetailsResponse {
     private Credits credits;
 
     private Videos videos;
+
+    public String getEffectiveTitle() {
+        if (title != null && !title.isBlank()) {
+            return title;
+        }
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        return "Untitled";
+    }
+
+    public String getEffectiveReleaseDate() {
+        if (releaseDate != null && !releaseDate.isBlank()) {
+            return releaseDate;
+        }
+        if (firstAirDate != null && !firstAirDate.isBlank()) {
+            return firstAirDate;
+        }
+        return null;
+    }
+
+    public Integer getEffectiveRuntimeMinutes() {
+        if (runtime != null && runtime > 0) {
+            return runtime;
+        }
+        if (episodeRunTime != null && !episodeRunTime.isEmpty()) {
+            return episodeRunTime.get(0);
+        }
+        return null;
+    }
+
+    public String getEffectiveDirectorOrCreator() {
+        // Check for Director in movie crew
+        if (credits != null && credits.getCrew() != null) {
+            String dir = credits.getCrew().stream()
+                    .filter(c -> "Director".equalsIgnoreCase(c.getJob()))
+                    .map(CrewMember::getName)
+                    .findFirst()
+                    .orElse(null);
+            if (dir != null && !dir.isBlank()) {
+                return dir;
+            }
+        }
+        // Fallback to Creator in TV show
+        if (createdBy != null && !createdBy.isEmpty()) {
+            return createdBy.get(0).getName();
+        }
+        return null;
+    }
+
+    public String getResolvedMediaType() {
+        boolean isAnimation = genres != null && genres.stream().anyMatch(g -> "Animation".equalsIgnoreCase(g.getName()) || (g.getId() != null && g.getId() == 16));
+        boolean isJapanese = "ja".equalsIgnoreCase(originalLanguage) ||
+                (originCountry != null && originCountry.contains("JP"));
+
+        if (isAnimation && isJapanese) {
+            return "ANIME";
+        }
+
+        if (numberOfSeasons != null || numberOfEpisodes != null || (title == null && name != null)) {
+            return "TV";
+        }
+
+        return "MOVIE";
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CreatedBy {
+        private Long id;
+        private String name;
+    }
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)

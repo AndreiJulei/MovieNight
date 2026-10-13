@@ -25,8 +25,32 @@ export default function CinematicScene({
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
-    if (loopRef.current) loopRef.current.play().catch(() => {});
-  }, []);
+    const v = loopRef.current;
+    if (!v) return;
+
+    // Robust play: retry until it sticks. Browsers block autoplay unpredictably.
+    const tryPlay = () => {
+      if (v.paused && stage === 0) {
+        v.play().catch(() => {});
+      }
+    };
+
+    tryPlay();
+
+    // Re-trigger when the tab becomes visible again (browser pauses background tabs)
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") tryPlay();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Fallback: poll every 2s in case something pauses it
+    const interval = setInterval(tryPlay, 2000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
+  }, [stage]);
 
   useEffect(() => {
     timers.current.forEach(clearTimeout);
@@ -144,23 +168,17 @@ export default function CinematicScene({
             Welcome to
           </span>
 
-          {/* "Movie Night" - bigger typography */}
+          {/* "Movie Night" - sans typography matching app wordmark */}
           <div
             className={`neon-text flex items-baseline justify-center gap-2 md:gap-3 ${
               stage >= 3 ? "on" : ""
             }`}
             style={{ animationDelay: "180ms" }}
           >
-            <span
-              className="text-4xl font-black tracking-tight text-white md:text-5xl lg:text-6xl"
-              style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
-            >
+            <span className="font-sans text-4xl font-extrabold tracking-tight text-white md:text-5xl lg:text-6xl">
               Movie
             </span>
-            <span
-              className="text-4xl font-black tracking-tight text-accent md:text-5xl lg:text-6xl"
-              style={{ fontFamily: "'Georgia', 'Playfair Display', serif" }}
-            >
+            <span className="font-sans text-4xl font-extrabold tracking-tight text-accent md:text-5xl lg:text-6xl">
               Night
             </span>
           </div>

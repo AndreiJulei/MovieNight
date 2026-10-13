@@ -81,4 +81,59 @@ public class MovieSimilarityDataLoader implements ApplicationRunner {
             log.error("Failed to load MovieLens similarity dataset: {}", e.getMessage(), e);
         }
     }
+
+    /**
+     * Reload similarity matrix data from file on incoming webhook trigger.
+     */
+    @Transactional
+    public long reloadSimilarityData() {
+        log.info("Reloading MovieLens similarity dataset on webhook trigger...");
+        movieSimilarityRepository.deleteAllInBatch();
+
+        long count = 0;
+        try {
+            ClassPathResource resource = new ClassPathResource("data/movie_similarity.csv");
+            if (!resource.exists()) {
+                log.warn("movie_similarity.csv not found in classpath resources. Skipping similarity loading.");
+                return 0;
+            }
+
+            String sql = "INSERT INTO movie_similarity (tmdb_id, neighbor_tmdb_id, score) VALUES (?, ?, ?)";
+            List<Object[]> batch = new ArrayList<>(10000);
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+                String line = reader.readLine(); // skip header
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) continue;
+                    String[] parts = line.split(",");
+                    if (parts.length < 3) continue;
+
+                    try {
+                        Long tmdbId = Long.parseLong(parts[0].trim());
+                        Long neighborTmdbId = Long.parseLong(parts[1].trim());
+                        Double score = Double.parseDouble(parts[2].trim());
+
+                        batch.add(new Object[]{tmdbId, neighborTmdbId, score});
+                        count++;
+
+                        if (batch.size() >= 10000) {
+                            jdbcTemplate.batchUpdate(sql, batch);
+                            batch.clear();
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+
+                if (!batch.isEmpty()) {
+                    jdbcTemplate.batchUpdate(sql, batch);
+                    batch.clear();
+                }
+            }
+            log.info("Successfully reloaded {} movie similarity neighbor pairs into database.", count);
+        } catch (Exception e) {
+            log.error("Failed to reload MovieLens similarity dataset: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to reload similarity data: " + e.getMessage(), e);
+        }
+        return count;
+    }
 }

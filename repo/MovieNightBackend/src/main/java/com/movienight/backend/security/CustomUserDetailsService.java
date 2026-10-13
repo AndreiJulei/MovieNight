@@ -18,16 +18,15 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
 
-    /**
-     * Step 3 from roadmap: Look up user for Spring Security authentication.
-     */
     @Override
     @Transactional(readOnly = true)
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        String cleanUsername = username.trim().toLowerCase();
+    public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
+        String clean = identifier != null ? identifier.trim().toLowerCase() : "";
 
-        User user = userRepository.findByUsername(cleanUsername)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + cleanUsername));
+        User user = userRepository.findByEmailIgnoreCase(clean)
+                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
+                .or(() -> userRepository.findByUsername(clean))
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with identifier: " + clean));
 
         return new org.springframework.security.core.userdetails.User(
                 user.getUsername(),

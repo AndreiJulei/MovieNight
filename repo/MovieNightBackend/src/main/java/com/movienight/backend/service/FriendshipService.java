@@ -31,32 +31,35 @@ public class FriendshipService {
     private final UserRepository userRepository;
     private final UserMovieEntryRepository userMovieEntryRepository;
     private final UserMovieService userMovieService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
-     * Fetch all friends of the current user with calculated movie stats.
+     * Retrieve all friends of the current user, each enriched with their profile stats.
      */
     @Transactional(readOnly = true)
-    public List<FriendProfileResponse> getFriends(String username) {
-        User user = findUserByUsername(username);
+    public List<FriendProfileResponse> getFriends(String currentUsername) {
+        User user = findUserByUsername(currentUsername);
         List<Friendship> friendships = friendshipRepository.findByUserId(user.getId());
 
         return friendships.stream()
-                .map(f -> buildFriendProfileResponse(f.getFriend()))
+                .map(Friendship::getFriend)
+                .map(this::buildFriendProfileResponse)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Add a friend by their username or display name (bidirectional friendship).
+     * Add a friend by their username or display name.
      */
     @Transactional
-    public FriendProfileResponse addFriend(String currentUsername, String identifier) {
+    public FriendProfileResponse addFriend(String currentUsername, String targetIdentifier) {
         User user = findUserByUsername(currentUsername);
-        String cleanIdentifier = identifier.trim();
 
-        // Search target user by username or display name
-        User target = userRepository.findByUsername(cleanIdentifier.toLowerCase())
-                .or(() -> userRepository.findByDisplayNameIgnoreCase(cleanIdentifier))
-                .orElseThrow(() -> new IllegalArgumentException("User '" + cleanIdentifier + "' does not exist."));
+        String cleanTarget = targetIdentifier != null ? targetIdentifier.trim() : "";
+        User target = userRepository.findByUsername(cleanTarget)
+                .or(() -> userRepository.findByUsernameIgnoreCase(cleanTarget))
+                .or(() -> userRepository.findByDisplayNameIgnoreCase(cleanTarget))
+                .or(() -> userRepository.findByEmailIgnoreCase(cleanTarget))
+                .orElseThrow(() -> new IllegalArgumentException("User not found with identifier: " + targetIdentifier));
 
         if (user.getId().equals(target.getId())) {
             throw new IllegalArgumentException("You cannot add yourself as a friend.");
@@ -71,6 +74,19 @@ public class FriendshipService {
         Friendship f2 = Friendship.builder().user(target).friend(user).build();
         friendshipRepository.saveAll(List.of(f1, f2));
 
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(com.movienight.backend.event.MovieNightDomainEvent.of(
+                    "friend.added",
+                    user.getId(),
+                    user.getUsername(),
+                    java.util.Map.of(
+                            "friendId", target.getId(),
+                            "friendUsername", target.getUsername(),
+                            "friendDisplayName", target.getDisplayName()
+                    )
+            ));
+        }
+
         log.info("Established friendship between {} and {}", user.getUsername(), target.getUsername());
         return buildFriendProfileResponse(target);
     }
@@ -83,6 +99,16 @@ public class FriendshipService {
         User user = findUserByUsername(currentUsername);
         friendshipRepository.deleteByUserIdAndFriendId(user.getId(), friendId);
         friendshipRepository.deleteByUserIdAndFriendId(friendId, user.getId());
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(com.movienight.backend.event.MovieNightDomainEvent.of(
+                    "friend.removed",
+                    user.getId(),
+                    user.getUsername(),
+                    java.util.Map.of("friendId", friendId)
+            ));
+        }
+
         log.info("Removed friendship between user ID {} and friend ID {}", user.getId(), friendId);
     }
 
@@ -123,8 +149,10 @@ public class FriendshipService {
     // --- Helper Methods ---
 
     private User findUserByUsername(String username) {
-        String clean = username.trim().toLowerCase();
+        String clean = username != null ? username.trim() : "";
         return userRepository.findByUsername(clean)
+                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
+                .or(() -> userRepository.findByEmailIgnoreCase(clean))
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + clean));
     }
 

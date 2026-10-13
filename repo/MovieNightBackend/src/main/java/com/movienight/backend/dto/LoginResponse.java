@@ -12,11 +12,12 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class LoginResponse {
-    private String token; // The JWT access token
+    private String token;
     @Builder.Default
     private String tokenType = "Bearer";
 
     private Long id;
+    private String email;
     private String username;
     private String displayName;
     private String role;
