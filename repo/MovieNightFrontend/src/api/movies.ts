@@ -20,6 +20,9 @@ export interface ApiMovieResponse {
   rottenTomatoesRating?: number;
   tmdbVoteAverage?: number;
   tmdbVoteCount?: number;
+  mediaType?: "MOVIE" | "TV" | "ANIME" | string;
+  seasonsCount?: number;
+  episodesCount?: number;
 }
 
 export interface ApiUserMovieEntryResponse {
@@ -54,6 +57,9 @@ export interface ApiAddMovieRequest {
   personalRating?: number | null;
   notes?: string | null;
   watchedAt?: string | null;
+  mediaType?: "MOVIE" | "TV" | "ANIME" | string;
+  seasonsCount?: number;
+  episodesCount?: number;
 }
 
 export interface ApiUpdateMovieEntryRequest {
@@ -104,17 +110,36 @@ export const moviesApi = {
   },
 
   /**
-   * Get or fetch full movie details by TMDB ID (enriched with OMDb ratings).
+   * Get or fetch full media details by TMDB ID (enriched with OMDb ratings).
    */
-  async getByTmdbId(tmdbId: number): Promise<ApiMovieResponse | null> {
+  async getByTmdbId(tmdbId: number, mediaType?: string): Promise<ApiMovieResponse | null> {
     try {
-      const res = await fetch(`${API_BASE}/api/movies/tmdb/${tmdbId}`, {
+      const url = mediaType
+        ? `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`
+        : `${API_BASE}/api/movies/tmdb/${tmdbId}`;
+      const res = await fetch(url, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) return null;
       return await res.json();
     } catch (err) {
-      console.warn(`Failed to fetch TMDB movie ${tmdbId}:`, err);
+      console.warn(`Failed to fetch TMDB media ${tmdbId}:`, err);
+      return null;
+    }
+  },
+
+  /**
+   * Get movie details by database primary key ID.
+   */
+  async getById(id: number): Promise<ApiMovieResponse | null> {
+    try {
+      const res = await fetch(`${API_BASE}/api/movies/${id}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.warn(`Failed to fetch movie by database ID ${id}:`, err);
       return null;
     }
   },
@@ -146,7 +171,11 @@ export const moviesApi = {
         headers: getAuthHeaders(),
         body: JSON.stringify(req),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        console.error(`Failed to add movie to library (${res.status}):`, errorText);
+        return null;
+      }
       return await res.json();
     } catch (err) {
       console.error("Failed to add movie to library:", err);
@@ -167,7 +196,11 @@ export const moviesApi = {
         headers: getAuthHeaders(),
         body: JSON.stringify(req),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        console.error(`Failed to update movie ${movieId} (${res.status}):`, errorText);
+        return null;
+      }
       return await res.json();
     } catch (err) {
       console.error(`Failed to update movie ${movieId}:`, err);
@@ -230,6 +263,54 @@ export const moviesApi = {
   },
 
   /**
+   * Fetch category-aware personal recommendations (Movie, TV, Anime).
+   */
+  async getPersonalRecommendations(): Promise<ApiSuggestionsResponse | null> {
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/personal`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.warn("Failed to fetch personal recommendations:", err);
+      return null;
+    }
+  },
+
+  /**
+   * Fetch friends' recommendations.
+   */
+  async getFriendsRecommendations(): Promise<ApiSuggestionsResponse | null> {
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/friends`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.warn("Failed to fetch friends' recommendations:", err);
+      return null;
+    }
+  },
+
+  /**
+   * Fetch discover catalog shelves for a specific media type (movies, tv, anime).
+   */
+  async getExploreMedia(mediaType: string): Promise<ApiSuggestionsResponse | null> {
+    try {
+      const res = await fetch(`${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.warn(`Failed to fetch explore media for ${mediaType}:`, err);
+      return null;
+    }
+  },
+
+  /**
    * Request immediate recalculation of personalized recommendations.
    */
   async refreshPersonalizedRecommendations(): Promise<boolean> {
@@ -255,10 +336,11 @@ export interface ApiSuggestionMovieItem {
   rottenTomatoesRating?: number;
   score?: number;
   reason?: string;
+  mediaType?: string;
 }
 
 export interface ApiSuggestionCategory {
-  id: "for-you" | "friends" | "popular" | "recent" | "upcoming";
+  id: string;
   title: string;
   movies: ApiSuggestionMovieItem[];
 }

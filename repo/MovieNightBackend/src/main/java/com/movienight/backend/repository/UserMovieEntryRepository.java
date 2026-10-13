@@ -22,9 +22,12 @@ public interface UserMovieEntryRepository extends JpaRepository<UserMovieEntry, 
     List<UserMovieEntry> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, MovieStatus status);
 
     /**
-     * Find a user's specific entry for a movie.
+     * Find a user's specific entry for a movie (matching either local movie PK ID or external tmdbId).
      */
     Optional<UserMovieEntry> findByUserIdAndMovieId(Long userId, Long movieId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM UserMovieEntry e WHERE e.user.id = :userId AND (e.movie.id = :movieId OR e.movie.tmdbId = :movieId)")
+    Optional<UserMovieEntry> findByUserIdAndMovieIdOrTmdbId(@org.springframework.data.repository.query.Param("userId") Long userId, @org.springframework.data.repository.query.Param("movieId") Long movieId);
 
     /**
      * Check if a movie is already in a user's library.
@@ -36,11 +39,18 @@ public interface UserMovieEntryRepository extends JpaRepository<UserMovieEntry, 
      */
     void deleteByUserIdAndMovieId(Long userId, Long movieId);
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("DELETE FROM UserMovieEntry e WHERE e.user.id = :userId AND (e.movie.id = :movieId OR e.movie.tmdbId = :movieId)")
+    void deleteByUserIdAndMovieIdOrTmdbId(@org.springframework.data.repository.query.Param("userId") Long userId, @org.springframework.data.repository.query.Param("movieId") Long movieId);
+
     /**
      * Social Feature Query:
      * Fetch ratings & notes for a specific movie from a list of friend IDs.
      */
     List<UserMovieEntry> findByMovieIdAndUserIdIn(Long movieId, List<Long> friendUserIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM UserMovieEntry e WHERE (e.movie.id = :movieId OR e.movie.tmdbId = :movieId) AND e.user.id IN :friendUserIds")
+    List<UserMovieEntry> findByMovieIdOrTmdbIdAndUserIdIn(@org.springframework.data.repository.query.Param("movieId") Long movieId, @org.springframework.data.repository.query.Param("friendUserIds") List<Long> friendUserIds);
 
     /**
      * Get all TMDB IDs of movies on a user's library (indexed, fast Set check).

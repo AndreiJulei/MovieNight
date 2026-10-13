@@ -48,6 +48,9 @@ public class AddMovieRequest {
     private String director;
 
     private String castMembers;
+    private String mediaType;
+    private Integer seasonsCount;
+    private Integer episodesCount;
 
     private Double imdbRating;
 
@@ -62,8 +65,8 @@ public class AddMovieRequest {
     @NotNull(message = "Movie status is required (WATCHLIST, WATCHED, or DROPPED)")
     private MovieStatus status;
 
-    @Min(value = 1, message = "Personal rating must be between 1 and 10")
-    @Max(value = 10, message = "Personal rating must be between 1 and 10")
+    @Min(value = 0, message = "Personal rating must be between 0 and 10")
+    @Max(value = 10, message = "Personal rating must be between 0 and 10")
     private Integer personalRating;
 
     private String notes;

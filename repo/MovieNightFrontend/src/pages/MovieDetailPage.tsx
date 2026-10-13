@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { matchPath, useRouter } from "../router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { matchPath, useRouter, useQuery } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
 import { moviesApi, type ApiMovieResponse } from "../api/movies";
-import type { Movie, CastMember } from "../store/data";
+import type { Movie, CastMember, MediaType } from "../store/data";
 import AppShell from "../components/AppShell";
 import PixelPoster from "../components/PixelPoster";
+import AddToListPopover from "../components/AddToListPopover";
+import { useToast } from "../components/Toast";
 
 interface FriendReview {
   userId: string | number;
@@ -19,13 +21,46 @@ interface FriendReview {
 export default function MovieDetailPage() {
   const store = useStore();
   const { path, navigate } = useRouter();
+  const query = useQuery();
+  const typeParam = query.get("type");
   const { transitionData, clearTransition } = usePosterTransition();
   const params = matchPath("/movies/:id", path);
   const user = store.currentUser!;
 
-  const initialMovie = params ? store.movieById(params.id) : undefined;
+  const initialMovie = useMemo(() => {
+    if (!params?.id) return undefined;
+    const fromStore = store.movieById(params.id);
+    if (fromStore) return fromStore;
+
+    if (
+      transitionData?.movie &&
+      (transitionData.movie.id === params.id ||
+        String(transitionData.movie.tmdbId) === params.id)
+    ) {
+      return transitionData.movie;
+    }
+
+    try {
+      const stored = sessionStorage.getItem("last_selected_movie");
+      if (stored) {
+        const parsed = JSON.parse(stored) as Movie;
+        if (
+          parsed &&
+          (parsed.id === params.id ||
+            String(parsed.tmdbId) === params.id ||
+            (!isNaN(Number(params.id)) && parsed.tmdbId === Number(params.id)))
+        ) {
+          return parsed;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return undefined;
+  }, [params?.id, store, transitionData]);
+
   const [movie, setMovie] = useState<Movie | undefined>(initialMovie);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(!initialMovie);
   const [friendReviews, setFriendReviews] = useState<FriendReview[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
 
@@ -36,15 +71,39 @@ export default function MovieDetailPage() {
   // Trailer active playback state
   const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
 
+  // Synchronize when initialMovie is resolved
+  useEffect(() => {
+    if (initialMovie) {
+      setMovie((prev) => (prev ? { ...initialMovie, ...prev } : initialMovie));
+      setIsLoadingDetails(false);
+      store.upsertMovie(initialMovie);
+    }
+  }, [initialMovie, store]);
+
   // Synchronize when store movies or params change
   useEffect(() => {
     if (params?.id) {
       const found = store.movieById(params.id);
       if (found) {
-        setMovie(found);
+        setMovie((prev) => {
+          if (prev && (prev.id === found.id || (found.tmdbId && prev.tmdbId === found.tmdbId))) {
+            return {
+              ...found,
+              ...prev,
+              mediaType: ((typeParam || prev.mediaType || found.mediaType || "MOVIE").toUpperCase()) as MediaType,
+            };
+          }
+          return {
+            ...found,
+            mediaType: ((typeParam || found.mediaType || "MOVIE").toUpperCase()) as MediaType,
+          };
+        });
+        setIsLoadingDetails(false);
+      } else if (!movie && !initialMovie) {
+        setIsLoadingDetails(true);
       }
     }
-  }, [params?.id, store]);
+  }, [params?.id, store, typeParam, movie, initialMovie]);
 
   // Fetch or enrich movie details and friend ratings from backend
   useEffect(() => {
@@ -54,13 +113,20 @@ export default function MovieDetailPage() {
     let active = true;
 
     // 1. Fetch movie details from TMDB / local backend if needed
-    const tmdbIdToFetch = movie?.tmdbId || (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined);
-    
-    if (tmdbIdToFetch && (!movie || !movie.trailerKey || !movie.genres || movie.genres.length === 0)) {
+    const localFound = store.movieById(movieIdParam) || initialMovie;
+    const tmdbIdToFetch =
+      localFound?.tmdbId ||
+      movie?.tmdbId ||
+      (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined);
+    const mediaTypeToQuery = typeParam || localFound?.mediaType || movie?.mediaType;
+
+    const needsEnrichment =
+      !movie || !movie.trailerKey || !movie.genres || movie.genres.length === 0;
+
+    if (tmdbIdToFetch && needsEnrichment) {
       setIsLoadingDetails(true);
-      moviesApi.getByTmdbId(tmdbIdToFetch).then((res: ApiMovieResponse | null) => {
-        if (!active || !res) return;
-        
+
+      const handleMovieResponse = (res: ApiMovieResponse) => {
         let parsedCast: CastMember[] | undefined = undefined;
         if (res.castMembers) {
           parsedCast = res.castMembers.split(",").map((name) => ({
@@ -69,11 +135,13 @@ export default function MovieDetailPage() {
           }));
         }
 
+        const enrichedMediaType = ((res.mediaType || typeParam || localFound?.mediaType || movie?.mediaType || "MOVIE").toUpperCase()) as MediaType;
+
         const enriched: Movie = {
-          id: String(res.id ?? res.tmdbId ?? movieIdParam),
-          tmdbId: res.tmdbId,
-          title: res.title,
-          year: res.releaseYear ?? (movie?.year || 2020),
+          id: String(movieIdParam),
+          tmdbId: res.tmdbId ?? (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined),
+          title: res.title || movie?.title || "Untitled",
+          year: res.releaseYear ?? (movie?.year || 2024),
           posterSeed: movie?.posterSeed ?? null,
           posterUrl: res.posterUrl || movie?.posterUrl || null,
           imdb: res.imdbRating ?? movie?.imdb ?? null,
@@ -83,13 +151,53 @@ export default function MovieDetailPage() {
           director: res.director || movie?.director,
           trailerKey: res.trailerKey || movie?.trailerKey,
           cast: movie?.cast && movie.cast.length > 0 ? movie.cast : parsedCast,
-          mediaType: movie?.mediaType ?? "MOVIE",
+          mediaType: enrichedMediaType,
+          seasonsCount: res.seasonsCount ?? movie?.seasonsCount,
+          episodesCount: res.episodesCount ?? movie?.episodesCount,
         };
 
         setMovie((prev) => (prev ? { ...prev, ...enriched } : enriched));
-      }).finally(() => {
-        if (active) setIsLoadingDetails(false);
-      });
+        store.upsertMovie(enriched);
+      };
+
+      moviesApi
+        .getByTmdbId(tmdbIdToFetch, mediaTypeToQuery)
+        .then(async (res: ApiMovieResponse | null) => {
+          if (!active) return;
+          if (res) {
+            handleMovieResponse(res);
+            return;
+          }
+          // Fallback: If not found via TMDB endpoint, or if ID is a database primary key
+          if (!isNaN(Number(movieIdParam))) {
+            const localDbRes = await moviesApi.getById(Number(movieIdParam));
+            if (!active) return;
+            if (localDbRes) {
+              handleMovieResponse(localDbRes);
+              return;
+            }
+          }
+
+          if (localFound) {
+            handleMovieResponse({
+              id: !isNaN(Number(localFound.id)) ? Number(localFound.id) : undefined,
+              tmdbId: localFound.tmdbId,
+              title: localFound.title,
+              releaseYear: localFound.year,
+              posterUrl: localFound.posterUrl || undefined,
+              overview: localFound.overview,
+              mediaType: localFound.mediaType,
+              genres: localFound.genres?.join(", "),
+              director: localFound.director,
+              trailerKey: localFound.trailerKey,
+            });
+          }
+        })
+        .finally(() => {
+          if (active) setIsLoadingDetails(false);
+        });
+    } else {
+      setIsLoadingDetails(false);
     }
 
     // 2. Load friend reviews & ratings
@@ -137,20 +245,23 @@ export default function MovieDetailPage() {
     return () => {
       active = false;
     };
-  }, [params?.id, movie?.id, movie?.tmdbId, user, store]);
+  }, [params?.id, movie?.id, movie?.tmdbId, user, store, typeParam]);
 
-  const isTransitioningFromGrid = !!(
+  const hasTransition = Boolean(
     transitionData &&
-    movie &&
-    transitionData.movieId === movie.id
+    params?.id &&
+    (String(transitionData.movieId) === String(params.id) ||
+      (transitionData.movie &&
+        (String(transitionData.movie.id) === String(params.id) ||
+          String(transitionData.movie.tmdbId) === String(params.id))))
   );
 
   // Synchronously initialize hero position
-  const [animating, setAnimating] = useState(() => isTransitioningFromGrid);
+  const [animating, setAnimating] = useState(() => hasTransition);
   const [isReverse, setIsReverse] = useState(false);
-  const [showContent, setShowContent] = useState(() => !isTransitioningFromGrid);
+  const [showContent, setShowContent] = useState(() => !hasTransition);
   const [heroStyle, setHeroStyle] = useState<React.CSSProperties | null>(() => {
-    if (isTransitioningFromGrid && transitionData) {
+    if (hasTransition && transitionData) {
       const { top, left, width, height } = transitionData.startRect;
       return {
         position: "fixed",
@@ -167,9 +278,20 @@ export default function MovieDetailPage() {
     return null;
   });
 
+  // Remember referrer persistently so even refreshes know where we came from
+  useEffect(() => {
+    if (transitionData?.referrer) {
+      try {
+        sessionStorage.setItem("last_movie_referrer", transitionData.referrer);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [transitionData?.referrer]);
+
   // Entrance Transition
   useEffect(() => {
-    if (!isTransitioningFromGrid || isReverse) return;
+    if (!hasTransition || isReverse) return;
 
     const startTimer = window.setTimeout(() => {
       if (destPosterRef.current) {
@@ -186,30 +308,63 @@ export default function MovieDetailPage() {
           boxShadow: "0 15px 35px rgba(0,0,0,0.7)",
         });
       }
-    }, 70);
+    }, 40);
 
     const contentTimer = window.setTimeout(() => {
       setShowContent(true);
-    }, 380);
+    }, 320);
 
     const settleTimer = window.setTimeout(() => {
       setAnimating(false);
-    }, 620);
+      setShowContent(true);
+      // NOTE: We deliberately do NOT call clearTransition() here
+      // so that transitionData and startRect remain active for back-navigation & reverse animation!
+    }, 560);
 
     return () => {
       clearTimeout(startTimer);
       clearTimeout(contentTimer);
       clearTimeout(settleTimer);
     };
-  }, [isTransitioningFromGrid, isReverse]);
+  }, [hasTransition, isReverse]);
+
+  // Failsafe: guarantee content is never permanently stuck hidden
+  useEffect(() => {
+    const safety = window.setTimeout(() => {
+      setShowContent(true);
+      setAnimating(false);
+    }, 450);
+    return () => {
+      clearTimeout(safety);
+    };
+  }, []);
 
   // Back-navigation destination
-  const backDest = transitionData?.referrer || "/movies";
-  const backLabel = backDest.startsWith("/friends/")
-    ? "Back to Friend"
-    : backDest.startsWith("/suggestions")
-      ? "Back to Suggestions"
-      : "Back to Movies";
+  const backDest = useMemo(() => {
+    if (transitionData?.referrer) return transitionData.referrer;
+    try {
+      const stored = sessionStorage.getItem("last_movie_referrer");
+      if (stored) return stored;
+    } catch {
+      /* ignore */
+    }
+    const currentMediaType = (typeParam || movie?.mediaType || "").toUpperCase();
+    if (currentMediaType === "TV") return "/explore/tv";
+    if (currentMediaType === "ANIME") return "/explore/anime";
+    return "/explore/movies";
+  }, [transitionData?.referrer, typeParam, movie?.mediaType]);
+
+  const backLabel = useMemo(() => {
+    if (backDest.startsWith("/friends/")) return "Back to Friend";
+    if (backDest.startsWith("/suggestions")) return "Back to Suggestions";
+    if (backDest.startsWith("/explore")) {
+      if (backDest.includes("/tv")) return "Back to TV Series";
+      if (backDest.includes("/anime")) return "Back to Anime";
+      return "Back to Explore";
+    }
+    if (backDest.startsWith("/movies")) return "Back to Library";
+    return "Back";
+  }, [backDest]);
 
   // Reverse Transition
   const handleBack = () => {
@@ -252,8 +407,9 @@ export default function MovieDetailPage() {
       window.setTimeout(() => {
         clearTransition();
         navigate(backDest);
-      }, 460);
+      }, 420);
     } else {
+      clearTransition();
       navigate(backDest);
     }
   };
@@ -293,20 +449,20 @@ export default function MovieDetailPage() {
             className="overflow-hidden rounded-xl border border-white/20 bg-surface"
           >
             <div className="aspect-[2/3] w-full h-full">
-              {movie.posterUrl ? (
+              {transitionData?.posterUrl || movie.posterUrl ? (
                 <img
-                  src={movie.posterUrl}
+                  src={transitionData?.posterUrl || movie.posterUrl || ""}
                   alt=""
                   className="h-full w-full bg-surface object-cover"
                 />
-              ) : movie.posterSeed == null ? (
+              ) : (transitionData?.posterSeed ?? movie.posterSeed) == null ? (
                 <div className="flex h-full items-center justify-center p-6">
                   <span className="text-center text-lg font-medium text-text-muted">
-                    {movie.title}
+                    {transitionData?.title || movie.title}
                   </span>
                 </div>
               ) : (
-                <PixelPoster seed={movie.posterSeed} />
+                <PixelPoster seed={(transitionData?.posterSeed ?? movie.posterSeed)!} />
               )}
             </div>
           </div>
@@ -335,6 +491,16 @@ export default function MovieDetailPage() {
               <span className="nums text-lg font-medium text-text-muted">
                 ({movie.year})
               </span>
+              {movie.mediaType === "TV" && (
+                <span className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-400">
+                  TV Series{movie.seasonsCount ? ` • ${movie.seasonsCount} Season${movie.seasonsCount > 1 ? "s" : ""}` : ""}
+                </span>
+              )}
+              {movie.mediaType === "ANIME" && (
+                <span className="rounded-md border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-xs font-semibold text-purple-400">
+                  Anime{movie.episodesCount ? ` • ${movie.episodesCount} Eps` : ""}
+                </span>
+              )}
               {movie.director && (
                 <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-0.5 text-xs font-semibold text-text-muted">
                   Directed by {movie.director}
@@ -351,12 +517,12 @@ export default function MovieDetailPage() {
               )}
 
               {entry?.status === "watchlist" && (
-                <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300">
+                <div className="inline-flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/15 px-3 py-1 text-xs font-semibold text-warning">
                   <span>⏱ In Watchlist</span>
                 </div>
               )}
 
-              <ExternalRatings imdb={movie.imdb} rt={movie.rt} />
+              <ExternalRatings imdb={movie.imdb ?? null} rt={movie.rt ?? null} />
             </div>
           </div>
 
@@ -646,6 +812,7 @@ function ActionArea({
   onBack: () => void;
 }) {
   const store = useStore();
+  const { toast } = useToast();
   const user = store.currentUser!;
   const entry = store.entryFor(user.id, movie.id);
   const [rating, setRating] = useState(7.5);
@@ -659,7 +826,14 @@ function ActionArea({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={() => store.addToWatchlist(movie.id)}
+          onClick={() => {
+            store.addToWatchlist(movie.id, movie);
+            toast({
+              message: `"${movie.title}" added to Watchlist`,
+              type: "success",
+              onUndo: () => store.removeFromWatchlist(movie.id),
+            });
+          }}
           className="rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95"
         >
           + Add to Watchlist
@@ -669,7 +843,7 @@ function ActionArea({
           <button
             type="button"
             onClick={() => setPanelOpen(true)}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500 hover:text-black active:scale-95"
+            className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-all hover:bg-success hover:text-black active:scale-95"
           >
             ✓ Mark as Watched
           </button>
@@ -715,10 +889,17 @@ function ActionArea({
                     status: "watched",
                     rating,
                     description: desc,
+                    mediaType: movie.mediaType,
+                    seasonsCount: movie.seasonsCount,
+                    episodesCount: movie.episodesCount,
                   });
                   setPanelOpen(false);
+                  toast({
+                    message: `"${movie.title}" marked as watched`,
+                    type: "success",
+                  });
                 }}
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black transition-all hover:bg-emerald-400"
+                className="rounded-lg bg-success px-4 py-2 text-xs font-bold text-black transition-all hover:bg-success/90"
               >
                 Confirm Watched
               </button>
@@ -732,6 +913,8 @@ function ActionArea({
             </div>
           </div>
         )}
+
+        <AddToListPopover movie={movie} />
       </div>
     );
   }
@@ -739,65 +922,80 @@ function ActionArea({
   // Own watchlist item → Mark as Watched
   if (entry.status === "watchlist") {
     return (
-      <div>
-        {!panelOpen ? (
-          <button
-            type="button"
-            onClick={() => setPanelOpen(true)}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500 hover:text-black active:scale-95"
-          >
-            ✓ Mark as Watched
-          </button>
-        ) : (
-          <div className="rounded-xl border border-white/15 bg-[#0e1320] p-5 shadow-xl max-w-xl">
-            <label className="block">
-              <div className="nums mb-2 flex items-center justify-between text-sm font-semibold text-text-primary">
-                <span>Rate this movie</span>
-                <span className="rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
-                  {rating.toFixed(1)} / 10
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={10}
-                step={0.5}
-                value={rating}
-                onChange={(e) => setRating(Number(e.target.value))}
-                className="w-full accent-accent"
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {!panelOpen ? (
+            <button
+              type="button"
+              onClick={() => setPanelOpen(true)}
+              className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-all hover:bg-success hover:text-black active:scale-95"
+            >
+              ✓ Mark as Watched
+            </button>
+          ) : (
+            <div className="rounded-xl border border-white/15 bg-[#0e1320] p-5 shadow-xl max-w-xl">
+              <label className="block">
+                <div className="nums mb-2 flex items-center justify-between text-sm font-semibold text-text-primary">
+                  <span>Rate this movie</span>
+                  <span className="rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
+                    {rating.toFixed(1)} / 10
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={rating}
+                  onChange={(e) => setRating(Number(e.target.value))}
+                  className="w-full accent-accent"
+                />
+              </label>
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Add your review or notes (optional)"
+                rows={3}
+                className="mt-3.5 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
               />
-            </label>
-            <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Add your review or notes (optional)"
-              rows={3}
-              className="mt-3.5 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-            />
-            <div className="mt-4 flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => store.markWatched(entry.id, rating, desc)}
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black transition-all hover:bg-emerald-400"
-              >
-                Confirm Watched
-              </button>
-              <button
-                type="button"
-                onClick={() => setPanelOpen(false)}
-                className="rounded-lg border border-white/10 bg-[#141824] px-4 py-2 text-xs text-text-muted hover:text-white"
-              >
-                Cancel
-              </button>
+              <div className="mt-4 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    store.markWatched(entry.id, rating, desc);
+                    toast({
+                      message: `"${movie.title}" marked as watched`,
+                      type: "success",
+                    });
+                  }}
+                  className="rounded-lg bg-success px-4 py-2 text-xs font-bold text-black transition-all hover:bg-success/90"
+                >
+                  Confirm Watched
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(false)}
+                  className="rounded-lg border border-white/10 bg-[#141824] px-4 py-2 text-xs text-text-muted hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          <AddToListPopover movie={movie} />
+        </div>
+
         <RemoveLink
           confirm={confirmRemove}
           setConfirm={setConfirmRemove}
           title={movie.title}
           onRemove={() => {
             store.removeEntry(entry.id);
+            toast({
+              message: `"${movie.title}" removed from library`,
+              type: "info",
+            });
             onBack();
           }}
         />
@@ -807,15 +1005,25 @@ function ActionArea({
 
   // Own watched item
   return (
-    <RemoveLink
-      confirm={confirmRemove}
-      setConfirm={setConfirmRemove}
-      title={movie.title}
-      onRemove={() => {
-        store.removeEntry(entry.id);
-        onBack();
-      }}
-    />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <AddToListPopover movie={movie} />
+      </div>
+
+      <RemoveLink
+        confirm={confirmRemove}
+        setConfirm={setConfirmRemove}
+        title={movie.title}
+        onRemove={() => {
+          store.removeEntry(entry.id);
+          toast({
+            message: `"${movie.title}" removed from library`,
+            type: "info",
+          });
+          onBack();
+        }}
+      />
+    </div>
   );
 }
 
@@ -878,7 +1086,7 @@ function DescriptionBox({
         <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           Your Notes &amp; Review
         </span>
-        {saved && <span className="text-xs text-emerald-400">✓ Saved</span>}
+        {saved && <span className="text-xs text-success">✓ Saved</span>}
       </div>
       <textarea
         value={value}
@@ -909,8 +1117,8 @@ function ExternalRatings({ imdb, rt }: { imdb: number | null; rt: number | null 
   return (
     <div className="flex items-center gap-2">
       {hasImdb && (
-        <span className="nums inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-bold text-amber-300 shadow-sm">
-          <span className="rounded bg-amber-400 px-1 py-0.2 text-[10px] font-black text-black">
+        <span className="nums inline-flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-0.5 text-xs font-bold text-warning shadow-sm">
+          <span className="rounded bg-warning px-1 py-0.2 text-[10px] font-black text-black">
             IMDb
           </span>
           {imdb.toFixed(1)}

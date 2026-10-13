@@ -87,6 +87,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/webhooks/incoming/**").permitAll()
+                        .requestMatchers("/api/lists/public/**").permitAll()
+                        .requestMatchers("/api/movies/search/**").permitAll()
+                        .requestMatchers("/api/movies/tmdb/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/movies/{id:[0-9]+}", "/api/movies/{id:[0-9]+}/**").permitAll()
+                        .requestMatchers("/api/movies/explore/**").permitAll()
+                        .requestMatchers("/api/suggestions/explore/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         // All other endpoints require authentication

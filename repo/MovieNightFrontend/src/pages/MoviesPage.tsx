@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import type { Entry, Movie, Status, MediaType } from "../store/data";
@@ -7,7 +7,6 @@ import MovieGrid from "../components/MovieGrid";
 import TopBar, { type Filters, type SortBy, type MinRating, type DateRange, type ViewMode, type MediaTypeFilter } from "../components/TopBar";
 
 const VALID_SORTS: SortBy[] = ["addedAt", "title", "year", "rating"];
-const VALID_RATINGS: MinRating[] = [0, 6, 8];
 const VALID_DATES: DateRange[] = ["all", "month", "year"];
 const VALID_VIEWS: ViewMode[] = ["grid", "compact"];
 const VALID_MEDIA_TYPES: MediaTypeFilter[] = ["ALL", "MOVIE", "TV", "ANIME"];
@@ -16,18 +15,19 @@ const VALID_MEDIA_TYPES: MediaTypeFilter[] = ["ALL", "MOVIE", "TV", "ANIME"];
 const ANIME_MOVIE_IDS = new Set(["anime-demon-slayer-movie"]);
 
 export default function MoviesPage() {
-  const { currentUser, entriesFor, movieById } = useStore();
+  const { currentUser, entriesFor, movieById, refreshLibrary } = useStore();
   const { navigate } = useRouter();
   const query = useQuery();
+
+  useEffect(() => {
+    refreshLibrary();
+  }, [refreshLibrary]);
 
   // Read all filter & view state from URL query params so it persists across navigation
   const status: Status = query.get("status") === "watchlist" ? "watchlist" : "watched";
   const sortBy: SortBy = VALID_SORTS.includes(query.get("sort") as SortBy)
     ? (query.get("sort") as SortBy)
     : "addedAt";
-  const minRating: MinRating = VALID_RATINGS.includes(Number(query.get("minRating")) as MinRating)
-    ? (Number(query.get("minRating")) as MinRating)
-    : 0;
   const dateRange: DateRange = VALID_DATES.includes(query.get("dateRange") as DateRange)
     ? (query.get("dateRange") as DateRange)
     : "all";
@@ -42,7 +42,7 @@ export default function MoviesPage() {
     ? (query.get("type") as MediaTypeFilter)
     : "ALL";
 
-  const filters: Filters = { sortBy, minRating, dateRange, viewMode };
+  const filters: Filters = { sortBy, minRating: 0, dateRange, viewMode };
 
   // Build the URL with current filter & view state
   const buildUrl = (newFilters?: Filters, newMediaType?: MediaTypeFilter) => {
@@ -51,7 +51,6 @@ export default function MoviesPage() {
     const params = new URLSearchParams();
     if (status === "watchlist") params.set("status", "watchlist");
     if (f.sortBy !== "addedAt") params.set("sort", f.sortBy);
-    if (f.minRating > 0) params.set("minRating", String(f.minRating));
     if (f.dateRange !== "all") params.set("dateRange", f.dateRange);
     if (f.viewMode !== "grid") params.set("view", f.viewMode);
     if (mt !== "ALL") params.set("type", mt);
@@ -62,26 +61,36 @@ export default function MoviesPage() {
   const rows = useMemo(() => {
     if (!currentUser) return [];
     let list = entriesFor(currentUser.id, status)
-      .map((e) => ({ entry: e, movie: movieById(e.movieId)! }))
-      .filter((r) => r.movie);
+      .map((e) => {
+        const found = movieById(e.movieId);
+        const resolvedMediaType = ((found?.mediaType || e.mediaType || "MOVIE").toUpperCase()) as MediaType;
+        const movie: Movie = found
+          ? { ...found, mediaType: resolvedMediaType }
+          : {
+              id: e.movieId,
+              title: "Loading...",
+              year: new Date().getFullYear(),
+              posterUrl: null,
+              mediaType: resolvedMediaType,
+            };
+        return { entry: e, movie };
+      });
 
     // Media type filter
     if (mediaType !== "ALL") {
       list = list.filter((r) => {
+        const itemType = (r.movie.mediaType || r.entry.mediaType || "MOVIE").toUpperCase();
         if (mediaType === "MOVIE") {
           // Movies filter: show MOVIE type + anime movies
-          return r.movie.mediaType === "MOVIE" || ANIME_MOVIE_IDS.has(r.movie.id);
+          return itemType === "MOVIE" || ANIME_MOVIE_IDS.has(r.movie.id);
         }
         if (mediaType === "ANIME") {
-          return r.movie.mediaType === "ANIME";
+          return itemType === "ANIME";
         }
-        return r.movie.mediaType === mediaType;
+        return itemType === mediaType;
       });
     }
 
-    if (status === "watched" && filters.minRating > 0) {
-      list = list.filter((r) => (r.entry.rating ?? 0) >= filters.minRating);
-    }
     if (filters.dateRange !== "all") {
       const now = new Date();
       list = list.filter((r) => {
@@ -118,7 +127,7 @@ export default function MoviesPage() {
         avg={status === "watched" ? avg : null}
         filters={filters}
         onChange={handleFilterChange}
-        showRating={status === "watched"}
+        showRating={false}
         mediaTypeFilter={mediaType}
         onMediaTypeChange={(mt) => navigate(buildUrl(filters, mt))}
       />

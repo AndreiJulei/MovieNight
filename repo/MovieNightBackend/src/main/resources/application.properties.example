@@ -22,10 +22,10 @@ app.jwt.secret=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
 app.jwt.expiration-ms=86400000
 
 # ==========================================
-# External Movie API Keys (Paste your keys here)
+# External Movie API Keys (Paste your keys here or set TMDB_API_KEY / OMDB_API_KEY env vars)
 # ==========================================
-app.tmdb.api-key=PASTE_YOUR_TMDB_API_KEY_HERE
-app.omdb.api-key=PASTE_YOUR_OMDB_API_KEY_HERE
+app.tmdb.api-key=${TMDB_API_KEY:eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMGRjMzgyNzZlNzJjZTQ0MDg3NThiNzQ2NThmNGE5MCIsIm5iZiI6MTc4ODU0MTQwMS4zNTEsInN1YiI6IjZhOWFmOWQ5ZTY0Y2FiNmYzNjYwOGQxNiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.vin_Wq2oCfGNNnLlhfK71piOaSOrSMPFBYUCQJj4FRY}
+app.omdb.api-key=${OMDB_API_KEY:e6463578}
 
 # Base URLs
 app.tmdb.base-url=https://api.themoviedb.org/3

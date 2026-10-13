@@ -12,7 +12,17 @@ public interface CachedMovieListRepository extends JpaRepository<CachedMovieList
 
     List<CachedMovieList> findByListTypeOrderByRankOrderAsc(MovieListType listType);
 
+    List<CachedMovieList> findByMediaTypeAndListTypeOrderByRankOrderAsc(String mediaType, MovieListType listType);
+
+    List<CachedMovieList> findByMediaTypeOrderByRankOrderAsc(String mediaType);
+
+    List<CachedMovieList> findByTmdbId(Long tmdbId);
+
     void deleteByListType(MovieListType listType);
 
+    void deleteByMediaTypeAndListType(String mediaType, MovieListType listType);
+
     long countByListType(MovieListType listType);
+
+    long countByMediaType(String mediaType);
 }

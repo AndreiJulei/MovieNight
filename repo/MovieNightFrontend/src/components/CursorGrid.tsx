@@ -371,13 +371,24 @@ export default function CursorGrid({
         }
       }
 
-      rafId.current = requestAnimationFrame(render);
+      if (!document.hidden) {
+        rafId.current = requestAnimationFrame(render);
+      }
     };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = requestAnimationFrame(render);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     rafId.current = requestAnimationFrame(render);
 
     return () => {
       cancelAnimationFrame(rafId.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
       if (clickPulse) {

@@ -18,10 +18,19 @@ public class TmdbSearchResponse {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TmdbMovieSummary {
         private Long id;
+
+        // Movies use "title", TV shows use "name"
         private String title;
+        private String name;
+
+        @JsonProperty("media_type")
+        private String mediaType; // "movie", "tv", "person"
 
         @JsonProperty("release_date")
         private String releaseDate;
+
+        @JsonProperty("first_air_date")
+        private String firstAirDate;
 
         private String overview;
 
@@ -36,5 +45,59 @@ public class TmdbSearchResponse {
 
         @JsonProperty("vote_count")
         private Integer voteCount;
+
+        @JsonProperty("original_language")
+        private String originalLanguage;
+
+        @JsonProperty("origin_country")
+        private List<String> originCountry = Collections.emptyList();
+
+        @JsonProperty("genre_ids")
+        private List<Integer> genreIds = Collections.emptyList();
+
+        /**
+         * Resolves title for both movies and TV shows.
+         */
+        public String getEffectiveTitle() {
+            if (title != null && !title.isBlank()) {
+                return title;
+            }
+            if (name != null && !name.isBlank()) {
+                return name;
+            }
+            return "Untitled";
+        }
+
+        /**
+         * Resolves release date (release_date for movies, first_air_date for TV series).
+         */
+        public String getEffectiveReleaseDate() {
+            if (releaseDate != null && !releaseDate.isBlank()) {
+                return releaseDate;
+            }
+            if (firstAirDate != null && !firstAirDate.isBlank()) {
+                return firstAirDate;
+            }
+            return null;
+        }
+
+        /**
+         * Classifies media into "MOVIE", "TV", or "ANIME".
+         */
+        public String getResolvedMediaType() {
+            boolean isAnimation = genreIds != null && genreIds.contains(16);
+            boolean isJapanese = "ja".equalsIgnoreCase(originalLanguage) ||
+                    (originCountry != null && originCountry.contains("JP"));
+
+            if (isAnimation && isJapanese) {
+                return "ANIME";
+            }
+
+            if ("tv".equalsIgnoreCase(mediaType) || (title == null && name != null)) {
+                return "TV";
+            }
+
+            return "MOVIE";
+        }
     }
 }

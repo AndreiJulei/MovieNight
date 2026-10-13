@@ -105,6 +105,23 @@ public class Movie {
     @Column(length = 500)
     private String castMembers;
 
+    /**
+     * Media type: "MOVIE", "TV", or "ANIME". Defaults to "MOVIE".
+     */
+    @Builder.Default
+    @Column(length = 20, nullable = false)
+    private String mediaType = "MOVIE";
+
+    /**
+     * Total seasons count for TV series / Anime (nullable for Movies).
+     */
+    private Integer seasonsCount;
+
+    /**
+     * Total episodes count for TV series / Anime (nullable for Movies).
+     */
+    private Integer episodesCount;
+
     // --- External Ratings (cached once per movie) ---
 
     /**

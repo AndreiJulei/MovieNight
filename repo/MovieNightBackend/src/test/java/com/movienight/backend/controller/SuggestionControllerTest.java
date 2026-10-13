@@ -44,6 +44,9 @@ class SuggestionControllerTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
+
     @InjectMocks
     private SuggestionController suggestionController;
 
@@ -99,5 +102,73 @@ class SuggestionControllerTest {
                 .andExpect(jsonPath("$.message").exists());
 
         verify(personalizedRecommendationService).recomputeRecommendationsForUser(user);
+    }
+
+    @Test
+    @DisplayName("GET /api/suggestions/personal should return personal recommendations")
+    void testGetPersonalRecommendations() throws Exception {
+        SuggestionsResponse response = SuggestionsResponse.builder()
+                .categories(List.of(
+                        SuggestionCategoryResponse.builder()
+                                .id("movies")
+                                .title("Movie Recommendations")
+                                .movies(Collections.emptyList())
+                                .build()
+                ))
+                .build();
+
+        when(suggestionService.getPersonalRecommendations("john@example.com")).thenReturn(response);
+
+        mockMvc.perform(get("/api/suggestions/personal")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[0].id").value("movies"))
+                .andExpect(jsonPath("$.categories[0].title").value("Movie Recommendations"));
+    }
+
+    @Test
+    @DisplayName("GET /api/suggestions/friends should return friends' recommendations")
+    void testGetFriendsRecommendations() throws Exception {
+        SuggestionsResponse response = SuggestionsResponse.builder()
+                .categories(List.of(
+                        SuggestionCategoryResponse.builder()
+                                .id("friends")
+                                .title("Friends' Recommendations")
+                                .movies(Collections.emptyList())
+                                .build()
+                ))
+                .build();
+
+        when(suggestionService.getFriendsRecommendations("john@example.com")).thenReturn(response);
+
+        mockMvc.perform(get("/api/suggestions/friends")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[0].id").value("friends"))
+                .andExpect(jsonPath("$.categories[0].title").value("Friends' Recommendations"));
+    }
+
+    @Test
+    @DisplayName("GET /api/suggestions/explore/{mediaType} should return explore rows")
+    void testGetExploreMedia() throws Exception {
+        SuggestionsResponse response = SuggestionsResponse.builder()
+                .categories(List.of(
+                        SuggestionCategoryResponse.builder()
+                                .id("newest")
+                                .title("Newest Releases")
+                                .movies(Collections.emptyList())
+                                .build()
+                ))
+                .build();
+
+        when(suggestionService.getExploreMedia("movies")).thenReturn(response);
+
+        mockMvc.perform(get("/api/suggestions/explore/movies")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[0].id").value("newest"));
     }
 }

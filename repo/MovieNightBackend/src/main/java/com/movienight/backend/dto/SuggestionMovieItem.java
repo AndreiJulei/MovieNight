@@ -19,4 +19,5 @@ public class SuggestionMovieItem {
     private Double rottenTomatoesRating;
     private Double score;
     private String reason;
+    private String mediaType;
 }

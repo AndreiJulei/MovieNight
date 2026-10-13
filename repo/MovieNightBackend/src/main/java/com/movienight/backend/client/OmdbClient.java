@@ -24,7 +24,14 @@ public class OmdbClient {
             @Value("${app.omdb.api-key:PASTE_YOUR_OMDB_API_KEY_HERE}") String apiKey,
             @Value("${app.omdb.base-url:https://www.omdbapi.com}") String baseUrl
     ) {
-        this.apiKey = apiKey != null ? apiKey.trim() : "";
+        String cleaned = apiKey != null ? apiKey.trim() : "";
+        if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.length() >= 2) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+        }
+        if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length() >= 2) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+        }
+        this.apiKey = cleaned;
         this.baseUrl = baseUrl;
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
     }

@@ -10,15 +10,13 @@ import {
 import { authApi } from "../api/auth";
 import { moviesApi, type ApiUserMovieEntryResponse } from "../api/movies";
 import { friendsApi, type ApiFriendProfile } from "../api/friends";
+import { listsApi } from "../api/lists";
 import {
-  entries as seedEntries,
-  friendships as seedFriendships,
   freshId,
-  movies as seedMovies,
   searchCatalog,
-  users as seedUsers,
   type Entry,
   type Friendship,
+  type CustomList,
   type Movie,
   type Status,
   type MediaType,
@@ -26,6 +24,7 @@ import {
 } from "./data";
 
 const AUTH_KEY = "movienight.currentUser";
+const CUSTOM_LISTS_KEY = "movienight.customLists";
 
 export type FriendRating = { user: User; rating: number };
 export type Stats = { count: number; avg: number | null };
@@ -43,6 +42,9 @@ export type AddMovieInput = {
   rating?: number | null;
   description?: string;
   existingMovieId?: string; // when adding a canonical movie you don't own yet
+  mediaType?: MediaType;
+  seasonsCount?: number;
+  episodesCount?: number;
 };
 
 type StoreValue = {
@@ -51,11 +53,13 @@ type StoreValue = {
   movies: Movie[];
 
   // auth
-  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (emailOrUser: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signup: (u: {
+    email: string;
     username: string;
-    displayName: string;
+    displayName?: string;
     password: string;
+    confirmPassword?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   checkName: (name: string) => Promise<boolean>; // true = available
@@ -69,12 +73,23 @@ type StoreValue = {
   stats: (userId: string, status?: Status) => Stats;
   searchMovies: (q: string) => Movie[];
 
+  // custom lists
+  customLists: CustomList[];
+  listsFor: (userId: string) => CustomList[];
+  listById: (listId: string) => CustomList | undefined;
+  createList: (title: string, initialMovieId?: string) => CustomList;
+  deleteList: (listId: string) => void;
+  toggleMovieInList: (listId: string, movieId: string) => void;
+  isMovieInList: (listId: string, movieId: string) => boolean;
+  listsContainingMovie: (userId: string, movieId: string) => CustomList[];
+
   // mutations
   addMovie: (input: AddMovieInput) => string; // returns movie id
   markWatched: (entryId: string, rating: number, description: string) => void;
   updateDescription: (entryId: string, description: string) => void;
   removeEntry: (entryId: string) => void;
-  addToWatchlist: (movieId: string) => void;
+  addToWatchlist: (movieId: string, movieObj?: Movie) => void;
+  removeFromWatchlist: (movieId: string) => void;
   addFriend: (userId: string) => void;
   removeFriend: (friendId: string) => void;
   changePassword: (oldPw: string, newPw: string) => Promise<{ ok: boolean; error?: string }>;
@@ -83,6 +98,7 @@ type StoreValue = {
   // selectors for suggestions
   allEntries: () => Entry[];
   refreshLibrary: () => Promise<void>;
+  upsertMovie: (movie: Movie) => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -92,17 +108,48 @@ function pairKey(a: string, b: string) {
 }
 
 export function MovieStoreProvider({ children }: { children: ReactNode }) {
-  const [users, setUsers] = useState<User[]>(seedUsers);
-  const [movies, setMovies] = useState<Movie[]>(seedMovies);
-  const [entries, setEntries] = useState<Entry[]>(seedEntries);
-  const [friendships, setFriendships] = useState<Friendship[]>(seedFriendships);
+  const [users, setUsers] = useState<User[]>([]);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [friendships, setFriendships] = useState<Friendship[]>([]);
+
+  const [customLists, setCustomLists] = useState<CustomList[]>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_LISTS_KEY);
+      if (raw) {
+        return JSON.parse(raw) as CustomList[];
+      }
+    } catch {
+      /* ignore */
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CUSTOM_LISTS_KEY, JSON.stringify(customLists));
+    } catch {
+      /* ignore */
+    }
+  }, [customLists]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
+      const stored = sessionStorage.getItem("movienight_current_user") || localStorage.getItem("movienight_current_user");
+      if (stored) {
+        const u = JSON.parse(stored) as User;
+        if (u.id === "u1" || u.username === "you") {
+          sessionStorage.removeItem("movienight_current_user");
+          localStorage.removeItem("movienight_current_user");
+          sessionStorage.removeItem(AUTH_KEY);
+          return null;
+        }
+        return u;
+      }
       const raw = sessionStorage.getItem(AUTH_KEY);
-      if (raw) {
-        const id = JSON.parse(raw) as string;
-        return seedUsers.find((u) => u.id === id) ?? null;
+      if (raw && (raw === "u1" || raw === '"u1"')) {
+        sessionStorage.removeItem(AUTH_KEY);
+        return null;
       }
     } catch {
       /* ignore */
@@ -126,7 +173,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
         for (const item of backendEntries) {
           const m = item.movie;
-          const movieId = String(m.id ?? m.tmdbId);
+          const movieId = String(m.tmdbId ?? m.id);
 
           loadedMovies.push({
             id: movieId,
@@ -148,7 +195,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
             id: String(item.id),
             userId: String(currentUser.id),
             movieId,
-            status: item.status === "WATCHED" ? "watched" : "watchlist",
+            status: (item.status || "").toUpperCase() === "WATCHED" ? "watched" : "watchlist",
             rating: item.personalRating ?? null,
             description: item.notes ?? "",
             addedAt: item.createdAt ?? new Date().toISOString(),
@@ -161,14 +208,25 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           const map = new Map(prev.map((m) => [m.id, m]));
           for (const m of loadedMovies) {
             map.set(m.id, m);
+            if (m.tmdbId) {
+              map.set(String(m.tmdbId), m);
+            }
           }
           return Array.from(map.values());
         });
 
-        // Update entries for current user
+        // Update entries for current user without wiping recently added local entries
         setEntries((prev) => {
-          const others = prev.filter((e) => e.userId !== currentUser.id);
-          return [...others, ...loadedEntries];
+          const others = prev.filter((e) => String(e.userId) !== String(currentUser.id));
+          const loadedMovieIds = new Set(loadedEntries.map((le) => le.movieId));
+          const pendingLocal = prev.filter((e) => {
+            if (String(e.userId) !== String(currentUser.id)) return false;
+            if (loadedMovieIds.has(e.movieId)) return false;
+            const target = loadedMovies.find((lm) => lm.id === e.movieId || String(lm.tmdbId) === e.movieId);
+            if (target && loadedMovieIds.has(target.id)) return false;
+            return true;
+          });
+          return [...others, ...loadedEntries, ...pendingLocal];
         });
       }
 
@@ -203,6 +261,29 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           return Array.from(map.values());
         });
       }
+
+      // 3. Fetch user's custom lists
+      const backendLists = await listsApi.getUserLists();
+      if (backendLists && backendLists.length > 0) {
+        const fullLists = await Promise.all(
+          backendLists.map((bl) => listsApi.getListById(bl.id))
+        );
+        const validLists = fullLists.filter((l): l is NonNullable<typeof l> => l != null);
+        if (validLists.length > 0) {
+          setCustomLists((prev) => {
+            const mapped: CustomList[] = validLists.map((vl) => ({
+              id: String(vl.id),
+              userId: String(vl.userId),
+              title: vl.title,
+              movieIds: vl.entries.map((e) => String(e.movie.id || e.movie.tmdbId)),
+              createdAt: vl.createdAt,
+            }));
+            const mappedIds = new Set(mapped.map((m) => m.id));
+            const retained = prev.filter((p) => !mappedIds.has(p.id));
+            return [...mapped, ...retained];
+          });
+        }
+      }
     } catch (err) {
       console.warn("Failed to sync library and friends with backend:", err);
     }
@@ -216,8 +297,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, [currentUser, refreshLibrary]);
 
   const login = useCallback<StoreValue["login"]>(
-    async (username, password) => {
-      const res = await authApi.login(username, password);
+    async (emailOrUser, password) => {
+      const res = await authApi.login(emailOrUser, password);
       if (!res.ok || !res.user) {
         return { ok: false, error: res.error || "Invalid credentials." };
       }
@@ -225,31 +306,42 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         id: String(res.user.id),
         username: res.user.username,
         displayName: res.user.displayName,
+        email: res.user.email,
         password: "",
       };
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
+      sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
+      localStorage.setItem("movienight_current_user", JSON.stringify(u));
       return { ok: true };
     },
     [],
   );
 
   const signup = useCallback<StoreValue["signup"]>(
-    async ({ username, displayName, password }) => {
-      const res = await authApi.signup({ username, displayName, password });
+    async ({ email, username, displayName, password, confirmPassword }) => {
+      const res = await authApi.signup({
+        email,
+        username,
+        displayName: displayName || username,
+        password,
+        confirmPassword: confirmPassword || password,
+      });
       if (!res.ok || !res.user) {
         return { ok: false, error: res.error || "Unable to create account." };
       }
-      const loginRes = await authApi.login(username, password);
+      const loginRes = await authApi.login(email, password);
       if (loginRes.ok && loginRes.user) {
         const u: User = {
           id: String(loginRes.user.id),
           username: loginRes.user.username,
           displayName: loginRes.user.displayName,
+          email: loginRes.user.email,
           password: "",
         };
         setCurrentUser(u);
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
+        sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
       }
       return { ok: true };
     },
@@ -260,6 +352,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     authApi.logout();
     setCurrentUser(null);
     sessionStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem("movienight_current_user");
+    localStorage.removeItem("movienight_current_user");
   }, []);
 
   const checkName = useCallback<StoreValue["checkName"]>(
@@ -269,20 +363,62 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const upsertMovie = useCallback((movie: Movie) => {
+    if (!movie || !movie.id) return;
+    setMovies((prev) => {
+      const idx = prev.findIndex(
+        (m) =>
+          m.id === movie.id ||
+          (movie.tmdbId != null && m.tmdbId === movie.tmdbId) ||
+          (m.title.toLowerCase() === movie.title.toLowerCase() && m.year === movie.year),
+      );
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...prev[idx], ...movie };
+        return next;
+      }
+      return [...prev, movie];
+    });
+  }, []);
+
   const movieById = useCallback(
-    (id: string) => movies.find((m) => m.id === id || String(m.tmdbId) === id),
+    (id: string) => movies.find((m) => m.id === id || String(m.tmdbId) === id || (m.id && String(m.id) === id)),
     [movies],
   );
 
+  const isPrimaryUser = useCallback(
+    (userId: string) =>
+      Boolean(currentUser && userId === currentUser.id),
+    [currentUser],
+  );
+
   const entryFor = useCallback(
-    (userId: string, movieId: string) =>
-      entries.find((e) => e.userId === userId && e.movieId === movieId),
-    [entries],
+    (userId: string, movieId: string) => {
+      const targetMovie = movies.find(
+        (m) =>
+          m.id === movieId ||
+          (m.tmdbId != null && String(m.tmdbId) === movieId) ||
+          (m.tmdbId != null && !isNaN(Number(movieId)) && m.tmdbId === Number(movieId)),
+      );
+      return entries.find((e) => {
+        if (String(e.userId) !== String(userId)) return false;
+        if (e.movieId === movieId) return true;
+        if (targetMovie) {
+          if (e.movieId === targetMovie.id) return true;
+          if (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId)) return true;
+        }
+        return false;
+      });
+    },
+    [entries, movies],
   );
 
   const entriesFor = useCallback(
-    (userId: string, status: Status) =>
-      entries.filter((e) => e.userId === userId && e.status === status),
+    (userId: string, status: Status) => {
+      return entries.filter(
+        (e) => String(e.userId) === String(userId) && e.status === status,
+      );
+    },
     [entries],
   );
 
@@ -293,7 +429,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         if (f.a === userId) ids.add(f.b);
         if (f.b === userId) ids.add(f.a);
       }
-      return users.filter((u) => ids.has(u.id));
+      return users.filter((u) => ids.has(u.id) && u.id !== userId);
     },
     [friendships, users],
   );
@@ -301,27 +437,35 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const friendRatings = useCallback<StoreValue["friendRatings"]>(
     (movieId) => {
       if (!currentUser) return [];
-      const friendIds = new Set(friendsOf(currentUser.id).map((u) => u.id));
+      const targetMovie = movies.find(
+        (m) =>
+          m.id === movieId ||
+          (m.tmdbId != null && String(m.tmdbId) === movieId) ||
+          (m.tmdbId != null && !isNaN(Number(movieId)) && m.tmdbId === Number(movieId)),
+      );
+      const friendIds = new Set(friendsOf(currentUser.id).map((u) => String(u.id)));
       return entries
         .filter(
           (e) =>
-            e.movieId === movieId &&
-            friendIds.has(e.userId) &&
+            (e.movieId === movieId ||
+              (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId))))) &&
+            friendIds.has(String(e.userId)) &&
             e.status === "watched" &&
             e.rating != null,
         )
         .map((e) => ({
-          user: users.find((u) => u.id === e.userId)!,
+          user: users.find((u) => String(u.id) === String(e.userId))!,
           rating: e.rating as number,
-        }));
+        }))
+        .filter((r) => r.user != null);
     },
-    [currentUser, entries, friendsOf, users],
+    [currentUser, entries, friendsOf, users, movies],
   );
 
   const stats = useCallback<StoreValue["stats"]>(
     (userId, status = "watched") => {
       const rows = entries.filter(
-        (e) => e.userId === userId && e.status === status,
+        (e) => String(e.userId) === String(userId) && e.status === status,
       );
       const rated = rows.filter((e) => e.rating != null);
       const avg =
@@ -344,46 +488,61 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const addMovie = useCallback<StoreValue["addMovie"]>(
     (input) => {
       if (!currentUser) return "";
-      let movieId = input.existingMovieId;
-      if (!movieId) {
-        const match = movies.find(
-          (m) =>
-            m.title.toLowerCase() === input.title.trim().toLowerCase() &&
-            (!input.year || m.year === input.year),
+      const targetTmdbId = input.tmdbId;
+      let targetId = input.existingMovieId || (targetTmdbId ? String(targetTmdbId) : undefined);
+
+      let found = movies.find(
+        (m) =>
+          (targetId && m.id === targetId) ||
+          (targetTmdbId && m.tmdbId === targetTmdbId) ||
+          (m.title.toLowerCase() === input.title.trim().toLowerCase() &&
+            (!input.year || m.year === input.year)),
+      );
+
+      const resolvedId = found?.id || targetId || (targetTmdbId ? String(targetTmdbId) : freshId("m"));
+
+      const movieToSave: Movie = {
+        id: resolvedId,
+        tmdbId: targetTmdbId ?? found?.tmdbId,
+        title: input.title.trim(),
+        year: input.year ?? found?.year ?? new Date().getFullYear(),
+        posterSeed: found?.posterSeed ?? null,
+        posterUrl: input.posterUrl ?? found?.posterUrl ?? null,
+        imdb: input.imdb ?? found?.imdb ?? null,
+        rt: input.rt ?? found?.rt ?? null,
+        overview: input.overview ?? found?.overview ?? "",
+        mediaType: input.mediaType || found?.mediaType || "MOVIE",
+        seasonsCount: input.seasonsCount ?? found?.seasonsCount,
+        episodesCount: input.episodesCount ?? found?.episodesCount,
+      };
+
+      setMovies((prev) => {
+        const idx = prev.findIndex(
+          (m) => m.id === resolvedId || (targetTmdbId && m.tmdbId === targetTmdbId),
         );
-        if (match) {
-          movieId = match.id;
-        } else {
-          const m: Movie = {
-            id: freshId("m"),
-            tmdbId: input.tmdbId,
-            title: input.title.trim(),
-            year: input.year ?? new Date().getFullYear(),
-            posterSeed: null,
-            posterUrl: input.posterUrl ?? null,
-            imdb: input.imdb ?? null,
-            rt: input.rt ?? null,
-            overview: input.overview ?? "",
-            mediaType: "MOVIE",
-          };
-          setMovies((prev) => [...prev, m]);
-          movieId = m.id;
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...prev[idx], ...movieToSave };
+          return next;
         }
-      }
+        return [...prev, movieToSave];
+      });
 
       const existing = entries.find(
-        (e) => e.userId === currentUser.id && e.movieId === movieId,
+        (e) =>
+          e.userId === currentUser.id &&
+          (e.movieId === resolvedId || (targetTmdbId && e.movieId === String(targetTmdbId))),
       );
-      const existingMovie = movies.find((m) => m.id === movieId);
+
       const entry: Entry = {
         id: existing?.id ?? freshId("e"),
         userId: currentUser.id,
-        movieId: movieId!,
+        movieId: resolvedId,
         status: input.status,
         rating: input.status === "watched" ? input.rating ?? null : null,
         description: input.description ?? "",
         addedAt: new Date().toISOString(),
-        mediaType: existingMovie?.mediaType ?? "MOVIE",
+        mediaType: input.mediaType || found?.mediaType || "MOVIE",
       };
 
       setEntries((prev) =>
@@ -402,15 +561,21 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           overview: input.overview,
           imdbRating: input.imdb ?? undefined,
           rottenTomatoesRating: input.rt ?? undefined,
+          mediaType: input.mediaType,
+          seasonsCount: input.seasonsCount,
+          episodesCount: input.episodesCount,
           status: input.status === "watched" ? "WATCHED" : "WATCHLIST",
           personalRating: input.rating ? Math.round(input.rating) : undefined,
           notes: input.description,
         })
+        .then((res) => {
+          if (res) refreshLibrary();
+        })
         .catch((err) => console.warn("Background movie save error:", err));
 
-      return movieId!;
+      return resolvedId;
     },
-    [currentUser, entries, movies],
+    [currentUser, entries, movies, refreshLibrary],
   );
 
   const markWatched = useCallback<StoreValue["markWatched"]>(
@@ -422,7 +587,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
             status: "WATCHED",
             personalRating: Math.round(rating),
             notes: description,
-          });
+          }).then(() => refreshLibrary()).catch((err) => console.warn("Update entry error:", err));
         }
         return prev.map((e) =>
           e.id === entryId
@@ -431,7 +596,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         );
       });
     },
-    [],
+    [refreshLibrary],
   );
 
   const updateDescription = useCallback<StoreValue["updateDescription"]>(
@@ -441,59 +606,159 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         if (entry) {
           moviesApi.updateEntry(entry.movieId, {
             notes: description,
-          });
+          }).then(() => refreshLibrary()).catch((err) => console.warn("Update note error:", err));
         }
         return prev.map((e) => (e.id === entryId ? { ...e, description } : e));
       });
     },
-    [],
+    [refreshLibrary],
   );
 
   const removeEntry = useCallback<StoreValue["removeEntry"]>((entryId) => {
     setEntries((prev) => {
       const entry = prev.find((e) => e.id === entryId);
       if (entry) {
-        moviesApi.removeMovie(entry.movieId);
+        moviesApi.removeMovie(entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove movie error:", err));
       }
       return prev.filter((e) => e.id !== entryId);
     });
-  }, []);
+  }, [refreshLibrary]);
 
   const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(
-    (movieId) => {
+    (movieId, movieObj) => {
       if (!currentUser) return;
-      if (entries.some((e) => e.userId === currentUser.id && e.movieId === movieId))
+      const alreadyInWatchlist = entries.some(
+        (e) =>
+          String(e.userId) === String(currentUser.id) &&
+          e.status === "watchlist" &&
+          (e.movieId === movieId || (movieObj && (e.movieId === String(movieObj.tmdbId) || e.movieId === String(movieObj.id)))),
+      );
+      if (alreadyInWatchlist) {
         return;
-
-      const movie = movies.find((m) => m.id === movieId);
-      if (movie) {
-        moviesApi.addMovie({
-          tmdbId: movie.tmdbId,
-          title: movie.title,
-          releaseYear: movie.year,
-          posterUrl: movie.posterUrl ?? undefined,
-          overview: movie.overview,
-          imdbRating: movie.imdb ?? undefined,
-          rottenTomatoesRating: movie.rt ?? undefined,
-          status: "WATCHLIST",
-        });
       }
 
-      setEntries((prev) => [
-        ...prev,
-        {
-          id: freshId("e"),
-          userId: currentUser.id,
-          movieId,
-          status: "watchlist",
-          rating: null,
-          description: "",
-          addedAt: new Date().toISOString(),
-          mediaType: movie?.mediaType ?? "MOVIE",
-        },
-      ]);
+      let targetMovie =
+        movieObj ||
+        movies.find(
+          (m) =>
+            m.id === movieId ||
+            (m.tmdbId != null && String(m.tmdbId) === movieId),
+        );
+
+      if (!targetMovie) {
+        try {
+          const stored = sessionStorage.getItem("last_selected_movie");
+          if (stored) {
+            const parsed = JSON.parse(stored) as Movie;
+            if (parsed && (parsed.id === movieId || String(parsed.tmdbId) === movieId)) {
+              targetMovie = parsed;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const resolvedId = targetMovie?.id || movieId;
+      const targetTmdbId = targetMovie?.tmdbId ?? (!isNaN(Number(resolvedId)) ? Number(resolvedId) : undefined);
+
+      if (targetMovie) {
+        setMovies((prev) => {
+          const idx = prev.findIndex(
+            (m) => m.id === targetMovie!.id || (targetMovie!.tmdbId && m.tmdbId === targetMovie!.tmdbId),
+          );
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...prev[idx], ...targetMovie };
+            return next;
+          }
+          return [...prev, targetMovie!];
+        });
+
+        moviesApi
+          .addMovie({
+            tmdbId: targetTmdbId,
+            title: targetMovie.title,
+            releaseYear: targetMovie.year,
+            posterUrl: targetMovie.posterUrl ?? undefined,
+            overview: targetMovie.overview,
+            imdbRating: targetMovie.imdb ?? undefined,
+            rottenTomatoesRating: targetMovie.rt ?? undefined,
+            mediaType: (targetMovie.mediaType || "MOVIE").toUpperCase(),
+            seasonsCount: targetMovie.seasonsCount,
+            episodesCount: targetMovie.episodesCount,
+            status: "WATCHLIST",
+          })
+          .then((res) => {
+            if (res) refreshLibrary();
+          })
+          .catch((err) => console.warn("Watchlist add error:", err));
+      }
+
+      setEntries((prev) => {
+        const existingIdx = prev.findIndex(
+          (e) =>
+            String(e.userId) === String(currentUser.id) &&
+            (e.movieId === resolvedId || (targetTmdbId && e.movieId === String(targetTmdbId))),
+        );
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = {
+            ...prev[existingIdx],
+            status: "watchlist",
+            mediaType: targetMovie?.mediaType ?? prev[existingIdx].mediaType ?? "MOVIE",
+          };
+          return next;
+        }
+        return [
+          ...prev,
+          {
+            id: freshId("e"),
+            userId: String(currentUser.id),
+            movieId: resolvedId,
+            status: "watchlist",
+            rating: null,
+            description: "",
+            addedAt: new Date().toISOString(),
+            mediaType: targetMovie?.mediaType ?? "MOVIE",
+          },
+        ];
+      });
     },
-    [currentUser, entries, movies],
+    [currentUser, entries, movies, refreshLibrary],
+  );
+
+  const removeFromWatchlist = useCallback<StoreValue["removeFromWatchlist"]>(
+    (movieId) => {
+      if (!currentUser) return;
+      const targetMovie = movies.find(
+        (m) =>
+          m.id === movieId ||
+          (m.tmdbId != null && String(m.tmdbId) === movieId),
+      );
+      setEntries((prev) => {
+        const entry = prev.find(
+          (e) =>
+            e.userId === currentUser.id &&
+            e.status === "watchlist" &&
+            (e.movieId === movieId ||
+              (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId))))),
+        );
+        if (entry) {
+          moviesApi.removeMovie(entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove error:", err));
+        }
+        return prev.filter(
+          (e) =>
+            !(
+              e.userId === currentUser.id &&
+              e.status === "watchlist" &&
+              (e.movieId === movieId ||
+                (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId)))))
+            ),
+        );
+      });
+    },
+    [currentUser, movies, refreshLibrary],
   );
 
   const addFriend = useCallback<StoreValue["addFriend"]>(
@@ -578,6 +843,98 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
   const allEntries = useCallback(() => entries, [entries]);
 
+  const listsFor = useCallback(
+    (userId: string) => customLists.filter((l) => l.userId === userId),
+    [customLists]
+  );
+
+  const listById = useCallback(
+    (listId: string) => customLists.find((l) => l.id === listId),
+    [customLists]
+  );
+
+  const createList = useCallback(
+    (title: string, initialMovieId?: string) => {
+      if (!currentUser) throw new Error("Must be logged in to create a list");
+      const localId = freshId("list-");
+      const newList: CustomList = {
+        id: localId,
+        userId: currentUser.id,
+        title: title.trim() || "Untitled List",
+        movieIds: initialMovieId ? [initialMovieId] : [],
+        createdAt: new Date().toISOString(),
+      };
+      setCustomLists((prev) => [newList, ...prev]);
+
+      // Sync with backend API
+      const numMovieId = initialMovieId && !isNaN(Number(initialMovieId)) ? [Number(initialMovieId)] : [];
+      listsApi.createList({
+        title: newList.title,
+        isPublic: false,
+        initialMovieIds: numMovieId,
+      }).then((res) => {
+        if (res) {
+          setCustomLists((prev) =>
+            prev.map((l) => (l.id === localId ? { ...l, id: String(res.id) } : l))
+          );
+        }
+      }).catch((err) => console.warn("Failed to persist custom list to backend:", err));
+
+      return newList;
+    },
+    [currentUser]
+  );
+
+  const deleteList = useCallback((listId: string) => {
+    setCustomLists((prev) => prev.filter((l) => l.id !== listId));
+    if (!isNaN(Number(listId))) {
+      listsApi.deleteList(Number(listId)).catch((err) =>
+        console.warn("Failed to delete list from backend:", err)
+      );
+    }
+  }, []);
+
+  const toggleMovieInList = useCallback((listId: string, movieId: string) => {
+    setCustomLists((prev) =>
+      prev.map((l) => {
+        if (l.id !== listId) return l;
+        const exists = l.movieIds.includes(movieId);
+        const updated = {
+          ...l,
+          movieIds: exists
+            ? l.movieIds.filter((id) => id !== movieId)
+            : [...l.movieIds, movieId],
+        };
+
+        if (!isNaN(Number(listId)) && !isNaN(Number(movieId))) {
+          if (exists) {
+            listsApi.removeMovieFromList(Number(listId), Number(movieId)).catch(() => {});
+          } else {
+            listsApi.addMovieToList(Number(listId), Number(movieId)).catch(() => {});
+          }
+        }
+        return updated;
+      })
+    );
+  }, []);
+
+  const isMovieInList = useCallback(
+    (listId: string, movieId: string) => {
+      const l = customLists.find((c) => c.id === listId);
+      return l ? l.movieIds.includes(movieId) : false;
+    },
+    [customLists]
+  );
+
+  const listsContainingMovie = useCallback(
+    (userId: string, movieId: string) => {
+      return customLists.filter(
+        (l) => l.userId === userId && l.movieIds.includes(movieId)
+      );
+    },
+    [customLists]
+  );
+
   const value = useMemo<StoreValue>(
     () => ({
       currentUser,
@@ -594,17 +951,27 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       friendRatings,
       stats,
       searchMovies,
+      customLists,
+      listsFor,
+      listById,
+      createList,
+      deleteList,
+      toggleMovieInList,
+      isMovieInList,
+      listsContainingMovie,
       addMovie,
       markWatched,
       updateDescription,
       removeEntry,
       addToWatchlist,
+      removeFromWatchlist,
       addFriend,
       removeFriend,
       changePassword,
       changeDisplayName,
       allEntries,
       refreshLibrary,
+      upsertMovie,
     }),
     [
       currentUser,
@@ -621,17 +988,27 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       friendRatings,
       stats,
       searchMovies,
+      customLists,
+      listsFor,
+      listById,
+      createList,
+      deleteList,
+      toggleMovieInList,
+      isMovieInList,
+      listsContainingMovie,
       addMovie,
       markWatched,
       updateDescription,
       removeEntry,
       addToWatchlist,
+      removeFromWatchlist,
       addFriend,
       removeFriend,
       changePassword,
       changeDisplayName,
       allEntries,
       refreshLibrary,
+      upsertMovie,
     ],
   );
 

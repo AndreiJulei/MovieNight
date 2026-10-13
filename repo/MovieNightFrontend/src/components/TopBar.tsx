@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
 import SegmentedRadio from "./SegmentedRadio";
+import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
 import type { MediaType } from "../store/data";
 
 export type SortBy = "addedAt" | "title" | "year" | "rating";
-export type MinRating = 0 | 6 | 8;
+export type MinRating = 0 | 6;
 export type DateRange = "all" | "month" | "year";
 export type ViewMode = "grid" | "compact";
 
@@ -23,7 +24,7 @@ const SORT_LABELS: Record<SortBy, string> = {
   year: "Release year",
   rating: "Your rating",
 };
-const RATING_LABELS: Record<MinRating, string> = { 0: "All ratings", 6: "6+", 8: "8+" };
+const RATING_LABELS: Record<MinRating, string> = { 0: "All ratings", 6: "6+" };
 const DATE_LABELS: Record<DateRange, string> = {
   all: "All time",
   month: "This month",
@@ -34,6 +35,13 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   compact: "Compact",
 };
 
+export const MEDIA_TYPE_LABELS: Record<MediaTypeFilter, string> = {
+  ALL: "All",
+  MOVIE: "Movies",
+  TV: "TV Series",
+  ANIME: "Anime",
+};
+
 export default function TopBar({
   count,
   avg,
@@ -42,6 +50,7 @@ export default function TopBar({
   showRating,
   mediaTypeFilter,
   onMediaTypeChange,
+  showAddButton = true,
 }: {
   count: number;
   avg: number | null;
@@ -50,95 +59,95 @@ export default function TopBar({
   showRating: boolean;
   mediaTypeFilter?: MediaTypeFilter;
   onMediaTypeChange?: (mt: MediaTypeFilter) => void;
+  showAddButton?: boolean;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const summary =
     avg != null
-      ? `${count} ${count === 1 ? "movie" : "movies"} · avg ${avg.toFixed(1)}`
-      : `${count} ${count === 1 ? "movie" : "movies"}`;
+      ? `${count} ${count === 1 ? "title" : "titles"} · avg ${avg.toFixed(1)}`
+      : `${count} ${count === 1 ? "title" : "titles"}`;
 
   return (
     <>
-      {/* Media type segmented filter */}
-      {mediaTypeFilter !== undefined && onMediaTypeChange && (
-        <div className="mb-4">
-          <SegmentedRadio<MediaTypeFilter>
-            name="media-type"
-            value={mediaTypeFilter}
-            options={[
-              { value: "ALL", label: "All" },
-              { value: "MOVIE", label: "Movies" },
-              { value: "TV", label: "TV Series" },
-              { value: "ANIME", label: "Anime" },
-            ]}
-            onChange={onMediaTypeChange}
-          />
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <p className="nums shrink-0 text-sm font-medium text-text-muted">{summary}</p>
+
+        <div className="flex items-center gap-2">
+          {/* Desktop: unified quiet filter cluster */}
+          <div className="hidden items-center gap-1.5 lg:flex">
+            {mediaTypeFilter !== undefined && onMediaTypeChange && (
+              <Dropdown
+                label="Type"
+                value={MEDIA_TYPE_LABELS[mediaTypeFilter]}
+                options={Object.entries(MEDIA_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+                onSelect={(v) => onMediaTypeChange(v as MediaTypeFilter)}
+              />
+            )}
+            <Dropdown
+              label="Sort"
+              value={SORT_LABELS[filters.sortBy]}
+              options={Object.entries(SORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+              onSelect={(v) => onChange({ ...filters, sortBy: v as SortBy })}
+            />
+            <Dropdown
+              label="View"
+              value={VIEW_LABELS[filters.viewMode]}
+              options={Object.entries(VIEW_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+              onSelect={(v) => {
+                localStorage.setItem("app_view_mode", v);
+                onChange({ ...filters, viewMode: v as ViewMode });
+              }}
+            />
+            {showRating && (
+              <Dropdown
+                label="Rating"
+                value={RATING_LABELS[filters.minRating]}
+                options={Object.entries(RATING_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+                onSelect={(v) => onChange({ ...filters, minRating: Number(v) as MinRating })}
+              />
+            )}
+            {filters.dateRange && (
+              <Dropdown
+                label="Date"
+                value={DATE_LABELS[filters.dateRange]}
+                options={Object.entries(DATE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+                onSelect={(v) => onChange({ ...filters, dateRange: v as DateRange })}
+              />
+            )}
+          </div>
+
+          {/* Phone: single Filters trigger */}
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="flex h-8 items-center rounded-lg border border-white/10 bg-[#111624] px-3 text-xs font-medium text-text-primary transition-colors hover:border-white/20 lg:hidden"
+          >
+            Filters
+          </button>
+
+          {/* Primary + Add Button */}
+          {showAddButton && (
+            <Link
+              to="/movies/add"
+              className="flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95"
+            >
+              + Add
+            </Link>
+          )}
         </div>
-      )}
 
-      <div className="mb-6 flex items-center gap-3">
-      <p className="nums shrink-0 text-sm font-medium text-text-muted">{summary}</p>
-
-      {/* Desktop: inline dropdowns */}
-      <div className="ml-auto hidden items-center gap-2 lg:flex">
-        <Dropdown
-          label="View"
-          value={VIEW_LABELS[filters.viewMode]}
-          options={Object.entries(VIEW_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-          onSelect={(v) => {
-            localStorage.setItem("app_view_mode", v);
-            onChange({ ...filters, viewMode: v as ViewMode });
-          }}
-        />
-        <Dropdown
-          label="Sort"
-          value={SORT_LABELS[filters.sortBy]}
-          options={Object.entries(SORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-          onSelect={(v) => onChange({ ...filters, sortBy: v as SortBy })}
-        />
-        {showRating && (
-          <Dropdown
-            label="Rating"
-            value={RATING_LABELS[filters.minRating]}
-            options={Object.entries(RATING_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-            onSelect={(v) => onChange({ ...filters, minRating: Number(v) as MinRating })}
+        {sheetOpen && (
+          <FilterSheet
+            filters={filters}
+            onChange={onChange}
+            showRating={showRating}
+            mediaTypeFilter={mediaTypeFilter}
+            onMediaTypeChange={onMediaTypeChange}
+            onClose={() => setSheetOpen(false)}
           />
         )}
-        <Dropdown
-          label="Date"
-          value={DATE_LABELS[filters.dateRange]}
-          options={Object.entries(DATE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-          onSelect={(v) => onChange({ ...filters, dateRange: v as DateRange })}
-        />
       </div>
-
-      {/* Phone: single Filters trigger */}
-      <button
-        type="button"
-        onClick={() => setSheetOpen(true)}
-        className="ml-auto rounded-lg border border-white/10 bg-[#111624] px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-white/20 lg:hidden"
-      >
-        Filters
-      </button>
-
-      {/* Primary + Add Movie Button */}
-      <Link
-        to="/movies/add"
-        className="shrink-0 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90 hover:brightness-110 active:scale-95"
-      >
-        + Add
-      </Link>
-
-      {sheetOpen && (
-        <FilterSheet
-          filters={filters}
-          onChange={onChange}
-          showRating={showRating}
-          onClose={() => setSheetOpen(false)}
-        />
-      )}
-    </div>
     </>
   );
 }
@@ -156,6 +165,8 @@ function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  useEscapeKey(open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -169,6 +180,8 @@ function Dropdown({
     <div ref={ref} className="relative">
       <button
         type="button"
+        aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#111624] px-3 py-1.5 text-xs text-text-primary transition-colors hover:border-white/20"
       >
@@ -177,11 +190,17 @@ function Dropdown({
         <Chevron open={open} />
       </button>
       {open && (
-        <div className="absolute right-0 z-40 mt-1.5 min-w-[150px] overflow-hidden rounded-lg border border-white/15 bg-[#0e1320] py-1 shadow-xl backdrop-blur-xl">
+        <div
+          role="listbox"
+          aria-label={label}
+          className="absolute right-0 z-40 mt-1.5 min-w-[150px] overflow-hidden rounded-lg border border-white/15 bg-[#0e1320] py-1 shadow-xl backdrop-blur-xl"
+        >
           {options.map((o) => (
             <button
               key={o.value}
               type="button"
+              role="option"
+              aria-selected={o.label === value}
               onClick={() => {
                 onSelect(o.value);
                 setOpen(false);
@@ -203,15 +222,22 @@ function FilterSheet({
   filters,
   onChange,
   showRating,
+  mediaTypeFilter,
+  onMediaTypeChange,
   onClose,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   showRating: boolean;
+  mediaTypeFilter?: MediaTypeFilter;
+  onMediaTypeChange?: (mt: MediaTypeFilter) => void;
   onClose: () => void;
 }) {
+  useEscapeKey(true, onClose);
+  useBodyScrollLock(true);
+
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filter Options">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
@@ -219,6 +245,14 @@ function FilterSheet({
       />
       <div className="absolute inset-x-0 bottom-0 rounded-t-[20px] border-t border-white/15 bg-[#0e1320] p-6 pb-9 shadow-2xl">
         <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-white/20" />
+        {mediaTypeFilter !== undefined && onMediaTypeChange && (
+          <SheetGroup
+            label="Media Type"
+            value={mediaTypeFilter}
+            options={MEDIA_TYPE_LABELS}
+            onSelect={(v) => onMediaTypeChange(v as MediaTypeFilter)}
+          />
+        )}
         <SheetGroup
           label="View"
           value={filters.viewMode}

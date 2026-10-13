@@ -11,5 +11,7 @@ public interface PersonalizedRecommendationRepository extends JpaRepository<Pers
 
     List<PersonalizedRecommendation> findByUserIdOrderByRankOrderAsc(Long userId);
 
+    List<PersonalizedRecommendation> findByUserIdAndMediaTypeOrderByRankOrderAsc(Long userId, String mediaType);
+
     void deleteByUserId(Long userId);
 }

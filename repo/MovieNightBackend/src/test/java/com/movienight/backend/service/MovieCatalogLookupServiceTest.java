@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +34,9 @@ class MovieCatalogLookupServiceTest {
 
     @Mock
     private OmdbClient omdbClient;
+
+    @Mock
+    private com.movienight.backend.repository.CachedMovieListRepository cachedMovieListRepository;
 
     @InjectMocks
     private MovieCatalogLookupService lookupService;
@@ -133,5 +137,60 @@ class MovieCatalogLookupServiceTest {
         assertNotNull(result);
         assertEquals("Guardians of the Galaxy Vol. 2", result.getTitle());
         verify(movieRepository).save(any(Movie.class));
+    }
+
+    @Test
+    void searchMovies_withTvAndAnime_correctlyClassifiesMediaTypes() {
+        TmdbSearchResponse.TmdbMovieSummary tvShow = new TmdbSearchResponse.TmdbMovieSummary();
+        tvShow.setId(1396L);
+        tvShow.setName("Breaking Bad");
+        tvShow.setMediaType("tv");
+        tvShow.setFirstAirDate("2008-01-20");
+
+        TmdbSearchResponse.TmdbMovieSummary anime = new TmdbSearchResponse.TmdbMovieSummary();
+        anime.setId(1429L);
+        anime.setName("Attack on Titan");
+        anime.setMediaType("tv");
+        anime.setFirstAirDate("2013-04-07");
+        anime.setGenreIds(List.of(16, 10759));
+        anime.setOriginalLanguage("ja");
+
+        when(movieRepository.findByTitleContainingIgnoreCase("test")).thenReturn(Collections.emptyList());
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchMovies("test")).thenReturn(List.of(tvShow, anime));
+
+        List<MovieResponse> results = lookupService.searchMovies("test");
+
+        assertEquals(2, results.size());
+        assertEquals("Breaking Bad", results.get(0).getTitle());
+        assertEquals("TV", results.get(0).getMediaType());
+        assertEquals(2008, results.get(0).getReleaseYear());
+
+        assertEquals("Attack on Titan", results.get(1).getTitle());
+        assertEquals("ANIME", results.get(1).getMediaType());
+        assertEquals(2013, results.get(1).getReleaseYear());
+    }
+
+    @Test
+    void getOrFetchMovie_withTvSeries_fetchesFromTvEndpoint() {
+        TmdbMovieDetailsResponse tvDetails = new TmdbMovieDetailsResponse();
+        tvDetails.setId(1396L);
+        tvDetails.setName("Breaking Bad");
+        tvDetails.setFirstAirDate("2008-01-20");
+        tvDetails.setNumberOfSeasons(5);
+        tvDetails.setNumberOfEpisodes(62);
+
+        when(movieRepository.findByTmdbId(1396L)).thenReturn(Optional.empty());
+        when(tmdbClient.getTvDetails(1396L)).thenReturn(Optional.of(tvDetails));
+        when(movieRepository.save(any(Movie.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Movie result = lookupService.getOrFetchMovie(1396L, "TV");
+
+        assertNotNull(result);
+        assertEquals("Breaking Bad", result.getTitle());
+        assertEquals("TV", result.getMediaType());
+        assertEquals(5, result.getSeasonsCount());
+        assertEquals(62, result.getEpisodesCount());
+        assertEquals(2008, result.getReleaseYear());
     }
 }

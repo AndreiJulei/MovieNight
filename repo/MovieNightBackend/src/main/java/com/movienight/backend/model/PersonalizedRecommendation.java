@@ -32,6 +32,10 @@ public class PersonalizedRecommendation {
     @Column(nullable = false)
     private Long tmdbId;
 
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String mediaType = "MOVIE";
+
     @Column(nullable = false)
     private String title;
 

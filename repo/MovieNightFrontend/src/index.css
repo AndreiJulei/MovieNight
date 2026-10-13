@@ -10,6 +10,7 @@
   --color-text-muted: #7c869c;
   --color-accent: #4f46e5;
   --color-success: #22c55e;
+  --color-warning: #f59e0b;
   --color-danger: #f0888c;
 
   --radius-card: 8px;
@@ -72,6 +73,15 @@ body {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 
 /* Pixel-art rendering for pixel companion */
 .pixelated {
@@ -161,7 +171,12 @@ body {
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* Keep loading spinners functional so state visibility is preserved */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 

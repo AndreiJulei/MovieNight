@@ -4,6 +4,7 @@ export interface ApiUser {
   id: number | string;
   username: string;
   displayName: string;
+  email?: string;
   role: string;
   createdAt?: string;
 }
@@ -14,6 +15,7 @@ export interface LoginApiResponse {
   id: number;
   username: string;
   displayName: string;
+  email?: string;
   role: string;
   createdAt?: string;
 }
@@ -46,15 +48,20 @@ export const authApi = {
    * Sign up a new user on the backend.
    */
   async signup(payload: {
+    email: string;
     username: string;
-    displayName: string;
+    displayName?: string;
     password: string;
+    confirmPassword?: string;
   }): Promise<{ ok: boolean; user?: ApiUser; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          displayName: payload.displayName || payload.username,
+        }),
       });
 
       const data = await res.json();
@@ -73,17 +80,21 @@ export const authApi = {
   },
 
   /**
-   * Login with username and password, receiving a JWT token and user profile.
+   * Login with email (or username) and password, receiving a JWT token and user profile.
    */
   async login(
-    username: string,
+    emailOrUsername: string,
     password: string,
   ): Promise<{ ok: boolean; token?: string; user?: ApiUser; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          email: emailOrUsername,
+          username: emailOrUsername,
+          password,
+        }),
       });
 
       const data = await res.json();
@@ -91,7 +102,7 @@ export const authApi = {
       if (!res.ok) {
         return {
           ok: false,
-          error: data.message || "Invalid username or password.",
+          error: data.message || "Invalid email or password.",
         };
       }
 
@@ -105,11 +116,75 @@ export const authApi = {
           id: String(loginData.id),
           username: loginData.username,
           displayName: loginData.displayName,
+          email: loginData.email,
           role: loginData.role,
           createdAt: loginData.createdAt,
         },
       };
     } catch (err) {
+      return { ok: false, error: "Cannot connect to server. Is the backend running on port 8080?" };
+    }
+  },
+
+  /**
+   * Request a 6-digit OTP code to reset password.
+   */
+  async forgotPassword(
+    email: string,
+  ): Promise<{ ok: boolean; message?: string; devCode?: string; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.message || "Failed to send reset code.",
+        };
+      }
+
+      return {
+        ok: true,
+        message: data.message,
+        devCode: data.devCode,
+      };
+    } catch {
+      return { ok: false, error: "Cannot connect to server. Is the backend running on port 8080?" };
+    }
+  },
+
+  /**
+   * Reset password with the 6-digit OTP code.
+   */
+  async resetPassword(payload: {
+    email: string;
+    code: string;
+    newPassword: string;
+    confirmPassword: string;
+  }): Promise<{ ok: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.message || (data.errors ? Object.values(data.errors).join(", ") : "Failed to reset password."),
+        };
+      }
+
+      return { ok: true, message: data.message };
+    } catch {
       return { ok: false, error: "Cannot connect to server. Is the backend running on port 8080?" };
     }
   },

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Movie Night - Desktop Hero & Logo Studio</title>
+  <!-- Google Fonts: Anton (Iconic Marvel Condensed), Bebas Neue, Montserrat 900, Inter 900 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Inter:wght@800;900&family=Montserrat:wght@900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent: '#6355ff',
+            goldAccent: '#f59e0b',
+            sithRed: '#ef4444',
+          },
+          fontFamily: {
+            anton: ['Anton', 'sans-serif'],
+            impact: ['Impact', 'Haettenschweiler', 'sans-serif'],
+            bebas: ['"Bebas Neue"', 'sans-serif'],
+            montserrat: ['Montserrat', 'sans-serif'],
+            inter: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #06070a;
+      color: #ffffff;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      overflow: hidden; /* Only the 70-75% upper hero banner */
+    }
+
+    /* Ambient atmospheric backlight */
+    .hero-glow {
+      background: radial-gradient(ellipse 65% 55% at 50% 50%, var(--glow-color, rgba(99, 85, 255, 0.24)) 0%, rgba(6, 7, 10, 0) 70%),
+                  radial-gradient(circle 900px at 50% 100%, rgba(14, 16, 26, 0.9) 0%, rgba(6, 7, 10, 1) 90%);
+    }
+
+    /* High-impact text shadows */
+    .glow-white {
+      text-shadow: 0 0 45px rgba(255, 255, 255, 0.35), 0 15px 35px rgba(0, 0, 0, 0.9);
+    }
+    .glow-accent {
+      text-shadow: 0 0 55px var(--accent-glow, rgba(99, 85, 255, 0.65)), 0 0 20px var(--accent-glow, rgba(99, 85, 255, 0.4)), 0 15px 35px rgba(0, 0, 0, 0.9);
+    }
+
+    input[type=range] {
+      accent-color: #6355ff;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen select-none">
+
+  <!-- ========================================================================= -->
+  <!-- COMPACT CONTROL TOOLBAR                                                   -->
+  <!-- ========================================================================= -->
+  <header class="z-50 bg-[#0a0b12]/95 backdrop-blur-md border-b border-white/10 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+    
+    <!-- Character Switcher -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center bg-black/60 p-0.5 rounded-lg border border-white/15">
+        <button id="btnCharBvS" onclick="setCharacter('bvs')" class="px-2.5 py-1 rounded-md font-bold bg-accent text-white shadow transition-all">
+          🦇 Batman v Superman
+        </button>
+        <button id="btnCharSpidey" onclick="setCharacter('spidey')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          🕷️ Spider-Man
+        </button>
+        <button id="btnCharCrossed" onclick="setCharacter('crossed')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          ⚔️ Vader (Crossed)
+        </button>
+        <button id="btnCharVader" onclick="setCharacter('vader')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          🌌 Vader (Full)
+        </button>
+        <button id="btnCharJoker" onclick="setCharacter('joker')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          🃏 Joker
+        </button>
+        <button id="btnCharKillBill" onclick="setCharacter('killbill')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          🗡️ Kill Bill
+        </button>
+      </div>
+
+      <div class="hidden lg:block">
+        <h1 class="font-bold text-white text-xs tracking-wide uppercase">Movie Night Hero</h1>
+        <p class="text-[10px] text-white/40">70–75% Desktop Banner</p>
+      </div>
+    </div>
+
+    <!-- Interactive Customization Controls -->
+    <div class="flex flex-wrap items-center gap-2.5">
+      <!-- Mode Toggle -->
+      <div class="bg-white/5 p-0.5 rounded-lg border border-white/10 flex items-center">
+        <button id="btnModeLive" onclick="setMode('live')" class="px-2.5 py-1 rounded-md font-semibold bg-accent text-white shadow transition-all">
+          Live CSS
+        </button>
+        <button id="btnModePoster" onclick="setMode('poster')" class="px-2.5 py-1 rounded-md font-medium text-white/70 hover:text-white transition-all">
+          4K Renders
+        </button>
+      </div>
+
+      <!-- Live Controls -->
+      <div id="liveControls" class="flex flex-wrap items-center gap-2.5 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+        
+        <!-- Font Selection -->
+        <div class="flex items-center gap-1">
+          <label class="text-white/60 font-medium">Font:</label>
+          <select id="fontSelect" onchange="updateLiveProps()" class="bg-black/60 border border-white/15 rounded px-2 py-0.5 text-white font-medium focus:outline-none focus:border-accent">
+            <option value="anton" selected>Anton (Marvel Heavy)</option>
+            <option value="impact">Impact (Ultra Bold)</option>
+            <option value="bebas">Bebas Neue (IMAX Tall)</option>
+            <option value="montserrat">Montserrat 900 (Wide)</option>
+            <option value="inter">Inter 900 (Clean Sans)</option>
+          </select>
+        </div>
+
+        <!-- Case Toggle -->
+        <button id="btnCase" onclick="toggleCase()" class="bg-accent/30 text-accent font-bold px-2 py-0.5 rounded border border-accent/50 hover:bg-accent/40 transition-all">
+          ALL CAPS
+        </button>
+
+        <!-- Color Accent (Violet vs Yellow vs Gold vs Sith Red) -->
+        <div class="flex items-center gap-1 border-l border-white/10 pl-2">
+          <button id="btnColorViolet" onclick="setColor('violet')" class="w-5 h-5 rounded-full bg-[#6355ff] border-2 border-white ring-1 ring-white/20" title="Movie Night Violet"></button>
+          <button id="btnColorYellow" onclick="setColor('yellow')" class="w-5 h-5 rounded-full bg-[#f8bc33] border-2 border-transparent hover:border-white/50" title="Kill Bill Tracksuit Yellow"></button>
+          <button id="btnColorGold" onclick="setColor('gold')" class="w-5 h-5 rounded-full bg-[#f59e0b] border-2 border-transparent hover:border-white/50" title="Dawn of Justice Gold"></button>
+          <button id="btnColorRed" onclick="setColor('red')" class="w-5 h-5 rounded-full bg-[#ef4444] border-2 border-transparent hover:border-white/50" title="Sith Red"></button>
+        </div>
+
+        <!-- Vertical Stretch Slider -->
+        <div class="flex items-center gap-1 border-l border-white/10 pl-2">
+          <label class="text-white/60" title="Marvel-style vertical stretch">Stretch:</label>
+          <input id="stretchSlider" type="range" min="100" max="175" value="135" oninput="updateLiveProps()" class="w-16 cursor-pointer" />
+          <span id="stretchVal" class="text-accent font-mono w-7">1.35×</span>
+        </div>
+
+        <!-- Size Slider -->
+        <div class="flex items-center gap-1 border-l border-white/10 pl-2">
+          <label class="text-white/60">Size:</label>
+          <input id="sizeSlider" type="range" min="80" max="220" value="160" oninput="updateLiveProps()" class="w-16 cursor-pointer" />
+          <span id="sizeVal" class="text-accent font-mono w-9">160px</span>
+        </div>
+
+        <!-- Tracking Slider -->
+        <div class="flex items-center gap-1 border-l border-white/10 pl-2">
+          <label class="text-white/60">Spacing:</label>
+          <input id="spacingSlider" type="range" min="0" max="60" value="20" oninput="updateLiveProps()" class="w-16 cursor-pointer" />
+          <span id="spacingVal" class="text-accent font-mono w-7">20px</span>
+        </div>
+      </div>
+
+      <!-- Poster Renders Selector -->
+      <div id="posterControls" class="hidden flex items-center gap-2 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+        <label class="text-white/60 font-medium">Render:</label>
+        <select id="posterSelect" onchange="switchPoster(this.value)" class="bg-black/60 border border-white/15 rounded px-2 py-0.5 text-white font-medium focus:outline-none focus:border-accent">
+          <optgroup label="Spider-Man (Vertical Stacked - pngegg-5.png)">
+            <option value="spidey_vertical_violet.png">Spidey Vertical - Movie Night Violet</option>
+            <option value="spidey_vertical_marvel_red.png">Spidey Vertical - Marvel Red Edition</option>
+            <option value="spidey_vertical_electric_blue.png">Spidey Vertical - Electric Blue Edition</option>
+            <option value="spidey_vertical_transparent.png">Spidey Vertical - Transparent Layer</option>
+          </optgroup>
+          <optgroup label="Batman v Superman (Vertical Stacked - pngegg-8.png)">
+            <option value="bvs_two_letter_centered_1280.png" selected>BvS Vertical - Equal Spaced Edition (Violet Accent)</option>
+            <option value="bvs_vertical_gold_edition.png">BvS Vertical - Dawn of Justice (Gold Accent)</option>
+            <option value="bvs_vertical_transparent.png">BvS Vertical - Transparent Layer</option>
+          </optgroup>
+          <optgroup label="Darth Vader (Crossed Arms - pngegg-3.png)">
+            <option value="vader_crossed_marvel_anton_allcaps.png">Vader Crossed - Anton Marvel ALL CAPS (Violet)</option>
+            <option value="vader_crossed_marvel_anton_sith_red.png">Vader Crossed - Anton Marvel ALL CAPS (Sith Red)</option>
+          </optgroup>
+          <optgroup label="Darth Vader (Full Body - pngegg.png)">
+            <option value="vader_marvel_anton_allcaps.png">Vader Full - Anton Marvel ALL CAPS (Violet)</option>
+            <option value="vader_marvel_anton_sith_red.png">Vader Full - Anton Marvel ALL CAPS (Sith Red)</option>
+          </optgroup>
+          <optgroup label="The Joker (pngegg-7.png)">
+            <option value="joker_marvel_anton_allcaps.png">The Joker - Anton Marvel ALL CAPS</option>
+          </optgroup>
+          <optgroup label="Kill Bill - Beatrix Kiddo (sparkpixai-generated-1789481626588.png)">
+            <option value="killbill_marvel_anton_yellow.png">Kill Bill - Anton Marvel ALL CAPS (Tracksuit Yellow)</option>
+            <option value="killbill_marvel_anton_violet.png">Kill Bill - Anton Marvel ALL CAPS (Movie Night Violet)</option>
+            <option value="killbill_transparent_yellow.png">Kill Bill - Transparent Layer (Yellow)</option>
+            <option value="killbill_transparent_violet.png">Kill Bill - Transparent Layer (Violet)</option>
+          </optgroup>
+        </select>
+        <button id="btnPosterFit" onclick="togglePosterFit()" class="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-white/90 hover:bg-white/20 transition-all" title="Toggle between full image fit and screen fill">
+          Fit (No Crop)
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN 70-75% DESKTOP HERO BANNER                                           -->
+  <!-- ========================================================================= -->
+  <main id="heroArea" class="relative flex-1 w-full hero-glow flex items-end justify-center overflow-hidden border-b border-white/10">
+    
+    <!-- SUBTLE HORIZONTAL ANAMORPHIC FLARE -->
+    <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+      <div id="anamorphicFlare" class="w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-accent/35 to-transparent blur-[1px]"></div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- VIEW 1: LIVE CSS LAYERED                                      -->
+    <!-- ------------------------------------------------------------- -->
+    <div id="liveContainer" class="relative w-full h-full flex items-end justify-center">
+
+      <!-- LOGO CONTAINER (Vertical Stack Mode for BvS or Horizontal for Single Character) -->
+      <div id="logoContainer" class="absolute inset-x-0 inset-y-0 flex flex-col justify-between items-center z-0 pointer-events-none font-anton uppercase select-none">
+        
+        <!-- Word 1: MOVIE (Placed Higher) -->
+        <div id="rowTop" class="pt-[8%] flex items-center justify-center tracking-widest">
+          <span id="wordMovie" class="glow-white text-white font-black leading-none inline-block origin-center transform">
+            MOVIE
+          </span>
+        </div>
+
+        <!-- Word 2: NIGHT (Placed Lower) -->
+        <div id="rowBottom" class="pb-[10%] flex items-center justify-center tracking-widest">
+          <span id="wordNight" class="glow-accent text-accent font-black leading-none inline-block origin-center transform">
+            NIGHT
+          </span>
+        </div>
+      </div>
+
+      <!-- FOREGROUND CHARACTER(S) -->
+      <div id="charContainer" class="relative z-10 h-[95%] flex items-end justify-center pointer-events-auto group">
+        <!-- Ambient Character Backlight Halo -->
+        <div id="charHalo" class="absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-accent/25 blur-3xl -z-10 group-hover:bg-accent/40 transition-colors duration-500"></div>
+
+        <!-- Character Cutout Image -->
+        <img 
+          id="characterImg"
+          src="pngegg-8.png" 
+          alt="Character" 
+          class="h-full w-auto max-w-none object-contain filter drop-shadow-[0_25px_50px_rgba(0,0,0,0.98)] transition-all duration-300"
+        />
+      </div>
+
+      <!-- Bottom Edge Vignette -->
+      <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#06070a] to-transparent z-20 pointer-events-none"></div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- VIEW 2: 4K PRE-RENDERED PYTHON BANNER                         -->
+    <!-- ------------------------------------------------------------- -->
+    <div id="posterContainer" class="hidden relative w-full h-full flex items-center justify-center bg-[#06070a]">
+      <img 
+        id="posterImg" 
+        src="spidey_vertical_violet.png" 
+        alt="Python 4K Banner"
+        class="w-full h-full object-contain object-center transition-all duration-300"
+      />
+      <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#06070a] to-transparent pointer-events-none"></div>
+    </div>
+
+    <!-- BADGE -->
+    <div class="absolute left-6 bottom-3 z-30 flex items-center gap-2 bg-black/75 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-[11px] text-white/60">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      Active: <span id="badgeCharName" class="text-white font-semibold">Batman v Superman (Vertical Stacked)</span>
+    </div>
+  </main>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    let isAllCaps = true;
+    let currentColor = 'violet';
+    let currentCharacter = 'bvs';
+
+    const CHARACTERS = {
+      spidey: {
+        name: 'Spider-Man (Vertical Stacked)',
+        img: 'pngegg-5.png',
+        defaultPoster: 'spidey_vertical_violet.png',
+        isVertical: true,
+        heightClass: 'h-[95%]',
+        size: 155,
+        spacing: 20
+      },
+      bvs: {
+        name: 'Batman v Superman (Vertical Stacked)',
+        img: 'pngegg-8.png',
+        defaultPoster: 'bvs_two_letter_centered_1280.png',
+        isVertical: true,
+        heightClass: 'h-[95%]',
+        size: 155,
+        spacing: 20
+      },
+      crossed: {
+        name: 'Darth Vader (Crossed Arms)',
+        img: 'pngegg-3.png',
+        defaultPoster: 'vader_crossed_marvel_anton_allcaps.png',
+        isVertical: false,
+        heightClass: 'h-[90%]',
+        size: 160,
+        spacing: 0
+      },
+      vader: {
+        name: 'Darth Vader (Full Body)',
+        img: 'pngegg.png',
+        defaultPoster: 'vader_marvel_anton_allcaps.png',
+        isVertical: false,
+        heightClass: 'h-[95%]',
+        size: 160,
+        spacing: 0
+      },
+      joker: {
+        name: 'The Joker',
+        img: 'pngegg-7.png',
+        defaultPoster: 'joker_marvel_anton_allcaps.png',
+        isVertical: false,
+        heightClass: 'h-[92%]',
+        size: 160,
+        spacing: 0
+      },
+      killbill: {
+        name: 'Kill Bill (Beatrix Kiddo)',
+        img: 'sparkpixai-generated-1789481626588.png',
+        defaultPoster: 'killbill_marvel_anton_yellow.png',
+        isVertical: false,
+        heightClass: 'h-full',
+        size: 160,
+        spacing: 0
+      }
+    };
+
+    function setCharacter(charKey) {
+      currentCharacter = charKey;
+      const charData = CHARACTERS[charKey];
+
+      // Update switcher buttons
+      ['spidey', 'bvs', 'crossed', 'vader', 'joker', 'killbill'].forEach(k => {
+        const btn = document.getElementById(
+          k === 'spidey' ? 'btnCharSpidey' :
+          k === 'bvs' ? 'btnCharBvS' : 
+          k === 'crossed' ? 'btnCharCrossed' : 
+          k === 'vader' ? 'btnCharVader' : 
+          k === 'joker' ? 'btnCharJoker' : 'btnCharKillBill'
+        );
+        if (!btn) return;
+        if (k === charKey) {
+          btn.className = 'px-2.5 py-1 rounded-md font-bold bg-accent text-white shadow transition-all';
+        } else {
+          btn.className = 'px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all';
+        }
+      });
+
+      // Update images & sizing
+      document.getElementById('characterImg').src = charData.img;
+      document.getElementById('posterImg').src = charData.defaultPoster;
+      document.getElementById('posterSelect').value = charData.defaultPoster;
+      document.getElementById('badgeCharName').textContent = charData.name;
+      document.getElementById('sizeSlider').value = charData.size;
+      document.getElementById('spacingSlider').value = charData.spacing;
+
+      const charContainer = document.getElementById('charContainer');
+      charContainer.className = `relative z-10 ${charData.heightClass} flex items-end justify-center pointer-events-auto group`;
+
+      updateLiveProps();
+    }
+
+    function setColor(color) {
+      currentColor = color;
+      const btnViolet = document.getElementById('btnColorViolet');
+      const btnYellow = document.getElementById('btnColorYellow');
+      const btnGold = document.getElementById('btnColorGold');
+      const btnRed = document.getElementById('btnColorRed');
+      const wordNight = document.getElementById('wordNight');
+      const heroArea = document.getElementById('heroArea');
+      const flare = document.getElementById('anamorphicFlare');
+      const halo = document.getElementById('charHalo');
+
+      // Reset borders
+      [btnViolet, btnYellow, btnGold, btnRed].forEach(b => {
+        if (b) b.className = b.className.replace('border-white ring-1 ring-white/20', 'border-transparent');
+      });
+
+      if (color === 'yellow') {
+        btnYellow.className = 'w-5 h-5 rounded-full bg-[#f8bc33] border-2 border-white ring-1 ring-white/20';
+        wordNight.style.color = '#f8bc33';
+        heroArea.style.setProperty('--glow-color', 'rgba(248, 188, 51, 0.25)');
+        heroArea.style.setProperty('--accent-glow', 'rgba(248, 188, 51, 0.70)');
+        flare.className = 'w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent blur-[1px]';
+        halo.className = 'absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-[#f8bc33]/25 blur-3xl -z-10 group-hover:bg-[#f8bc33]/40 transition-colors duration-500';
+      } else if (color === 'gold') {
+        btnGold.className = 'w-5 h-5 rounded-full bg-[#f59e0b] border-2 border-white ring-1 ring-white/20';
+        wordNight.style.color = '#f59e0b';
+        heroArea.style.setProperty('--glow-color', 'rgba(245, 158, 11, 0.22)');
+        heroArea.style.setProperty('--accent-glow', 'rgba(245, 158, 11, 0.65)');
+        flare.className = 'w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent blur-[1px]';
+        halo.className = 'absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-amber-500/25 blur-3xl -z-10 group-hover:bg-amber-500/40 transition-colors duration-500';
+      } else if (color === 'red') {
+        btnRed.className = 'w-5 h-5 rounded-full bg-[#ef4444] border-2 border-white ring-1 ring-white/20';
+        wordNight.style.color = '#ef4444';
+        heroArea.style.setProperty('--glow-color', 'rgba(239, 68, 68, 0.22)');
+        heroArea.style.setProperty('--accent-glow', 'rgba(239, 68, 68, 0.65)');
+        flare.className = 'w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-red-500/40 to-transparent blur-[1px]';
+        halo.className = 'absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-red-600/25 blur-3xl -z-10 group-hover:bg-red-600/40 transition-colors duration-500';
+      } else {
+        btnViolet.className = 'w-5 h-5 rounded-full bg-[#6355ff] border-2 border-white ring-1 ring-white/20';
+        wordNight.style.color = '#6355ff';
+        heroArea.style.setProperty('--glow-color', 'rgba(99, 85, 255, 0.24)');
+        heroArea.style.setProperty('--accent-glow', 'rgba(99, 85, 255, 0.65)');
+        flare.className = 'w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-accent/35 to-transparent blur-[1px]';
+        halo.className = 'absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-accent/25 blur-3xl -z-10 group-hover:bg-accent/40 transition-colors duration-500';
+      }
+    }
+
+    function setMode(mode) {
+      const btnLive = document.getElementById('btnModeLive');
+      const btnPoster = document.getElementById('btnModePoster');
+      const liveContainer = document.getElementById('liveContainer');
+      const posterContainer = document.getElementById('posterContainer');
+      const liveControls = document.getElementById('liveControls');
+      const posterControls = document.getElementById('posterControls');
+
+      if (mode === 'live') {
+        btnLive.className = 'px-2.5 py-1 rounded-md font-semibold bg-accent text-white shadow transition-all';
+        btnPoster.className = 'px-2.5 py-1 rounded-md font-medium text-white/70 hover:text-white transition-all';
+        liveContainer.classList.remove('hidden');
+        posterContainer.classList.add('hidden');
+        liveControls.classList.remove('hidden');
+        posterControls.classList.add('hidden');
+      } else {
+        btnPoster.className = 'px-2.5 py-1 rounded-md font-semibold bg-accent text-white shadow transition-all';
+        btnLive.className = 'px-2.5 py-1 rounded-md font-medium text-white/70 hover:text-white transition-all';
+        posterContainer.classList.remove('hidden');
+        liveContainer.classList.add('hidden');
+        posterControls.classList.remove('hidden');
+        liveControls.classList.add('hidden');
+      }
+    }
+
+    function toggleCase() {
+      isAllCaps = !isAllCaps;
+      const wordMovie = document.getElementById('wordMovie');
+      const wordNight = document.getElementById('wordNight');
+      const btnCase = document.getElementById('btnCase');
+
+      if (isAllCaps) {
+        wordMovie.textContent = 'MOVIE';
+        wordNight.textContent = 'NIGHT';
+        btnCase.textContent = 'ALL CAPS';
+        btnCase.className = 'bg-accent/30 text-accent font-bold px-2 py-0.5 rounded border border-accent/50 hover:bg-accent/40 transition-all';
+      } else {
+        wordMovie.textContent = 'Movie';
+        wordNight.textContent = 'Night';
+        btnCase.textContent = 'Title Case';
+        btnCase.className = 'bg-white/10 text-white font-bold px-2 py-0.5 rounded border border-white/20 hover:bg-white/15 transition-all';
+      }
+    }
+
+    function updateLiveProps() {
+      const fontVal = document.getElementById('fontSelect').value;
+      const stretchVal = (parseFloat(document.getElementById('stretchSlider').value) / 100).toFixed(2);
+      const sizeVal = document.getElementById('sizeSlider').value;
+      const spacingVal = document.getElementById('spacingSlider').value;
+
+      document.getElementById('stretchVal').textContent = stretchVal + '×';
+      document.getElementById('sizeVal').textContent = sizeVal + 'px';
+      document.getElementById('spacingVal').textContent = spacingVal + 'px';
+
+      const logoContainer = document.getElementById('logoContainer');
+      const wordMovie = document.getElementById('wordMovie');
+      const wordNight = document.getElementById('wordNight');
+
+      logoContainer.classList.remove('font-anton', 'font-impact', 'font-bebas', 'font-montserrat', 'font-inter');
+      if (fontVal === 'impact') logoContainer.classList.add('font-impact');
+      else if (fontVal === 'bebas') logoContainer.classList.add('font-bebas');
+      else if (fontVal === 'montserrat') logoContainer.classList.add('font-montserrat');
+      else if (fontVal === 'inter') logoContainer.classList.add('font-inter');
+      else logoContainer.classList.add('font-anton');
+
+      wordMovie.style.fontSize = `${sizeVal}px`;
+      wordNight.style.fontSize = `${sizeVal}px`;
+
+      wordMovie.style.letterSpacing = `${spacingVal}px`;
+      wordNight.style.letterSpacing = `${spacingVal}px`;
+
+      wordMovie.style.transform = `scaleY(${stretchVal})`;
+      wordNight.style.transform = `scaleY(${stretchVal})`;
+    }
+
+    function switchPoster(filename) {
+      document.getElementById('posterImg').src = filename;
+    }
+
+    let posterFitMode = 'contain';
+    function togglePosterFit() {
+      const img = document.getElementById('posterImg');
+      const btn = document.getElementById('btnPosterFit');
+      if (posterFitMode === 'contain') {
+        posterFitMode = 'cover';
+        img.className = 'w-full h-full object-cover object-bottom transition-all duration-300';
+        btn.textContent = 'Fill (Cover)';
+      } else {
+        posterFitMode = 'contain';
+        img.className = 'w-full h-full object-contain object-center transition-all duration-300';
+        btn.textContent = 'Fit (No Crop)';
+      }
+    }
+
+    // Default to Spider-Man
+    setCharacter('spidey');
+  </script>
+</body>
+</html>
