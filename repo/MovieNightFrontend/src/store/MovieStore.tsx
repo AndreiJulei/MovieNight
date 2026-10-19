@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -88,7 +89,10 @@ type StoreValue = {
   markWatched: (entryId: string, rating: number, description: string) => void;
   updateDescription: (entryId: string, description: string) => void;
   removeEntry: (entryId: string) => void;
-  addToWatchlist: (movieId: string, movieObj?: Movie) => void;
+  addToWatchlist: (movieId: string, movieObj?: Movie, notes?: string) => Promise<{ ok: boolean; error?: string; status?: Status }>;
+  isWatchlistSaving: (movieId: string) => boolean;
+  libraryLoading: boolean;
+  libraryError: string | null;
   removeFromWatchlist: (movieId: string) => void;
   addFriend: (userId: string) => void;
   removeFriend: (friendId: string) => void;
@@ -105,6 +109,40 @@ const StoreContext = createContext<StoreValue | null>(null);
 
 function pairKey(a: string, b: string) {
   return [a, b].sort().join("|");
+}
+
+function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
+  const m = item.movie;
+  const movieId = String(m.tmdbId ?? m.id);
+  const mediaType = (m.mediaType as MediaType) ?? "MOVIE";
+  const movie: Movie = {
+    id: movieId,
+    tmdbId: m.tmdbId,
+    title: m.title,
+    year: m.releaseYear ?? new Date().getFullYear(),
+    posterSeed: null,
+    posterUrl: m.posterUrl ?? null,
+    imdb: m.imdbRating ?? null,
+    rt: m.rottenTomatoesRating ?? null,
+    overview: m.overview ?? "",
+    genres: m.genres?.split(",").map((g) => g.trim()) ?? [],
+    director: m.director,
+    trailerKey: m.trailerKey,
+    mediaType,
+    seasonsCount: m.seasonsCount,
+    episodesCount: m.episodesCount,
+  };
+  const entry: Entry = {
+    id: String(item.id),
+    userId,
+    movieId,
+    status: item.status === "WATCHED" ? "watched" : "watchlist",
+    rating: item.personalRating ?? null,
+    description: item.notes ?? "",
+    addedAt: item.createdAt ?? new Date().toISOString(),
+    mediaType,
+  };
+  return { movie, entry };
 }
 
 export function MovieStoreProvider({ children }: { children: ReactNode }) {
@@ -157,79 +195,69 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [pendingWatchlist, setPendingWatchlist] = useState<Set<string>>(new Set());
+  const watchlistRequests = useRef(new Map<string, ReturnType<StoreValue["addToWatchlist"]>>());
+  const libraryRevision = useRef(0);
+  const authGeneration = useRef(0);
+  const refreshSequence = useRef(0);
+  const activeUser = useRef(currentUser?.id);
+  activeUser.current = currentUser?.id;
+
+  const isWatchlistSaving = useCallback((movieId: string) => {
+    const movie = movies.find((m) => m.id === movieId || String(m.tmdbId) === movieId);
+    return pendingWatchlist.has(`${authGeneration.current}:${currentUser?.id}:${movie?.tmdbId ?? movieId}`);
+  }, [currentUser, movies, pendingWatchlist]);
+
   /**
    * Sync library and friends data from Spring Boot backend.
    */
   const refreshLibrary = useCallback(async () => {
     const token = authApi.getToken();
-    if (!token || !currentUser) return;
+    if (!currentUser) return;
+    if (!token) {
+      setLibraryError("Sign in again to load your library.");
+      setLibraryLoading(false);
+      return;
+    }
 
+    const userId = String(currentUser.id);
+    const sequence = ++refreshSequence.current;
+    setLibraryLoading(true);
+    setLibraryError(null);
     try {
-      // 1. Fetch user's movie library
-      const backendEntries: ApiUserMovieEntryResponse[] = await moviesApi.getLibrary();
-      if (backendEntries && backendEntries.length > 0) {
-        const loadedMovies: Movie[] = [];
-        const loadedEntries: Entry[] = [];
-
-        for (const item of backendEntries) {
-          const m = item.movie;
-          const movieId = String(m.tmdbId ?? m.id);
-
-          loadedMovies.push({
-            id: movieId,
-            tmdbId: m.tmdbId,
-            title: m.title,
-            year: m.releaseYear ?? 2020,
-            posterSeed: null,
-            posterUrl: m.posterUrl ?? null,
-            imdb: m.imdbRating ?? null,
-            rt: m.rottenTomatoesRating ?? null,
-            overview: m.overview ?? "",
-            genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
-            director: m.director,
-            trailerKey: m.trailerKey,
-            mediaType: ((m as unknown as Record<string, unknown>).mediaType as MediaType) ?? "MOVIE",
-          });
-
-          loadedEntries.push({
-            id: String(item.id),
-            userId: String(currentUser.id),
-            movieId,
-            status: (item.status || "").toUpperCase() === "WATCHED" ? "watched" : "watchlist",
-            rating: item.personalRating ?? null,
-            description: item.notes ?? "",
-            addedAt: item.createdAt ?? new Date().toISOString(),
-            mediaType: ((m as unknown as Record<string, unknown>).mediaType as MediaType) ?? "MOVIE",
-          });
-        }
-
-        // Merge backend movies with local catalog
-        setMovies((prev) => {
-          const map = new Map(prev.map((m) => [m.id, m]));
-          for (const m of loadedMovies) {
-            map.set(m.id, m);
-            if (m.tmdbId) {
-              map.set(String(m.tmdbId), m);
-            }
-          }
-          return Array.from(map.values());
-        });
-
-        // Update entries for current user without wiping recently added local entries
-        setEntries((prev) => {
-          const others = prev.filter((e) => String(e.userId) !== String(currentUser.id));
-          const loadedMovieIds = new Set(loadedEntries.map((le) => le.movieId));
-          const pendingLocal = prev.filter((e) => {
-            if (String(e.userId) !== String(currentUser.id)) return false;
-            if (loadedMovieIds.has(e.movieId)) return false;
-            const target = loadedMovies.find((lm) => lm.id === e.movieId || String(lm.tmdbId) === e.movieId);
-            if (target && loadedMovieIds.has(target.id)) return false;
-            return true;
-          });
-          return [...others, ...loadedEntries, ...pendingLocal];
-        });
+      let backendEntries: ApiUserMovieEntryResponse[];
+      // Retry a read that overlapped a confirmed save so the whole library is
+      // recovered, without letting an older snapshot erase the saved entry.
+      while (true) {
+        const revision = libraryRevision.current;
+        backendEntries = await moviesApi.getLibrary();
+        if (activeUser.current !== userId || sequence !== refreshSequence.current) return;
+        if (revision === libraryRevision.current) break;
       }
+      const loaded = backendEntries
+        .filter((item) => item.status === "WATCHLIST" || item.status === "WATCHED")
+        .map((item) => fromLibraryResponse(item, userId));
+      setMovies((prev) => {
+        const map = new Map(prev.map((m) => [m.id, m]));
+        for (const { movie } of loaded) map.set(movie.id, movie);
+        return Array.from(map.values());
+      });
+      setEntries((prev) => [
+        ...prev.filter((e) => String(e.userId) !== userId),
+        ...loaded.map(({ entry }) => entry),
+      ]);
+    } catch (err) {
+      if (activeUser.current === userId && sequence === refreshSequence.current) {
+        setLibraryError(err instanceof Error ? err.message : "Could not load your library. Please try again.");
+      }
+    } finally {
+      if (activeUser.current === userId && sequence === refreshSequence.current) setLibraryLoading(false);
+    }
 
+    if (activeUser.current !== userId || sequence !== refreshSequence.current) return;
+    try {
       // 2. Fetch user's friends list
       const backendFriends: ApiFriendProfile[] = await friendsApi.getFriends();
       if (backendFriends && backendFriends.length > 0) {
@@ -309,6 +337,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         email: res.user.email,
         password: "",
       };
+      authGeneration.current += 1;
+      refreshSequence.current += 1;
+      activeUser.current = u.id;
+      libraryRevision.current += 1;
+      setEntries([]);
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
@@ -339,6 +372,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           email: loginRes.user.email,
           password: "",
         };
+        authGeneration.current += 1;
+        refreshSequence.current += 1;
+        activeUser.current = u.id;
+        libraryRevision.current += 1;
+        setEntries([]);
         setCurrentUser(u);
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
         sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
@@ -350,6 +388,12 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authApi.logout();
+    authGeneration.current += 1;
+    activeUser.current = undefined;
+    libraryRevision.current += 1;
+    refreshSequence.current += 1;
+    setEntries([]);
+    setLibraryError(null);
     setCurrentUser(null);
     sessionStorage.removeItem(AUTH_KEY);
     sessionStorage.removeItem("movienight_current_user");
@@ -373,6 +417,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           (m.title.toLowerCase() === movie.title.toLowerCase() && m.year === movie.year),
       );
       if (idx >= 0) {
+        if (prev[idx] === movie) return prev;
         const next = [...prev];
         next[idx] = { ...prev[idx], ...movie };
         return next;
@@ -625,107 +670,61 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, [refreshLibrary]);
 
   const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(
-    (movieId, movieObj) => {
-      if (!currentUser) return;
-      const alreadyInWatchlist = entries.some(
-        (e) =>
-          String(e.userId) === String(currentUser.id) &&
-          e.status === "watchlist" &&
-          (e.movieId === movieId || (movieObj && (e.movieId === String(movieObj.tmdbId) || e.movieId === String(movieObj.id)))),
-      );
-      if (alreadyInWatchlist) {
-        return;
+    (movieId, movieObj, notes) => {
+      if (!currentUser || !authApi.getToken()) {
+        return Promise.resolve({ ok: false, error: "Sign in to save to your watchlist." });
       }
-
-      let targetMovie =
-        movieObj ||
-        movies.find(
-          (m) =>
-            m.id === movieId ||
-            (m.tmdbId != null && String(m.tmdbId) === movieId),
-        );
-
+      const userId = String(currentUser.id);
+      const targetMovie = movieObj || movies.find((m) => m.id === movieId || String(m.tmdbId) === movieId);
       if (!targetMovie) {
-        try {
-          const stored = sessionStorage.getItem("last_selected_movie");
-          if (stored) {
-            const parsed = JSON.parse(stored) as Movie;
-            if (parsed && (parsed.id === movieId || String(parsed.tmdbId) === movieId)) {
-              targetMovie = parsed;
-            }
-          }
-        } catch {
-          /* ignore */
-        }
+        return Promise.resolve({ ok: false, error: "Could not find this title. Reopen its details and try again." });
       }
-
-      const resolvedId = targetMovie?.id || movieId;
-      const targetTmdbId = targetMovie?.tmdbId ?? (!isNaN(Number(resolvedId)) ? Number(resolvedId) : undefined);
-
-      if (targetMovie) {
-        setMovies((prev) => {
-          const idx = prev.findIndex(
-            (m) => m.id === targetMovie!.id || (targetMovie!.tmdbId && m.tmdbId === targetMovie!.tmdbId),
-          );
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = { ...prev[idx], ...targetMovie };
-            return next;
-          }
-          return [...prev, targetMovie!];
-        });
-
-        moviesApi
-          .addMovie({
-            tmdbId: targetTmdbId,
+      const tmdbId = targetMovie.tmdbId;
+      const generation = authGeneration.current;
+      const key = `${generation}:${userId}:${tmdbId ?? movieId}`;
+      const inFlight = watchlistRequests.current.get(key);
+      if (inFlight) return inFlight;
+      setPendingWatchlist((prev) => new Set(prev).add(key));
+      const request = (async () => {
+        try {
+          const response = await moviesApi.saveWatchlist({
+            tmdbId,
             title: targetMovie.title,
             releaseYear: targetMovie.year,
             posterUrl: targetMovie.posterUrl ?? undefined,
             overview: targetMovie.overview,
             imdbRating: targetMovie.imdb ?? undefined,
             rottenTomatoesRating: targetMovie.rt ?? undefined,
-            mediaType: (targetMovie.mediaType || "MOVIE").toUpperCase(),
+            mediaType: targetMovie.mediaType || "MOVIE",
             seasonsCount: targetMovie.seasonsCount,
             episodesCount: targetMovie.episodesCount,
             status: "WATCHLIST",
-          })
-          .then((res) => {
-            if (res) refreshLibrary();
-          })
-          .catch((err) => console.warn("Watchlist add error:", err));
-      }
-
-      setEntries((prev) => {
-        const existingIdx = prev.findIndex(
-          (e) =>
-            String(e.userId) === String(currentUser.id) &&
-            (e.movieId === resolvedId || (targetTmdbId && e.movieId === String(targetTmdbId))),
-        );
-        if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = {
-            ...prev[existingIdx],
-            status: "watchlist",
-            mediaType: targetMovie?.mediaType ?? prev[existingIdx].mediaType ?? "MOVIE",
-          };
-          return next;
+            notes,
+          });
+          if (activeUser.current !== userId || authGeneration.current !== generation) {
+            return { ok: false, error: "Your account changed. Reload your library to check the save." };
+          }
+          const { movie, entry } = fromLibraryResponse(response, userId);
+          libraryRevision.current += 1;
+          setMovies((prev) => [...prev.filter((m) => m.id !== movie.id && m.id !== targetMovie.id), movie]);
+          setEntries((prev) => [...prev.filter((e) => String(e.userId) !== userId ||
+            (e.movieId !== movie.id && e.movieId !== targetMovie.id)), entry]);
+          return { ok: true, status: entry.status };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Could not confirm the save. Please try again." };
+        } finally {
+          watchlistRequests.current.delete(key);
+          setPendingWatchlist((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
         }
-        return [
-          ...prev,
-          {
-            id: freshId("e"),
-            userId: String(currentUser.id),
-            movieId: resolvedId,
-            status: "watchlist",
-            rating: null,
-            description: "",
-            addedAt: new Date().toISOString(),
-            mediaType: targetMovie?.mediaType ?? "MOVIE",
-          },
-        ];
-      });
+      })();
+      watchlistRequests.current.set(key, request);
+      return request;
     },
-    [currentUser, entries, movies, refreshLibrary],
+    [currentUser, movies],
   );
 
   const removeFromWatchlist = useCallback<StoreValue["removeFromWatchlist"]>(
@@ -964,6 +963,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       updateDescription,
       removeEntry,
       addToWatchlist,
+      isWatchlistSaving,
+      libraryLoading,
+      libraryError,
       removeFromWatchlist,
       addFriend,
       removeFriend,
@@ -1001,6 +1003,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       updateDescription,
       removeEntry,
       addToWatchlist,
+      isWatchlistSaving,
+      libraryLoading,
+      libraryError,
       removeFromWatchlist,
       addFriend,
       removeFriend,

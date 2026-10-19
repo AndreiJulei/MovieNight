@@ -15,7 +15,7 @@ const VALID_MEDIA_TYPES: MediaTypeFilter[] = ["ALL", "MOVIE", "TV", "ANIME"];
 const ANIME_MOVIE_IDS = new Set(["anime-demon-slayer-movie"]);
 
 export default function MoviesPage() {
-  const { currentUser, entriesFor, movieById, refreshLibrary } = useStore();
+  const { currentUser, entriesFor, movieById, refreshLibrary, libraryLoading, libraryError } = useStore();
   const { navigate } = useRouter();
   const query = useQuery();
 
@@ -132,7 +132,17 @@ export default function MoviesPage() {
         onMediaTypeChange={(mt) => navigate(buildUrl(filters, mt))}
       />
 
-      <MovieGrid
+      {libraryLoading && <p role="status" className="py-4 text-sm text-text-muted">Loading your library…</p>}
+      {libraryError && (
+        <div role="alert" className="my-4 flex flex-wrap items-center gap-3 text-sm">
+          <p className="text-danger">Could not load your library. {libraryError}</p>
+          <button type="button" disabled={libraryLoading} onClick={() => refreshLibrary()}
+            className="rounded-md border border-white/15 px-3 py-2 text-text-primary hover:bg-surface-raised disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent">
+            Retry loading
+          </button>
+        </div>
+      )}
+      {(!libraryLoading && !libraryError || movies.length > 0) && <MovieGrid
         movies={movies}
         compact={filters.viewMode === "compact"}
         empty={
@@ -140,7 +150,7 @@ export default function MoviesPage() {
             ? "Nothing on your watchlist yet. Add a movie to get started."
             : "Nothing here yet. Add a movie to get started."
         }
-      />
+      />}
     </AppShell>
   );
 }

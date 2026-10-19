@@ -130,6 +130,7 @@ export default function MovieGrid({
   userHasMovie?: (movieId: string) => boolean;
   compact?: boolean;
 }) {
+  const store = useStore();
   if (movies.length === 0) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center px-6 text-center">
@@ -152,14 +153,17 @@ export default function MovieGrid({
           {showAddToWatchlist && onAddToWatchlist && userHasMovie && !userHasMovie(m.id) && (
             <button
               type="button"
+              disabled={store.isWatchlistSaving(m.id)}
+              aria-label={store.isWatchlistSaving(m.id) ? `Saving ${m.title}` : `Add ${m.title} to watchlist`}
+              aria-busy={store.isWatchlistSaving(m.id)}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddToWatchlist(m.id, m);
               }}
-              className="absolute top-1.5 right-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-accent hover:border-accent"
+              className="absolute top-1.5 right-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-accent hover:border-accent disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent"
               title="Add to your watchlist"
             >
-              +
+              {store.isWatchlistSaving(m.id) ? "…" : "+"}
             </button>
           )}
         </div>

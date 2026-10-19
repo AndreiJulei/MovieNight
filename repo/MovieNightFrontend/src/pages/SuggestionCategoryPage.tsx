@@ -1,15 +1,15 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
 import { usePersonalRecommendations, useFriendsRecommendations, useSuggestionsByCategory } from "../hooks/useSuggestions";
 import { useStore } from "../store/MovieStore";
-import { useToast } from "../components/Toast";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 
 export default function SuggestionCategoryPage() {
   const store = useStore();
-  const { toast } = useToast();
+  const { saveWatchlist } = useWatchlistSave();
   const { path } = useRouter();
   const params = matchPath("/suggestions/:category", path);
   const category = (params?.category || "for-you");
@@ -138,16 +138,7 @@ export default function SuggestionCategoryPage() {
         empty="No titles found for this recommendation category."
         referrerOverride={referrerPath}
         showAddToWatchlist
-        onAddToWatchlist={(movieId) => {
-          const movieObj = sortedMovies.find((sm) => sm.id === movieId);
-          store.addToWatchlist(movieId, movieObj);
-          const m = movieObj || store.movieById(movieId);
-          toast({
-            message: `"${m?.title ?? "Title"}" added to Watchlist`,
-            type: "success",
-            onUndo: () => store.removeFromWatchlist(movieId),
-          });
-        }}
+        onAddToWatchlist={saveWatchlist}
         userHasMovie={userHasMovie}
       />
     </AppShell>

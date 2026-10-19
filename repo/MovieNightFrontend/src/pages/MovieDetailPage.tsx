@@ -1,3 +1,4 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useRouter, useQuery } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -57,7 +58,7 @@ export default function MovieDetailPage() {
       /* ignore */
     }
     return undefined;
-  }, [params?.id, store, transitionData]);
+  }, [params?.id, store.movieById, transitionData]);
 
   const [movie, setMovie] = useState<Movie | undefined>(initialMovie);
   const [isLoadingDetails, setIsLoadingDetails] = useState(!initialMovie);
@@ -78,7 +79,7 @@ export default function MovieDetailPage() {
       setIsLoadingDetails(false);
       store.upsertMovie(initialMovie);
     }
-  }, [initialMovie, store]);
+  }, [initialMovie, store.upsertMovie]);
 
   // Synchronize when store movies or params change
   useEffect(() => {
@@ -103,7 +104,7 @@ export default function MovieDetailPage() {
         setIsLoadingDetails(true);
       }
     }
-  }, [params?.id, store, typeParam, movie, initialMovie]);
+  }, [params?.id, store.movieById, typeParam, initialMovie]);
 
   // Fetch or enrich movie details and friend ratings from backend
   useEffect(() => {
@@ -200,6 +201,17 @@ export default function MovieDetailPage() {
       setIsLoadingDetails(false);
     }
 
+    return () => {
+      active = false;
+    };
+    // Catalog enrichment follows title navigation, not personal-library changes.
+  }, [params?.id, typeParam, store.upsertMovie]);
+
+  useEffect(() => {
+    const movieIdParam = params?.id;
+    if (!movieIdParam) return;
+    let active = true;
+
     // 2. Load friend reviews & ratings
     if (user) {
       const friends = store.friendsOf(user.id);
@@ -245,7 +257,7 @@ export default function MovieDetailPage() {
     return () => {
       active = false;
     };
-  }, [params?.id, movie?.id, movie?.tmdbId, user, store, typeParam]);
+  }, [params?.id, movie?.id, user, store.friendsOf, store.friendRatings, store.entryFor]);
 
   const hasTransition = Boolean(
     transitionData &&
@@ -812,6 +824,8 @@ function ActionArea({
   onBack: () => void;
 }) {
   const store = useStore();
+  const { saveWatchlist, error: saveError } = useWatchlistSave();
+  const saving = store.isWatchlistSaving(movie.id);
   const { toast } = useToast();
   const user = store.currentUser!;
   const entry = store.entryFor(user.id, movie.id);
@@ -826,22 +840,20 @@ function ActionArea({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={() => {
-            store.addToWatchlist(movie.id, movie);
-            toast({
-              message: `"${movie.title}" added to Watchlist`,
-              type: "success",
-              onUndo: () => store.removeFromWatchlist(movie.id),
-            });
-          }}
-          className="rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95"
+          disabled={saving}
+          aria-busy={saving}
+          onClick={() => saveWatchlist(movie.id, movie)}
+          className="rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent"
         >
-          + Add to Watchlist
+          {saving ? "Saving to Watchlist…" : "+ Add to Watchlist"}
         </button>
+
+        {saveError && <p role="alert" className="w-full text-sm text-danger">{saveError}</p>}
 
         {!panelOpen ? (
           <button
             type="button"
+            disabled={saving}
             onClick={() => setPanelOpen(true)}
             className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-all hover:bg-success hover:text-black active:scale-95"
           >
