@@ -1,3 +1,4 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
@@ -5,7 +6,6 @@ import PosterShelf from "../components/PosterShelf";
 import MovieGrid from "../components/MovieGrid";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 import { useStore } from "../store/MovieStore";
-import { useToast } from "../components/Toast";
 import { useExploreMedia } from "../hooks/useSuggestions";
 import type { Movie, MediaType } from "../store/data";
 
@@ -52,7 +52,7 @@ export default function ExploreContentPage() {
   const rowId = matchDetailed?.rowId;
   const config = CONFIG[type] ?? CONFIG.movies;
   const store = useStore();
-  const { toast } = useToast();
+  const { saveWatchlist } = useWatchlistSave();
 
   const backendRows = useExploreMedia(type);
 
@@ -275,16 +275,7 @@ export default function ExploreContentPage() {
           empty="No titles found in this category."
           referrerOverride={`/explore/${type}/${rowId}`}
           showAddToWatchlist
-          onAddToWatchlist={(movieId) => {
-            const movieObj = sortedMovies.find((sm) => sm.id === movieId);
-            store.addToWatchlist(movieId, movieObj);
-            const m = movieObj || store.movieById(movieId);
-            toast({
-              message: `"${m?.title ?? "Title"}" added to Watchlist`,
-              type: "success",
-              onUndo: () => store.removeFromWatchlist(movieId),
-            });
-          }}
+          onAddToWatchlist={saveWatchlist}
           userHasMovie={userHasMovie}
         />
       </AppShell>

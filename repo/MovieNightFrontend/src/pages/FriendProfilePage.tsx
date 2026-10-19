@@ -1,3 +1,4 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -12,6 +13,7 @@ import { useToast } from "../components/Toast";
 
 export default function FriendProfilePage() {
   const store = useStore();
+  const { saveWatchlist } = useWatchlistSave();
   const { toast } = useToast();
   const { path, navigate } = useRouter();
   const params = matchPath("/friends/:id", path);
@@ -191,16 +193,7 @@ export default function FriendProfilePage() {
             empty={`${displayName || "This user"} has nothing on their ${tab} list yet.`}
             referrerOverride={referrerPath}
             showAddToWatchlist
-            onAddToWatchlist={(movieId) => {
-              const movieObj = displayMovies.find((dm) => dm.id === movieId);
-              store.addToWatchlist(movieId, movieObj);
-              const m = movieObj || store.movieById(movieId);
-              toast({
-                message: `"${m?.title ?? "Title"}" added to Watchlist`,
-                type: "success",
-                onUndo: () => store.removeFromWatchlist(movieId),
-              });
-            }}
+            onAddToWatchlist={saveWatchlist}
             userHasMovie={userHasMovie}
           />
         )}

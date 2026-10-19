@@ -90,6 +90,32 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+// Library requests must distinguish rejection from an empty or confirmed result.
+async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: getAuthHeaders(),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Your session could not be verified. Sign in again and retry.");
+      }
+      throw new Error("The server could not confirm the request. Please try again.");
+    }
+    return await res.json() as T;
+  } catch (err) {
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new Error("Confirmation timed out. Reload your library or try again.");
+    }
+    if (err instanceof TypeError) {
+      throw new Error("Could not confirm the request. Check your connection and try again.");
+    }
+    throw err;
+  }
+}
+
 export const moviesApi = {
   /**
    * Live movie search (searches local database first, then TMDB).
@@ -148,17 +174,26 @@ export const moviesApi = {
    * Fetch authenticated user's movie library from the database.
    */
   async getLibrary(status?: "WATCHLIST" | "WATCHED"): Promise<ApiUserMovieEntryResponse[]> {
-    try {
-      const url = status
-        ? `${API_BASE}/api/movies/library?status=${status}`
-        : `${API_BASE}/api/movies/library`;
-      const res = await fetch(url, { headers: getAuthHeaders() });
-      if (!res.ok) return [];
-      return await res.json();
-    } catch (err) {
-      console.warn("Failed to fetch library from backend:", err);
-      return [];
+    const url = status
+      ? `${API_BASE}/api/movies/library?status=${status}`
+      : `${API_BASE}/api/movies/library`;
+    const entries = await libraryRequest<ApiUserMovieEntryResponse[]>(url);
+    if (!Array.isArray(entries)) throw new Error("Could not read your library. Please try again.");
+    return entries;
+  },
+
+  /** Save explicitly; a rejected request never becomes a successful null result. */
+  async saveWatchlist(req: ApiAddMovieRequest): Promise<ApiUserMovieEntryResponse> {
+    const entry = await libraryRequest<ApiUserMovieEntryResponse>(`${API_BASE}/api/movies/library`, {
+      method: "POST",
+      body: JSON.stringify({ ...req, status: "WATCHLIST" }),
+    });
+    if (!entry?.id || !entry.movie?.title ||
+        (entry.movie.tmdbId == null && entry.movie.id == null) ||
+        !["WATCHLIST", "WATCHED"].includes(entry.status)) {
+      throw new Error("Could not confirm the saved entry. Reload your library or try again.");
     }
+    return entry;
   },
 
   /**

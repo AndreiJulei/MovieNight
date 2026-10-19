@@ -1,3 +1,4 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -13,6 +14,8 @@ type PosterMode = "upload" | "url";
 
 export default function AddMoviePage() {
   const store = useStore();
+  const { saveWatchlist, error: saveError } = useWatchlistSave();
+  const [saving, setSaving] = useState(false);
   const { navigate } = useRouter();
 
   const [mode, setMode] = useState<Mode>("search");
@@ -48,7 +51,7 @@ export default function AddMoviePage() {
         const apiResults = await moviesApi.search(query.trim());
         if (apiResults && apiResults.length > 0) {
           const mapped: Movie[] = apiResults.map((m) => ({
-            id: String(m.id ?? m.tmdbId ?? freshId("m")),
+            id: String(m.tmdbId ?? m.id ?? freshId("m")),
             tmdbId: m.tmdbId,
             title: m.title,
             year: m.releaseYear ?? 2020,
@@ -112,10 +115,24 @@ export default function AddMoviePage() {
     }
   };
 
-  const submit = () => {
-    if (!title.trim()) return;
+  const submit = async () => {
+    if (!title.trim() || saving) return;
 
     const parsedYear = Number(year) || new Date().getFullYear();
+    if (target === "watchlist") {
+      setSaving(true);
+      const movie: Movie = {
+        ...selected,
+        id: selected?.id ?? freshId("m"), tmdbId: selected?.tmdbId,
+        title: title.trim(), year: parsedYear, overview: overview.trim(),
+        posterUrl: posterMode === "url" && posterUrl ? posterUrl : selected?.posterUrl ?? null,
+        mediaType: selected?.mediaType ?? "MOVIE",
+      };
+      const saved = await saveWatchlist(movie.id, movie, overview.trim() || undefined);
+      setSaving(false);
+      if (saved) navigate("/movies?status=watchlist");
+      return;
+    }
     store.addMovie({
       tmdbId: selected?.tmdbId,
       title: title.trim(),
@@ -358,11 +375,13 @@ export default function AddMoviePage() {
             <button
               type="button"
               onClick={submit}
-              disabled={!canSubmit}
+              disabled={!canSubmit || saving}
+              aria-busy={saving}
               className="w-full rounded-xl bg-accent py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Add movie
+              {saving ? "Saving to Watchlist…" : "Add movie"}
             </button>
+            {saveError && <p role="alert" className="mt-3 text-sm text-danger">{saveError}</p>}
           </div>
         )}
       </div>

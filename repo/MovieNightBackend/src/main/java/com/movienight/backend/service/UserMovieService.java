@@ -71,7 +71,10 @@ public class UserMovieService {
         if (movie == null && request.getImdbId() != null && !request.getImdbId().isBlank()) {
             movie = movieRepository.findByImdbId(request.getImdbId()).orElse(null);
         }
-        if (movie == null && request.getTitle() != null && !request.getTitle().isBlank()) {
+        // A provider identity takes precedence over matching display metadata.
+        if (movie == null && request.getTmdbId() == null
+                && (request.getImdbId() == null || request.getImdbId().isBlank())
+                && request.getTitle() != null && !request.getTitle().isBlank()) {
             List<Movie> byTitle = movieRepository.findByTitleContainingIgnoreCase(request.getTitle().trim());
             for (Movie m : byTitle) {
                 if (m.getTitle().equalsIgnoreCase(request.getTitle().trim())
@@ -128,12 +131,14 @@ public class UserMovieService {
 
         // Step 2: Create or update the personal journal entry
         Optional<UserMovieEntry> existingEntry = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movie.getId());
-        if (existingEntry.isEmpty() && movie.getTmdbId() != null) {
-            existingEntry = userMovieEntryRepository.findByUserIdAndMovieIdOrTmdbId(user.getId(), movie.getTmdbId());
-        }
         UserMovieEntry entry;
         if (existingEntry.isPresent()) {
             entry = existingEntry.get();
+            // Retrying an add is safe, including when the original response was lost.
+            // Adding to watchlist is not an instruction to undo watched history.
+            if (request.getStatus() == MovieStatus.WATCHLIST) {
+                return mapToResponse(entry);
+            }
             entry.setStatus(request.getStatus());
             if (request.getPersonalRating() != null) {
                 entry.setPersonalRating(request.getPersonalRating());

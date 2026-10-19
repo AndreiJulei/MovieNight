@@ -1,3 +1,4 @@
+import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
@@ -8,6 +9,7 @@ import type { Movie, User } from "../store/data";
 
 export default function HomePage() {
   const store = useStore();
+  const { saveWatchlist } = useWatchlistSave();
   const { navigate } = useRouter();
   const { toast } = useToast();
   const currentUser = store.currentUser;
@@ -159,12 +161,7 @@ export default function HomePage() {
         type: "info",
       });
     } else {
-      store.addToWatchlist(movie.id, movie);
-      toast({
-        message: `"${movie.title}" added to Watchlist`,
-        type: "success",
-        onUndo: () => store.removeFromWatchlist(movie.id),
-      });
+      void saveWatchlist(movie.id, movie);
     }
   };
 
@@ -264,8 +261,10 @@ export default function HomePage() {
                         e.stopPropagation();
                         handleWatchlistToggle(topPersonalized);
                       }}
+                      disabled={store.isWatchlistSaving(topPersonalized.id)}
+                      aria-busy={store.isWatchlistSaving(topPersonalized.id)}
                       title={isMovieInWatchlist(topPersonalized.id) ? "In Watchlist" : "Add to Watchlist"}
-                      aria-label={isMovieInWatchlist(topPersonalized.id) ? "In Watchlist" : "Add to Watchlist"}
+                      aria-label={store.isWatchlistSaving(topPersonalized.id) ? "Saving to Watchlist" : isMovieInWatchlist(topPersonalized.id) ? "In Watchlist" : "Add to Watchlist"}
                       className={`absolute top-1.5 left-1.5 flex h-7 w-7 items-center justify-center rounded-sm text-xs font-bold shadow-md transition-colors ${
                         isMovieInWatchlist(topPersonalized.id)
                           ? "bg-accent text-white"
@@ -457,8 +456,10 @@ export default function HomePage() {
                         e.stopPropagation();
                         handleWatchlistToggle(topFriendMovie);
                       }}
+                      disabled={store.isWatchlistSaving(topFriendMovie.id)}
+                      aria-busy={store.isWatchlistSaving(topFriendMovie.id)}
                       title={isMovieInWatchlist(topFriendMovie.id) ? "In Watchlist" : "Add to Watchlist"}
-                      aria-label={isMovieInWatchlist(topFriendMovie.id) ? "In Watchlist" : "Add to Watchlist"}
+                      aria-label={store.isWatchlistSaving(topFriendMovie.id) ? "Saving to Watchlist" : isMovieInWatchlist(topFriendMovie.id) ? "In Watchlist" : "Add to Watchlist"}
                       className={`absolute top-1.5 left-1.5 flex h-7 w-7 items-center justify-center rounded-sm text-xs font-bold shadow-md transition-colors ${
                         isMovieInWatchlist(topFriendMovie.id)
                           ? "bg-accent text-white"
