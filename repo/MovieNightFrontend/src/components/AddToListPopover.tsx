@@ -9,10 +9,12 @@ interface AddToListPopoverProps {
 }
 
 export default function AddToListPopover({ movie }: AddToListPopoverProps) {
-  const { currentUser, listsFor, createList, toggleMovieInList, listsContainingMovie } =
+  const { currentUser, listsFor, createList, toggleMovieInList, isMovieInList, listsContainingMovie, listsLoading, listsError, listsSaving, refreshLists } =
     useStore();
   const { toast } = useToast();
 
+  const [error, setError] = useState<string | null>(null);
+  const busy = listsLoading || listsSaving;
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
@@ -40,21 +42,27 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
   if (!currentUser) return null;
 
   const userLists = listsFor(currentUser.id);
-  const containingLists = listsContainingMovie(currentUser.id, movie.id);
+  const containingLists = listsContainingMovie(currentUser.id, movie);
   const inAnyList = containingLists.length > 0;
 
-  const handleCreateAndAdd = (e: FormEvent) => {
+  const handleCreateAndAdd = async (e: FormEvent) => {
     e.preventDefault();
     const title = newListTitle.trim();
     if (!title) return;
 
-    const created = createList(title, movie.id);
-    setNewListTitle("");
-    setIsCreating(false);
-    toast({
-      message: `Created "${created.title}" & added "${movie.title}"`,
-      type: "success",
-    });
+    if (busy) return;
+    setError(null);
+    try {
+      const created = await createList(title, movie);
+      setNewListTitle("");
+      setIsCreating(false);
+      toast({
+        message: `Created "${created.title}" & added "${movie.title}"`,
+        type: "success",
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not create this list. Please try again.");
+    }
   };
 
   return (
@@ -115,23 +123,34 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
             )}
           </div>
 
+          {listsLoading && <p role="status" className="p-1 text-sm text-text-muted">Loading your lists…</p>}
+          {(error || listsError) && <p role="alert" className="p-1 text-sm text-red-300">{error || listsError}</p>}
+          <button type="button" disabled={busy} onClick={() => { setError(null); void refreshLists(); }}
+            className="mb-2 px-1 text-sm text-accent underline underline-offset-4 disabled:opacity-40">Reload lists</button>
           {/* Checklist */}
           {userLists.length > 0 ? (
             <div className="max-h-48 space-y-1 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
               {userLists.map((list) => {
-                const inList = list.movieIds.includes(movie.id);
+                const inList = isMovieInList(list.id, movie);
                 return (
                   <button
                     key={list.id}
                     type="button"
-                    onClick={() => {
-                      toggleMovieInList(list.id, movie.id);
-                      toast({
-                        message: inList
-                          ? `Removed "${movie.title}" from ${list.title}`
-                          : `Added "${movie.title}" to ${list.title}`,
-                        type: "info",
-                      });
+                    disabled={busy || !!listsError}
+                    aria-pressed={inList}
+                    onClick={async () => {
+                      setError(null);
+                      try {
+                        await toggleMovieInList(list.id, movie);
+                        toast({
+                          message: inList
+                            ? `Removed "${movie.title}" from ${list.title}`
+                            : `Added "${movie.title}" to ${list.title}`,
+                          type: "info",
+                        });
+                      } catch (error) {
+                        setError(error instanceof Error ? error.message : "Could not save membership. Please try again.");
+                      }
                     }}
                     className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-text-primary transition-colors hover:bg-white/[0.06] group"
                   >
@@ -165,7 +184,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
             </div>
           ) : (
             <p className="px-1 py-1.5 text-xs text-text-muted">
-              No lists created yet.
+              {listsLoading || listsError ? "" : "No lists created yet."}
             </p>
           )}
 
@@ -176,7 +195,8 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
           {!isCreating ? (
             <button
               type="button"
-              onClick={() => setIsCreating(true)}
+              disabled={busy || !!listsError}
+              onClick={() => { setError(null); setIsCreating(true); }}
               className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-accent transition-colors hover:bg-accent/10"
             >
               <span>+</span>
@@ -187,6 +207,10 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
               <input
                 type="text"
                 autoFocus
+                aria-label="New list title"
+                maxLength={150}
+                required
+                disabled={listsSaving}
                 value={newListTitle}
                 onChange={(e) => setNewListTitle(e.target.value)}
                 placeholder="New list title..."
@@ -195,6 +219,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
               <div className="flex items-center justify-end gap-1.5">
                 <button
                   type="button"
+                  disabled={listsSaving}
                   onClick={() => {
                     setIsCreating(false);
                     setNewListTitle("");
@@ -205,10 +230,10 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
                 </button>
                 <button
                   type="submit"
-                  disabled={!newListTitle.trim()}
+                  disabled={!newListTitle.trim() || busy}
                   className="rounded bg-accent px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-all hover:bg-accent/90 disabled:opacity-40"
                 >
-                  Create
+                  {listsSaving ? "Saving…" : "Create"}
                 </button>
               </div>
             </form>

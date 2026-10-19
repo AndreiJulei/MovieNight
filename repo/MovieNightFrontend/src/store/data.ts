@@ -14,6 +14,7 @@ export type User = {
 
 export type Movie = {
   id: string;
+  catalogMovieId?: number;
   tmdbId?: number;
   title: string;
   year: number;
@@ -49,6 +50,7 @@ export type CustomList = {
   userId: string;
   title: string;
   movieIds: string[];
+  catalogMovieIds: Record<string, number>; // Display identity → exact API catalog key
   createdAt: string; // ISO date
 };
 

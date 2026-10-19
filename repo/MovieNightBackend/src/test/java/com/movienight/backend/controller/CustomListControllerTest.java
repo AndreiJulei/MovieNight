@@ -60,7 +60,7 @@ class CustomListControllerTest {
                 .displayName("John Wick")
                 .title("Top Action Movies")
                 .description("My personal top action picks")
-                .isPublic(true)
+                .isPublic(false)
                 .movieCount(1)
                 .entries(List.of(
                         CustomListEntryResponse.builder()
@@ -83,7 +83,7 @@ class CustomListControllerTest {
                 .username("john@example.com")
                 .displayName("John Wick")
                 .title("Top Action Movies")
-                .isPublic(true)
+                .isPublic(false)
                 .movieCount(1)
                 .previewPosterUrls(List.of("https://image.tmdb.org/t/p/w500/matrix.jpg"))
                 .build();
@@ -94,7 +94,7 @@ class CustomListControllerTest {
         CreateCustomListRequest request = CreateCustomListRequest.builder()
                 .title("Top Action Movies")
                 .description("My personal top action picks")
-                .isPublic(true)
+                .isPublic(false)
                 .build();
 
         when(customListService.createList(eq("john@example.com"), any(CreateCustomListRequest.class)))
