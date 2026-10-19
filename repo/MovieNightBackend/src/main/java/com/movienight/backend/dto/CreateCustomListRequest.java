@@ -2,6 +2,7 @@ package com.movienight.backend.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.AssertFalse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,7 @@ public class CreateCustomListRequest {
     private String description;
 
     @Builder.Default
+    @AssertFalse(message = "Custom lists are private; public sharing is unavailable")
     private Boolean isPublic = false;
 
     public boolean isPublic() {

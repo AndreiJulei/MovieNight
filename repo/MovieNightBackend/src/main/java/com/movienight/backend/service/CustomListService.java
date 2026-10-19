@@ -45,24 +45,25 @@ public class CustomListService {
                 .user(user)
                 .title(req.getTitle().trim())
                 .description(req.getDescription() != null ? req.getDescription().trim() : null)
-                .isPublic(req.isPublic())
+                .isPublic(false)
                 .build();
 
         customList = customListRepository.save(customList);
 
         if (req.getInitialMovieIds() != null && !req.getInitialMovieIds().isEmpty()) {
             int pos = 0;
-            for (Long movieId : req.getInitialMovieIds()) {
-                Optional<Movie> movieOpt = movieRepository.findById(movieId);
-                if (movieOpt.isPresent()) {
-                    CustomListEntry entry = CustomListEntry.builder()
-                            .customList(customList)
-                            .movie(movieOpt.get())
-                            .position(pos++)
-                            .build();
-                    customListEntryRepository.save(entry);
-                    customList.getEntries().add(entry);
-                }
+            for (Long movieId : new LinkedHashSet<>(req.getInitialMovieIds())) {
+                if (movieId == null) throw new IllegalArgumentException("Initial movie IDs cannot be null");
+                Movie movie = movieRepository.findById(movieId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Movie not found with ID: " + movieId));
+                requireMovie(movie);
+                CustomListEntry entry = CustomListEntry.builder()
+                        .customList(customList)
+                        .movie(movie)
+                        .position(pos++)
+                        .build();
+                customListEntryRepository.save(entry);
+                customList.getEntries().add(entry);
             }
         }
 
@@ -96,13 +97,11 @@ public class CustomListService {
     }
 
     /**
-     * Retrieve all public custom lists.
+     * Compatibility endpoint: custom lists are owner-only, including legacy public rows.
      */
     @Transactional(readOnly = true)
     public List<CustomListSummaryResponse> getPublicLists() {
-        return customListRepository.findByIsPublicTrueOrderByCreatedAtDesc().stream()
-                .map(this::mapToSummaryResponse)
-                .collect(Collectors.toList());
+        return Collections.emptyList();
     }
 
     /**
@@ -113,10 +112,8 @@ public class CustomListService {
         CustomList list = customListRepository.findById(listId)
                 .orElseThrow(() -> new ResourceNotFoundException("Custom list not found with ID: " + listId));
 
-        if (!list.isPublic()) {
-            if (currentUsername == null || !list.getUser().getUsername().equalsIgnoreCase(currentUsername.trim())) {
-                throw new AccessDeniedException("You do not have permission to view this private list.");
-            }
+        if (currentUsername == null || !list.getUser().getUsername().equalsIgnoreCase(currentUsername.trim())) {
+            throw new AccessDeniedException("You do not have permission to view this private list.");
         }
 
         return mapToResponse(list);
@@ -136,9 +133,7 @@ public class CustomListService {
         if (req.getDescription() != null) {
             list.setDescription(req.getDescription().trim());
         }
-        if (req.getIsPublic() != null) {
-            list.setPublic(req.getIsPublic());
-        }
+        list.setPublic(false);
 
         list = customListRepository.save(list);
 
@@ -187,6 +182,8 @@ public class CustomListService {
 
         Movie movie = movieRepository.findById(req.getMovieId())
                 .orElseThrow(() -> new ResourceNotFoundException("Movie not found with ID: " + req.getMovieId()));
+
+        requireMovie(movie);
 
         Optional<CustomListEntry> existing = customListEntryRepository.findByCustomListIdAndMovieId(listId, movie.getId());
         if (existing.isPresent()) {
@@ -280,6 +277,12 @@ public class CustomListService {
 
     // --- Helper Methods ---
 
+    private void requireMovie(Movie movie) {
+        if (!"MOVIE".equalsIgnoreCase(movie.getMediaType())) {
+            throw new IllegalArgumentException("Custom lists currently support movies; TV and anime support follows later.");
+        }
+    }
+
     private User findUserByUsername(String username) {
         String clean = username != null ? username.trim() : "";
         return userRepository.findByUsername(clean)
@@ -312,7 +315,7 @@ public class CustomListService {
                 .displayName(list.getUser().getDisplayName())
                 .title(list.getTitle())
                 .description(list.getDescription())
-                .isPublic(list.isPublic())
+                .isPublic(false)
                 .movieCount(entryResponses.size())
                 .entries(entryResponses)
                 .createdAt(list.getCreatedAt())
@@ -338,7 +341,7 @@ public class CustomListService {
                 .displayName(list.getUser().getDisplayName())
                 .title(list.getTitle())
                 .description(list.getDescription())
-                .isPublic(list.isPublic())
+                .isPublic(false)
                 .movieCount(count)
                 .previewPosterUrls(previewPosters)
                 .createdAt(list.getCreatedAt())

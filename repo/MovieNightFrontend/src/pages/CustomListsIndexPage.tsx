@@ -6,10 +6,12 @@ import AppShell from "../components/AppShell";
 import type { CustomList, Movie } from "../store/data";
 
 export default function CustomListsIndexPage() {
-  const { currentUser, listsFor, movieById, createList, deleteList } = useStore();
+  const { currentUser, listsFor, movieById, createList, deleteList, listsLoading, listsError, listsSaving, refreshLists } = useStore();
   const { navigate } = useRouter();
   const { toast } = useToast();
 
+  const [error, setError] = useState<string | null>(null);
+  const busy = listsSaving || listsLoading;
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -18,28 +20,40 @@ export default function CustomListsIndexPage() {
 
   const lists = listsFor(currentUser.id);
 
-  const handleCreate = (e: FormEvent) => {
+  const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
 
-    const created = createList(title);
-    setNewTitle("");
-    setIsCreating(false);
-    toast({
-      message: `Created list "${created.title}"`,
-      type: "success",
-    });
+    if (busy) return;
+    setError(null);
+    try {
+      const created = await createList(title);
+      setNewTitle("");
+      setIsCreating(false);
+      toast({
+        message: `Created list "${created.title}"`,
+        type: "success",
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not create this list. Please try again.");
+    }
   };
 
-  const handleDelete = (list: CustomList, e: MouseEvent) => {
+  const handleDelete = async (list: CustomList, e: MouseEvent) => {
     e.stopPropagation();
-    deleteList(list.id);
-    setConfirmDeleteId(null);
-    toast({
-      message: `Deleted list "${list.title}"`,
-      type: "info",
-    });
+    if (busy) return;
+    setError(null);
+    try {
+      await deleteList(list.id);
+      setConfirmDeleteId(null);
+      toast({
+        message: `Deleted list "${list.title}"`,
+        type: "info",
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete this list. Please try again.");
+    }
   };
 
   return (
@@ -58,7 +72,9 @@ export default function CustomListsIndexPage() {
 
           <button
             type="button"
+            disabled={busy || !!listsError}
             onClick={() => {
+              setError(null);
               setIsCreating((v) => !v);
               setNewTitle("");
             }}
@@ -77,6 +93,13 @@ export default function CustomListsIndexPage() {
           <div className="mx-auto mt-5 h-[1px] w-12 bg-accent/40" />
         </div>
 
+        {listsLoading && <p role="status" className="mb-4 text-sm text-text-muted">Loading your lists…</p>}
+        {(error || listsError) && <p role="alert" className="mb-3 text-sm text-red-300">{error || listsError}</p>}
+        <button type="button" disabled={busy} onClick={() => { setError(null); void refreshLists(); }}
+          className="mb-4 text-sm text-accent underline underline-offset-4 disabled:opacity-40">
+          Reload lists
+        </button>
+
         {/* Inline Create Form */}
         {isCreating && (
           <form
@@ -87,6 +110,10 @@ export default function CustomListsIndexPage() {
               <input
                 type="text"
                 autoFocus
+                aria-label="List title"
+                maxLength={150}
+                required
+                disabled={listsSaving}
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="List title (e.g. Comfort Rewatches, Anime to finish...)"
@@ -95,13 +122,14 @@ export default function CustomListsIndexPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  disabled={!newTitle.trim()}
+                  disabled={!newTitle.trim() || busy}
                   className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 disabled:opacity-40"
                 >
-                  Create
+                  {listsSaving ? "Saving…" : "Create"}
                 </button>
                 <button
                   type="button"
+                  disabled={listsSaving}
                   onClick={() => setIsCreating(false)}
                   className="rounded-lg border border-white/10 bg-[#141824] px-3 py-2 text-xs font-medium text-text-muted hover:text-white"
                 >
@@ -113,7 +141,7 @@ export default function CustomListsIndexPage() {
         )}
 
         {/* List of Cards */}
-        {lists.length > 0 ? (
+        {!listsLoading && !listsError && (lists.length > 0 ? (
           <div className="space-y-3.5">
             {lists.map((list) => {
               const sampleMovies = list.movieIds
@@ -221,16 +249,17 @@ export default function CustomListsIndexPage() {
                         <span className="text-text-muted">Delete this list?</span>
                         <button
                           type="button"
+                          disabled={busy}
                           onClick={(e) => handleDelete(list, e)}
                           className="font-bold text-red-400 hover:underline"
                         >
-                          Yes, delete
+                          {listsSaving ? "Saving…" : "Yes, delete"}
                         </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmDeleteId(null);
+                            if (!listsSaving) setConfirmDeleteId(null);
                           }}
                           className="text-text-muted hover:text-white"
                         >
@@ -243,7 +272,7 @@ export default function CustomListsIndexPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setConfirmDeleteId(list.id);
+                          if (!busy) { setError(null); setConfirmDeleteId(list.id); }
                         }}
                         title="Delete list"
                         aria-label={`Delete list ${list.title}`}
@@ -278,7 +307,7 @@ export default function CustomListsIndexPage() {
               Nothing here yet. Create a list to get started.
             </p>
           </div>
-        )}
+        ))}
       </div>
     </AppShell>
   );

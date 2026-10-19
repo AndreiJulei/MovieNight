@@ -9,9 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import { authApi } from "../api/auth";
-import { moviesApi, type ApiUserMovieEntryResponse } from "../api/movies";
+import { moviesApi, type ApiMovieResponse, type ApiUserMovieEntryResponse } from "../api/movies";
 import { friendsApi, type ApiFriendProfile } from "../api/friends";
-import { listsApi } from "../api/lists";
+import { listsApi, type ApiCustomListResponse } from "../api/lists";
 import {
   freshId,
   searchCatalog,
@@ -25,7 +25,6 @@ import {
 } from "./data";
 
 const AUTH_KEY = "movienight.currentUser";
-const CUSTOM_LISTS_KEY = "movienight.customLists";
 
 export type FriendRating = { user: User; rating: number };
 export type Stats = { count: number; avg: number | null };
@@ -80,11 +79,16 @@ type StoreValue = {
   customLists: CustomList[];
   listsFor: (userId: string) => CustomList[];
   listById: (listId: string) => CustomList | undefined;
-  createList: (title: string, initialMovieId?: string) => CustomList;
-  deleteList: (listId: string) => void;
-  toggleMovieInList: (listId: string, movieId: string) => void;
-  isMovieInList: (listId: string, movieId: string) => boolean;
-  listsContainingMovie: (userId: string, movieId: string) => CustomList[];
+  listsLoading: boolean;
+  listsError: string | null;
+  listsSaving: boolean;
+  refreshLists: () => Promise<void>;
+  createList: (title: string, initialMovie?: Movie) => Promise<CustomList>;
+  renameList: (listId: string, title: string) => Promise<CustomList>;
+  deleteList: (listId: string) => Promise<void>;
+  toggleMovieInList: (listId: string, movie: Movie) => Promise<void>;
+  isMovieInList: (listId: string, movie: Movie) => boolean;
+  listsContainingMovie: (userId: string, movie: Movie) => CustomList[];
 
   // mutations
   addMovie: (input: AddMovieInput) => Promise<SaveResult>;
@@ -113,12 +117,25 @@ function pairKey(a: string, b: string) {
   return [a, b].sort().join("|");
 }
 
-function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
-  const m = item.movie;
-  const movieId = String(m.tmdbId ?? m.id);
+// Keep provider identities distinct from catalog-only movies, even when IDs collide.
+function listMovieKey(movie: Movie) {
+  const resource = movie.tmdbId != null ? `tmdb:${movie.tmdbId}` : `catalog:${movie.catalogMovieId ?? movie.id}`;
+  return `${movie.mediaType}:${resource}`;
+}
+
+async function resolveListMovie(movie: Movie) {
+  if (movie.mediaType !== "MOVIE") throw new Error("Custom lists currently support movies. TV and anime support follows later.");
+  if (movie.tmdbId != null) return listsApi.resolveCatalogMovie(movie.tmdbId);
+  if (movie.catalogMovieId) return movie.catalogMovieId;
+  throw new Error("Could not resolve this movie's catalog identity. Reload the movie and try again.");
+}
+
+function fromCatalogResponse(m: ApiMovieResponse): Movie {
+  const movieId = m.tmdbId != null ? String(m.tmdbId) : `catalog-${m.id}`;
   const mediaType = (m.mediaType as MediaType) ?? "MOVIE";
   const movie: Movie = {
     id: movieId,
+    catalogMovieId: m.id,
     tmdbId: m.tmdbId,
     title: m.title,
     year: m.releaseYear ?? new Date().getFullYear(),
@@ -134,6 +151,14 @@ function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
     seasonsCount: m.seasonsCount,
     episodesCount: m.episodesCount,
   };
+  return movie;
+}
+
+function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
+  const m = item.movie;
+  const movie = fromCatalogResponse(m);
+  const movieId = movie.id;
+  const mediaType = movie.mediaType;
   const entry: Entry = {
     id: String(item.id),
     userId,
@@ -154,25 +179,22 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [friendships, setFriendships] = useState<Friendship[]>([]);
 
-  const [customLists, setCustomLists] = useState<CustomList[]>(() => {
-    try {
-      const raw = localStorage.getItem(CUSTOM_LISTS_KEY);
-      if (raw) {
-        return JSON.parse(raw) as CustomList[];
-      }
-    } catch {
-      /* ignore */
-    }
-    return [];
-  });
+  const [customLists, setCustomLists] = useState<CustomList[]>([]);
+  const [listsLoading, setListsLoading] = useState(true);
+  const [listsError, setListsError] = useState<string | null>(null);
+  const [listsSaving, setListsSaving] = useState(false);
+  const listWritePending = useRef(false);
+  const listRevision = useRef(0);
+  const listReadSequence = useRef(0);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(CUSTOM_LISTS_KEY, JSON.stringify(customLists));
-    } catch {
-      /* ignore */
-    }
-  }, [customLists]);
+  const resetLists = useCallback((loading: boolean) => {
+    setCustomLists([]);
+    listReadSequence.current += 1;
+    listWritePending.current = false;
+    setListsSaving(false);
+    setListsError(null);
+    setListsLoading(loading);
+  }, []);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -294,28 +316,6 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // 3. Fetch user's custom lists
-      const backendLists = await listsApi.getUserLists();
-      if (backendLists && backendLists.length > 0) {
-        const fullLists = await Promise.all(
-          backendLists.map((bl) => listsApi.getListById(bl.id))
-        );
-        const validLists = fullLists.filter((l): l is NonNullable<typeof l> => l != null);
-        if (validLists.length > 0) {
-          setCustomLists((prev) => {
-            const mapped: CustomList[] = validLists.map((vl) => ({
-              id: String(vl.id),
-              userId: String(vl.userId),
-              title: vl.title,
-              movieIds: vl.entries.map((e) => String(e.movie.id || e.movie.tmdbId)),
-              createdAt: vl.createdAt,
-            }));
-            const mappedIds = new Set(mapped.map((m) => m.id));
-            const retained = prev.filter((p) => !mappedIds.has(p.id));
-            return [...mapped, ...retained];
-          });
-        }
-      }
     } catch (err) {
       console.warn("Failed to sync library and friends with backend:", err);
     }
@@ -346,13 +346,14 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       activeUser.current = u.id;
       libraryRevision.current += 1;
       setEntries([]);
+      resetLists(true);
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
       localStorage.setItem("movienight_current_user", JSON.stringify(u));
       return { ok: true };
     },
-    [],
+    [resetLists],
   );
 
   const signup = useCallback<StoreValue["signup"]>(
@@ -381,13 +382,14 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         activeUser.current = u.id;
         libraryRevision.current += 1;
         setEntries([]);
+        resetLists(true);
         setCurrentUser(u);
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
         sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
       }
       return { ok: true };
     },
-    [],
+    [resetLists],
   );
 
   const logout = useCallback(() => {
@@ -397,12 +399,14 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     libraryRevision.current += 1;
     refreshSequence.current += 1;
     setEntries([]);
+    resetLists(false);
+    localStorage.removeItem("movienight.customLists");
     setLibraryError(null);
     setCurrentUser(null);
     sessionStorage.removeItem(AUTH_KEY);
     sessionStorage.removeItem("movienight_current_user");
     localStorage.removeItem("movienight_current_user");
-  }, []);
+  }, [resetLists]);
 
   const checkName = useCallback<StoreValue["checkName"]>(
     async (name) => {
@@ -625,7 +629,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     setEntries((prev) => {
       const entry = prev.find((e) => e.id === entryId);
       if (entry) {
-        moviesApi.removeMovie(entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove movie error:", err));
+        moviesApi.removeMovie(entry.catalogMovieId ?? entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove movie error:", err));
       }
       return prev.filter((e) => e.id !== entryId);
     });
@@ -709,7 +713,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
               (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId))))),
         );
         if (entry) {
-          moviesApi.removeMovie(entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove error:", err));
+          moviesApi.removeMovie(entry.catalogMovieId ?? entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove error:", err));
         }
         return prev.filter(
           (e) =>
@@ -813,87 +817,133 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const listById = useCallback(
-    (listId: string) => customLists.find((l) => l.id === listId),
-    [customLists]
+    (listId: string) => customLists.find((l) => l.id === listId && l.userId === currentUser?.id),
+    [customLists, currentUser]
   );
 
-  const createList = useCallback(
-    (title: string, initialMovieId?: string) => {
-      if (!currentUser) throw new Error("Must be logged in to create a list");
-      const localId = freshId("list-");
-      const newList: CustomList = {
-        id: localId,
-        userId: currentUser.id,
-        title: title.trim() || "Untitled List",
-        movieIds: initialMovieId ? [initialMovieId] : [],
-        createdAt: new Date().toISOString(),
-      };
-      setCustomLists((prev) => [newList, ...prev]);
+  const hydrateList = useCallback((response: ApiCustomListResponse): CustomList => {
+    const loaded = response.entries.map((entry) => fromCatalogResponse(entry.movie));
+    setMovies((prev) => {
+      const map = new Map(prev.map((movie) => [movie.id, movie]));
+      for (const movie of loaded) map.set(movie.id, movie);
+      return Array.from(map.values());
+    });
+    return {
+      id: String(response.id), userId: String(response.userId), title: response.title,
+      movieIds: loaded.map((movie) => movie.id),
+      catalogMovieIds: Object.fromEntries(response.entries.map((entry, index) => [listMovieKey(loaded[index]), entry.movie.id!])),
+      createdAt: response.createdAt,
+    };
+  }, []);
 
-      // Sync with backend API
-      const numMovieId = initialMovieId && !isNaN(Number(initialMovieId)) ? [Number(initialMovieId)] : [];
-      listsApi.createList({
-        title: newList.title,
-        isPublic: false,
-        initialMovieIds: numMovieId,
-      }).then((res) => {
-        if (res) {
-          setCustomLists((prev) =>
-            prev.map((l) => (l.id === localId ? { ...l, id: String(res.id) } : l))
-          );
+  const refreshLists = useCallback(async () => {
+    if (!currentUser) return;
+    const userId = currentUser.id;
+    const generation = authGeneration.current;
+    const sequence = ++listReadSequence.current;
+    const active = () => activeUser.current === userId && authGeneration.current === generation && listReadSequence.current === sequence;
+    setListsLoading(true);
+    setListsError(null);
+    try {
+      while (active()) {
+        const revision = listRevision.current;
+        let responses: ApiCustomListResponse[];
+        try {
+          const summaries = await listsApi.getUserLists();
+          if (!active()) return;
+          responses = await Promise.all(summaries.map((list) => listsApi.getListById(list.id)));
+        } catch (error) {
+          if (active() && revision !== listRevision.current) continue;
+          throw error;
         }
-      }).catch((err) => console.warn("Failed to persist custom list to backend:", err));
-
-      return newList;
-    },
-    [currentUser]
-  );
-
-  const deleteList = useCallback((listId: string) => {
-    setCustomLists((prev) => prev.filter((l) => l.id !== listId));
-    if (!isNaN(Number(listId))) {
-      listsApi.deleteList(Number(listId)).catch((err) =>
-        console.warn("Failed to delete list from backend:", err)
-      );
+        if (!active()) return;
+        if (revision !== listRevision.current) continue;
+        if (responses.some((list) => String(list.userId) !== userId)) throw new Error("Could not verify ownership of your lists. Sign in again.");
+        setCustomLists(responses.map(hydrateList));
+        break;
+      }
+    } catch (error) {
+      if (active()) setListsError(error instanceof Error ? error.message : "Could not load your lists. Please try again.");
+    } finally {
+      if (active()) setListsLoading(false);
     }
-  }, []);
+  }, [currentUser, hydrateList]);
 
-  const toggleMovieInList = useCallback((listId: string, movieId: string) => {
-    setCustomLists((prev) =>
-      prev.map((l) => {
-        if (l.id !== listId) return l;
-        const exists = l.movieIds.includes(movieId);
-        const updated = {
-          ...l,
-          movieIds: exists
-            ? l.movieIds.filter((id) => id !== movieId)
-            : [...l.movieIds, movieId],
-        };
+  useEffect(() => {
+    localStorage.removeItem("movienight.customLists");
+    if (currentUser) void refreshLists();
+  }, [currentUser, refreshLists]);
 
-        if (!isNaN(Number(listId)) && !isNaN(Number(movieId))) {
-          if (exists) {
-            listsApi.removeMovieFromList(Number(listId), Number(movieId)).catch(() => {});
-          } else {
-            listsApi.addMovieToList(Number(listId), Number(movieId)).catch(() => {});
-          }
-        }
-        return updated;
-      })
-    );
-  }, []);
+  const runListWrite = useCallback(async (operation: (assertActive: () => void) => Promise<ApiCustomListResponse | void>, deletedId?: string) => {
+    if (!currentUser) throw new Error("Sign in to change your lists.");
+    if (listWritePending.current) throw new Error("A list change is still saving. Please wait.");
+    const userId = currentUser.id;
+    const generation = authGeneration.current;
+    const active = () => activeUser.current === userId && authGeneration.current === generation;
+    listWritePending.current = true;
+    setListsSaving(true);
+    try {
+      const assertActive = () => {
+        if (!active()) throw new Error("Your account changed. Reload your lists before retrying.");
+      };
+      const response = await operation(assertActive);
+      if (!active()) throw new Error("Your account changed. Reload your lists before retrying.");
+      if (response && String(response.userId) !== userId) throw new Error("Could not verify list ownership. Reload your lists.");
+      listRevision.current += 1;
+      const list = response ? hydrateList(response) : undefined;
+      setCustomLists((prev) => list
+        ? [list, ...prev.filter((existing) => existing.id !== list.id)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        : prev.filter((existing) => existing.id !== deletedId));
+      return list;
+    } finally {
+      if (active()) {
+        listWritePending.current = false;
+        setListsSaving(false);
+      }
+    }
+  }, [currentUser, hydrateList]);
+
+  const createList = useCallback<StoreValue["createList"]>(async (title, initialMovie) => {
+    return (await runListWrite(async (assertActive) => {
+      const movieId = initialMovie ? await resolveListMovie(initialMovie) : undefined;
+      assertActive();
+      return listsApi.createList({ title: title.trim(), initialMovieIds: movieId ? [movieId] : [] });
+    }))!;
+  }, [runListWrite]);
+
+  const renameList = useCallback<StoreValue["renameList"]>(async (id, title) => {
+    return (await runListWrite(() => listsApi.updateList(id, { title: title.trim() })))!;
+  }, [runListWrite]);
+
+  const deleteList = useCallback<StoreValue["deleteList"]>(async (id) => {
+    await runListWrite(() => listsApi.deleteList(id), id);
+  }, [runListWrite]);
+
+  const toggleMovieInList = useCallback<StoreValue["toggleMovieInList"]>(async (id, movie) => {
+    const list = customLists.find((list) => list.id === id && list.userId === currentUser?.id);
+    if (!list) throw new Error("This list is unavailable. Reload your lists.");
+    const identity = listMovieKey(movie);
+    const removing = list.catalogMovieIds[identity] != null;
+    await runListWrite(async (assertActive) => {
+      const catalogId = removing ? list.catalogMovieIds[identity] : await resolveListMovie(movie);
+      if (!catalogId) throw new Error("Could not resolve this movie. Reload your lists.");
+      assertActive();
+      return removing ? listsApi.removeMovieFromList(id, catalogId) : listsApi.addMovieToList(id, catalogId);
+    });
+  }, [currentUser, customLists, runListWrite]);
 
   const isMovieInList = useCallback(
-    (listId: string, movieId: string) => {
+    (listId: string, movie: Movie) => {
       const l = customLists.find((c) => c.id === listId);
-      return l ? l.movieIds.includes(movieId) : false;
+      return l ? l.catalogMovieIds[listMovieKey(movie)] != null : false;
     },
     [customLists]
   );
 
   const listsContainingMovie = useCallback(
-    (userId: string, movieId: string) => {
+    (userId: string, movie: Movie) => {
       return customLists.filter(
-        (l) => l.userId === userId && l.movieIds.includes(movieId)
+        (l) => l.userId === userId && l.catalogMovieIds[listMovieKey(movie)] != null
       );
     },
     [customLists]
@@ -919,6 +969,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       listsFor,
       listById,
       createList,
+      renameList,
+      listsLoading,
+      listsError,
+      listsSaving,
+      refreshLists,
       deleteList,
       toggleMovieInList,
       isMovieInList,
@@ -959,6 +1014,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       listsFor,
       listById,
       createList,
+      renameList,
+      listsLoading,
+      listsError,
+      listsSaving,
+      refreshLists,
       deleteList,
       toggleMovieInList,
       isMovieInList,
