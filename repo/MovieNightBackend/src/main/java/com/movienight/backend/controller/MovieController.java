@@ -52,7 +52,7 @@ public class MovieController {
     }
 
     /**
-     * Update a movie's status, personal rating (1-10), notes, or watched date.
+     * Update by catalog movie ID. Ratings are optional, 0-10 in half-point steps.
      */
     @PutMapping("/library/{movieId}")
     public ResponseEntity<UserMovieEntryResponse> updateMovieEntry(

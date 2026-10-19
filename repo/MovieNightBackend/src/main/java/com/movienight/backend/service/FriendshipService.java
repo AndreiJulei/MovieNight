@@ -169,7 +169,7 @@ public class FriendshipService {
 
         OptionalDouble avg = entries.stream()
                 .filter(e -> e.getStatus() == MovieStatus.WATCHED && e.getPersonalRating() != null)
-                .mapToInt(UserMovieEntry::getPersonalRating)
+                .mapToDouble(UserMovieEntry::getPersonalRating)
                 .average();
 
         Double avgRating = avg.isPresent() ? Math.round(avg.getAsDouble() * 10.0) / 10.0 : null;

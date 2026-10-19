@@ -74,7 +74,7 @@ class PersonalizedRecommendationServiceTest {
                 .id(1L)
                 .user(testUser)
                 .movie(inception)
-                .personalRating(9)
+                .personalRating(9.0)
                 .status(MovieStatus.WATCHED)
                 .build();
 

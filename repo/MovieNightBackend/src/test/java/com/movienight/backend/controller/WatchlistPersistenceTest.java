@@ -96,7 +96,7 @@ class WatchlistPersistenceTest {
     @Test
     void duplicateWatchlistAddKeepsWatchedStateRatingAndNotes() throws Exception {
         entries.save(UserMovieEntry.builder().user(owner).movie(movie).status(MovieStatus.WATCHED)
-                .personalRating(8).notes("Keep my note").build());
+                .personalRating(8.0).notes("Keep my note").build());
         save(movie).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("WATCHED"))
                 .andExpect(jsonPath("$.personalRating").value(8)).andExpect(jsonPath("$.notes").value("Keep my note"));
         mvc.perform(get("/api/movies/library").header("Authorization", authorization))

@@ -20,7 +20,7 @@ public class UserMovieEntryResponse {
     private Long id;
     private MovieResponse movie;
     private MovieStatus status;
-    private Integer personalRating;
+    private Double personalRating;
     private String notes;
     private LocalDateTime watchedAt;
     private LocalDateTime createdAt;

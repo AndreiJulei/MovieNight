@@ -1,3 +1,4 @@
+import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "../router";
@@ -16,6 +17,7 @@ export default function AddMoviePage() {
   const store = useStore();
   const { saveWatchlist, error: saveError } = useWatchlistSave();
   const [saving, setSaving] = useState(false);
+  const [watchedError, setWatchedError] = useState<string | null>(null);
   const { navigate } = useRouter();
 
   const [mode, setMode] = useState<Mode>("search");
@@ -26,7 +28,7 @@ export default function AddMoviePage() {
   const [year, setYear] = useState("");
   const [overview, setOverview] = useState("");
   const [target, setTarget] = useState<Status>("watched");
-  const [rating, setRating] = useState<number>(7.0);
+  const [rating, setRating] = useState<number | null>(null);
 
   // manual poster
   const [posterMode, setPosterMode] = useState<PosterMode>("url");
@@ -133,7 +135,9 @@ export default function AddMoviePage() {
       if (saved) navigate("/movies?status=watchlist");
       return;
     }
-    store.addMovie({
+    setSaving(true);
+    setWatchedError(null);
+    const result = await store.addMovie({
       tmdbId: selected?.tmdbId,
       title: title.trim(),
       year: parsedYear,
@@ -151,7 +155,9 @@ export default function AddMoviePage() {
       episodesCount: selected?.episodesCount,
     });
 
-    navigate(target === "watched" ? "/movies" : "/movies?status=watchlist");
+    setSaving(false);
+    if (result.ok) navigate("/movies");
+    else setWatchedError(result.error ?? "Could not confirm the save. Please try again.");
   };
 
   const showFields = mode === "manual" || selected != null;
@@ -240,7 +246,7 @@ export default function AddMoviePage() {
         )}
 
         {showFields && (
-          <div className="mt-8 space-y-6">
+          <fieldset disabled={saving} className="mt-8 space-y-6">
             {selected && (
               <div className="flex items-center gap-3.5 rounded-xl border border-accent/30 bg-accent/10 p-3.5">
                 <div className="h-16 w-11 shrink-0 overflow-hidden rounded-[6px] border border-white/10">
@@ -343,23 +349,7 @@ export default function AddMoviePage() {
 
             {/* Rating — only when Watched */}
             {target === "watched" && (
-              <label className="block rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="nums mb-2 flex items-center justify-between text-sm font-semibold text-text-primary">
-                  <span>Your rating</span>
-                  <span className="rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
-                    {rating.toFixed(1)} / 10
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={rating}
-                  onChange={(e) => setRating(Number(e.target.value))}
-                  className="w-full accent-accent"
-                />
-              </label>
+              <PersonalRatingInput value={rating} onChange={setRating} disabled={saving} />
             )}
 
             <Field label="Description (optional)">
@@ -379,10 +369,10 @@ export default function AddMoviePage() {
               aria-busy={saving}
               className="w-full rounded-xl bg-accent py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {saving ? "Saving to Watchlist…" : "Add movie"}
+              {saving ? "Saving…" : "Add movie"}
             </button>
-            {saveError && <p role="alert" className="mt-3 text-sm text-danger">{saveError}</p>}
-          </div>
+            {(watchedError || saveError) && <p role="alert" className="mt-3 text-sm text-danger">{watchedError || saveError}</p>}
+          </fieldset>
         )}
       </div>
     </AppShell>

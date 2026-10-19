@@ -1,8 +1,12 @@
 package com.movienight.backend.dto;
 
 import com.movienight.backend.model.MovieStatus;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import lombok.AccessLevel;
+import lombok.Setter;
+import com.movienight.backend.validation.PersonalRating;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,7 +20,7 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
+@AllArgsConstructor(onConstructor_ = @JsonCreator(mode = JsonCreator.Mode.DISABLED))
 public class UpdateMovieEntryRequest {
 
     /**
@@ -25,11 +29,20 @@ public class UpdateMovieEntryRequest {
     private MovieStatus status;
 
     /**
-     * Updated personal score (1 to 10).
+     * Updated personal score (0 to 10 in half-point increments).
      */
-    @Min(value = 0, message = "Personal rating must be between 0 and 10")
-    @Max(value = 10, message = "Personal rating must be between 0 and 10")
-    private Integer personalRating;
+    @PersonalRating
+    private Double personalRating;
+
+    @JsonIgnore
+    @Setter(AccessLevel.NONE)
+    private boolean personalRatingPresent;
+
+    @JsonSetter("personalRating")
+    public void setPersonalRating(Double personalRating) {
+        this.personalRating = personalRating;
+        this.personalRatingPresent = true;
+    }
 
     /**
      * User's private notes or thoughts.

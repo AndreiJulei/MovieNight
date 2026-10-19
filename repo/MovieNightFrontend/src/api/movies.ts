@@ -116,6 +116,14 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
   }
 }
 
+function confirmedWatchedEntry(entry: ApiUserMovieEntryResponse, rating: number | null) {
+  if (!entry?.id || !entry.movie?.id || !entry.movie.title || entry.status !== "WATCHED" ||
+      (entry.personalRating ?? null) !== rating) {
+    throw new Error("Could not confirm watched history. Reload your library or try again.");
+  }
+  return entry;
+}
+
 export const moviesApi = {
   /**
    * Live movie search (searches local database first, then TMDB).
@@ -199,23 +207,18 @@ export const moviesApi = {
   /**
    * Add a movie to the authenticated user's library.
    */
-  async addMovie(req: ApiAddMovieRequest): Promise<ApiUserMovieEntryResponse | null> {
-    try {
-      const res = await fetch(`${API_BASE}/api/movies/library`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(req),
-      });
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => "");
-        console.error(`Failed to add movie to library (${res.status}):`, errorText);
-        return null;
-      }
-      return await res.json();
-    } catch (err) {
-      console.error("Failed to add movie to library:", err);
-      return null;
-    }
+  async addMovie(req: ApiAddMovieRequest): Promise<ApiUserMovieEntryResponse> {
+    const entry = await libraryRequest<ApiUserMovieEntryResponse>(`${API_BASE}/api/movies/library`, {
+      method: "POST", body: JSON.stringify(req),
+    });
+    return confirmedWatchedEntry(entry, req.personalRating ?? null);
+  },
+
+  async saveWatchedRating(movieId: number, rating: number | null, notes?: string): Promise<ApiUserMovieEntryResponse> {
+    const entry = await libraryRequest<ApiUserMovieEntryResponse>(`${API_BASE}/api/movies/library/${movieId}`, {
+      method: "PUT", body: JSON.stringify({ status: "WATCHED", personalRating: rating, notes }),
+    });
+    return confirmedWatchedEntry(entry, rating);
   },
 
   /**
