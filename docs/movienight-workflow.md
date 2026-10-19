@@ -96,8 +96,29 @@ of later changes.
 
 ## 5. Integrate and replan
 
-The installed `implement` skill includes a commit; establish the intended branch
-and change range before invoking it. Supply the spec source and fixed base to
+### Human review checkpoint
+
+Before implementation, state the outcome, exclusions, and likely files. Flag
+scope changes as they arise. After implementation and verification, present:
+
+- Every changed file (including additions/deletions), its reason, and related
+  acceptance criteria; group repeated reasons while naming every file.
+- The before/after behavior and a short scenario the human can try.
+- Actual check results, review findings, and remaining limitations.
+- The exact proposed commit scope and commands to inspect the changes.
+
+Use `git diff --stat` and `git diff -- <path>` for tracked unstaged changes;
+include `git status --short --untracked-files=all` so new files are visible.
+New file contents need separate inspection before staging. If staged, inspect
+`git diff --cached --stat` and `git diff --cached`. For committed work, use
+`git show --stat <SHA>` and `git show <SHA> -- <path>`.
+
+Wait for explicit approval of the reviewed change set before committing. If
+the code changes after review, show the updated diff and checks for approval.
+Push and merge require explicit authorization. This project rule overrides
+the installed `implement` skill's automatic commit step.
+
+Supply the spec source and fixed base to
 `code-review`, whose normal comparison covers committed changes. Record any
 review with a different boundary accurately.
 
