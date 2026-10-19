@@ -36,6 +36,7 @@ export type Entry = {
   id: string;
   userId: string;
   movieId: string;
+  catalogMovieId?: number; // API mutations use the catalog primary key
   status: Status;
   rating: number | null; // 0–10
   description: string;

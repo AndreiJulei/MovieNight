@@ -1,3 +1,4 @@
+import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useRouter, useQuery } from "../router";
@@ -528,6 +529,10 @@ export default function MovieDetailPage() {
                 </div>
               )}
 
+              {entry?.status === "watched" && entry.rating == null && (
+                <span className="text-sm text-text-primary">Watched · Unrated</span>
+              )}
+
               {entry?.status === "watchlist" && (
                 <div className="inline-flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/15 px-3 py-1 text-xs font-semibold text-warning">
                   <span>⏱ In Watchlist</span>
@@ -816,225 +821,96 @@ export default function MovieDetailPage() {
   );
 }
 
-function ActionArea({
-  movie,
-  onBack,
-}: {
-  movie: Movie;
-  onBack: () => void;
-}) {
+function ActionArea({ movie, onBack }: { movie: Movie; onBack: () => void }) {
   const store = useStore();
-  const { saveWatchlist, error: saveError } = useWatchlistSave();
-  const saving = store.isWatchlistSaving(movie.id);
+  const { saveWatchlist, error: watchlistError } = useWatchlistSave();
   const { toast } = useToast();
-  const user = store.currentUser!;
-  const entry = store.entryFor(user.id, movie.id);
-  const [rating, setRating] = useState(7.5);
+  const entry = store.entryFor(store.currentUser!.id, movie.id);
+  const [rating, setRating] = useState<number | null>(null);
   const [desc, setDesc] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const saving = submitting || store.isWatchlistSaving(movie.id);
+  const watched = entry?.status === "watched";
 
-  // No entry → Add to Watchlist or Mark as Watched
-  if (!entry) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={saving}
-          aria-busy={saving}
-          onClick={() => saveWatchlist(movie.id, movie)}
-          className="rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          {saving ? "Saving to Watchlist…" : "+ Add to Watchlist"}
-        </button>
+  const openPanel = () => {
+    setRating(entry?.rating ?? null);
+    setDesc(entry?.description ?? "");
+    setError(null);
+    setPanelOpen(true);
+  };
+  const save = async () => {
+    if (saving) return;
+    setSubmitting(true);
+    setError(null);
+    const result = entry
+      ? await store.markWatched(entry.id, rating, watched ? undefined : desc)
+      : await store.addMovie({
+          existingMovieId: movie.id, tmdbId: movie.tmdbId, title: movie.title,
+          year: movie.year, posterUrl: movie.posterUrl, overview: movie.overview,
+          imdb: movie.imdb, rt: movie.rt, status: "watched", rating,
+          description: desc, mediaType: movie.mediaType,
+          seasonsCount: movie.seasonsCount, episodesCount: movie.episodesCount,
+        });
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error ?? "Could not confirm the save. Please try again.");
+      return;
+    }
+    setPanelOpen(false);
+    toast({ message: watched ? "Personal rating saved" : `"${movie.title}" marked as watched`, type: "success" });
+  };
 
-        {saveError && <p role="alert" className="w-full text-sm text-danger">{saveError}</p>}
-
-        {!panelOpen ? (
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => setPanelOpen(true)}
-            className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-all hover:bg-success hover:text-black active:scale-95"
-          >
-            ✓ Mark as Watched
-          </button>
-        ) : (
-          <div className="mt-2 w-full rounded-xl border border-white/15 bg-[#0e1320] p-5 shadow-xl max-w-xl">
-            <label className="block">
-              <div className="nums mb-2 flex items-center justify-between text-sm font-semibold text-text-primary">
-                <span>Rate this movie</span>
-                <span className="rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
-                  {rating.toFixed(1)} / 10
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={10}
-                step={0.5}
-                value={rating}
-                onChange={(e) => setRating(Number(e.target.value))}
-                className="w-full accent-accent"
-              />
-            </label>
-            <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Add your review or notes (optional)"
-              rows={3}
-              className="mt-3.5 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-            />
-            <div className="mt-4 flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  store.addMovie({
-                    existingMovieId: movie.id,
-                    tmdbId: movie.tmdbId,
-                    title: movie.title,
-                    year: movie.year,
-                    posterUrl: movie.posterUrl,
-                    overview: movie.overview,
-                    imdb: movie.imdb,
-                    rt: movie.rt,
-                    status: "watched",
-                    rating,
-                    description: desc,
-                    mediaType: movie.mediaType,
-                    seasonsCount: movie.seasonsCount,
-                    episodesCount: movie.episodesCount,
-                  });
-                  setPanelOpen(false);
-                  toast({
-                    message: `"${movie.title}" marked as watched`,
-                    type: "success",
-                  });
-                }}
-                className="rounded-lg bg-success px-4 py-2 text-xs font-bold text-black transition-all hover:bg-success/90"
-              >
-                Confirm Watched
-              </button>
-              <button
-                type="button"
-                onClick={() => setPanelOpen(false)}
-                className="rounded-lg border border-white/10 bg-[#141824] px-4 py-2 text-xs text-text-muted hover:text-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <AddToListPopover movie={movie} />
-      </div>
-    );
-  }
-
-  // Own watchlist item → Mark as Watched
-  if (entry.status === "watchlist") {
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {!panelOpen ? (
-            <button
-              type="button"
-              onClick={() => setPanelOpen(true)}
-              className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-all hover:bg-success hover:text-black active:scale-95"
-            >
-              ✓ Mark as Watched
-            </button>
-          ) : (
-            <div className="rounded-xl border border-white/15 bg-[#0e1320] p-5 shadow-xl max-w-xl">
-              <label className="block">
-                <div className="nums mb-2 flex items-center justify-between text-sm font-semibold text-text-primary">
-                  <span>Rate this movie</span>
-                  <span className="rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
-                    {rating.toFixed(1)} / 10
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={rating}
-                  onChange={(e) => setRating(Number(e.target.value))}
-                  className="w-full accent-accent"
-                />
-              </label>
-              <textarea
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                placeholder="Add your review or notes (optional)"
-                rows={3}
-                className="mt-3.5 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-              />
-              <div className="mt-4 flex gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    store.markWatched(entry.id, rating, desc);
-                    toast({
-                      message: `"${movie.title}" marked as watched`,
-                      type: "success",
-                    });
-                  }}
-                  className="rounded-lg bg-success px-4 py-2 text-xs font-bold text-black transition-all hover:bg-success/90"
-                >
-                  Confirm Watched
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen(false)}
-                  className="rounded-lg border border-white/10 bg-[#141824] px-4 py-2 text-xs text-text-muted hover:text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          <AddToListPopover movie={movie} />
-        </div>
-
-        <RemoveLink
-          confirm={confirmRemove}
-          setConfirm={setConfirmRemove}
-          title={movie.title}
-          onRemove={() => {
-            store.removeEntry(entry.id);
-            toast({
-              message: `"${movie.title}" removed from library`,
-              type: "info",
-            });
-            onBack();
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Own watched item
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
+        {!entry && (
+          <button type="button" disabled={saving} aria-busy={saving}
+            onClick={() => saveWatchlist(movie.id, movie)}
+            className="rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-accent/90 disabled:cursor-wait disabled:opacity-60">
+            {saving ? "Saving…" : "+ Add to Watchlist"}
+          </button>
+        )}
+        {!panelOpen && (
+          <button type="button" disabled={saving} onClick={openPanel}
+            className="rounded-lg border border-success/40 bg-success/15 px-4 py-2.5 text-xs font-bold text-success transition-colors hover:bg-success hover:text-black disabled:opacity-60">
+            {watched ? "Edit personal rating" : "Mark as Watched"}
+          </button>
+        )}
         <AddToListPopover movie={movie} />
       </div>
-
-      <RemoveLink
-        confirm={confirmRemove}
-        setConfirm={setConfirmRemove}
-        title={movie.title}
-        onRemove={() => {
-          store.removeEntry(entry.id);
-          toast({
-            message: `"${movie.title}" removed from library`,
-            type: "info",
-          });
-          onBack();
-        }}
-      />
+      {watchlistError && <p role="alert" className="text-sm text-danger">{watchlistError}</p>}
+      {panelOpen && (
+        <div className="w-full max-w-xl rounded-xl border border-white/15 bg-surface-popover p-5">
+          <PersonalRatingInput value={rating} onChange={setRating} disabled={saving} />
+          {!watched && (
+            <textarea aria-label="Private notes" value={desc} disabled={saving}
+              onChange={(e) => setDesc(e.target.value)} placeholder="Add your notes (optional)" rows={3}
+              className="mt-3.5 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none" />
+          )}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" onClick={save} disabled={saving} aria-busy={saving}
+              className="rounded-lg bg-success px-4 py-2 text-xs font-bold text-black transition-colors hover:bg-success/90 disabled:cursor-wait disabled:opacity-60">
+              {saving ? "Saving…" : watched ? "Save rating" : "Confirm Watched"}
+            </button>
+            <button type="button" disabled={saving} onClick={() => setPanelOpen(false)}
+              className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-primary hover:bg-white/10 disabled:opacity-60">
+              Cancel
+            </button>
+          </div>
+          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+        </div>
+      )}
+      {entry && !saving && (
+        <RemoveLink confirm={confirmRemove} setConfirm={setConfirmRemove} title={movie.title}
+          onRemove={() => {
+            store.removeEntry(entry.id);
+            toast({ message: `"${movie.title}" removed from library`, type: "info" });
+            onBack();
+          }} />
+      )}
     </div>
   );
 }

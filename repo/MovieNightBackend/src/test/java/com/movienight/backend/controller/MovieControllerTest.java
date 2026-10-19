@@ -125,7 +125,7 @@ class MovieControllerTest {
     void updateMovieEntry_validRequest_returnsOk() throws Exception {
         UpdateMovieEntryRequest request = UpdateMovieEntryRequest.builder()
                 .status(MovieStatus.WATCHED)
-                .personalRating(9)
+                .personalRating(9.0)
                 .notes("Superb movie")
                 .build();
 
@@ -133,7 +133,7 @@ class MovieControllerTest {
                 .id(500L)
                 .movie(sampleEntryResponse.getMovie())
                 .status(MovieStatus.WATCHED)
-                .personalRating(9)
+                .personalRating(9.0)
                 .notes("Superb movie")
                 .build();
 

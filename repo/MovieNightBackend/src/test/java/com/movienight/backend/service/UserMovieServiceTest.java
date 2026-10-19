@@ -65,7 +65,7 @@ class UserMovieServiceTest {
                 .user(sampleUser)
                 .movie(sampleMovie)
                 .status(MovieStatus.WATCHED)
-                .personalRating(9)
+                .personalRating(9.0)
                 .notes("Masterpiece ending")
                 .watchedAt(LocalDateTime.now())
                 .build();
@@ -80,7 +80,7 @@ class UserMovieServiceTest {
 
         assertEquals(1, library.size());
         assertEquals("Inception", library.get(0).getMovie().getTitle());
-        assertEquals(9, library.get(0).getPersonalRating());
+        assertEquals(9.0, library.get(0).getPersonalRating());
         assertEquals(MovieStatus.WATCHED, library.get(0).getStatus());
     }
 
@@ -145,7 +145,7 @@ class UserMovieServiceTest {
     void updateMovieEntry_success() {
         UpdateMovieEntryRequest request = UpdateMovieEntryRequest.builder()
                 .status(MovieStatus.WATCHED)
-                .personalRating(10)
+                .personalRating(10.0)
                 .notes("Rewatched and loved even more")
                 .build();
 
@@ -155,7 +155,7 @@ class UserMovieServiceTest {
 
         UserMovieEntryResponse response = userMovieService.updateMovieEntry("john@example.com", 100L, request);
 
-        assertEquals(10, response.getPersonalRating());
+        assertEquals(10.0, response.getPersonalRating());
         assertEquals("Rewatched and loved even more", response.getNotes());
         verify(userMovieEntryRepository).save(sampleEntry);
     }
@@ -182,7 +182,7 @@ class UserMovieServiceTest {
                 .user(friendUser)
                 .movie(sampleMovie)
                 .status(MovieStatus.WATCHED)
-                .personalRating(8)
+                .personalRating(8.0)
                 .notes("Great sci-fi concept!")
                 .build();
 
@@ -192,7 +192,7 @@ class UserMovieServiceTest {
 
         assertEquals(1, ratings.size());
         assertEquals("SarahConnor", ratings.get(0).getDisplayName());
-        assertEquals(8, ratings.get(0).getPersonalRating());
+        assertEquals(8.0, ratings.get(0).getPersonalRating());
         assertEquals("Great sci-fi concept!", ratings.get(0).getNotes());
     }
 }

@@ -39,7 +39,7 @@ export type AddMovieInput = {
   imdb?: number | null;
   rt?: number | null;
   overview?: string;
-  status: Status;
+  status: "watched";
   rating?: number | null;
   description?: string;
   existingMovieId?: string; // when adding a canonical movie you don't own yet
@@ -47,6 +47,8 @@ export type AddMovieInput = {
   seasonsCount?: number;
   episodesCount?: number;
 };
+
+type SaveResult = { ok: boolean; error?: string; status?: Status };
 
 type StoreValue = {
   currentUser: User | null;
@@ -85,8 +87,8 @@ type StoreValue = {
   listsContainingMovie: (userId: string, movieId: string) => CustomList[];
 
   // mutations
-  addMovie: (input: AddMovieInput) => string; // returns movie id
-  markWatched: (entryId: string, rating: number, description: string) => void;
+  addMovie: (input: AddMovieInput) => Promise<SaveResult>;
+  markWatched: (entryId: string, rating: number | null, description?: string) => Promise<SaveResult>;
   updateDescription: (entryId: string, description: string) => void;
   removeEntry: (entryId: string) => void;
   addToWatchlist: (movieId: string, movieObj?: Movie, notes?: string) => Promise<{ ok: boolean; error?: string; status?: Status }>;
@@ -136,6 +138,7 @@ function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
     id: String(item.id),
     userId,
     movieId,
+    catalogMovieId: m.id,
     status: item.status === "WATCHED" ? "watched" : "watchlist",
     rating: item.personalRating ?? null,
     description: item.notes ?? "",
@@ -199,6 +202,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [pendingWatchlist, setPendingWatchlist] = useState<Set<string>>(new Set());
   const watchlistRequests = useRef(new Map<string, ReturnType<StoreValue["addToWatchlist"]>>());
+  const watchedRequests = useRef(new Map<string, { signature: string; promise: Promise<SaveResult> }>());
   const libraryRevision = useRef(0);
   const authGeneration = useRef(0);
   const refreshSequence = useRef(0);
@@ -530,126 +534,84 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       .slice(0, 8);
   }, []);
 
-  const addMovie = useCallback<StoreValue["addMovie"]>(
-    (input) => {
-      if (!currentUser) return "";
-      const targetTmdbId = input.tmdbId;
-      let targetId = input.existingMovieId || (targetTmdbId ? String(targetTmdbId) : undefined);
-
-      let found = movies.find(
-        (m) =>
-          (targetId && m.id === targetId) ||
-          (targetTmdbId && m.tmdbId === targetTmdbId) ||
-          (m.title.toLowerCase() === input.title.trim().toLowerCase() &&
-            (!input.year || m.year === input.year)),
-      );
-
-      const resolvedId = found?.id || targetId || (targetTmdbId ? String(targetTmdbId) : freshId("m"));
-
-      const movieToSave: Movie = {
-        id: resolvedId,
-        tmdbId: targetTmdbId ?? found?.tmdbId,
-        title: input.title.trim(),
-        year: input.year ?? found?.year ?? new Date().getFullYear(),
-        posterSeed: found?.posterSeed ?? null,
-        posterUrl: input.posterUrl ?? found?.posterUrl ?? null,
-        imdb: input.imdb ?? found?.imdb ?? null,
-        rt: input.rt ?? found?.rt ?? null,
-        overview: input.overview ?? found?.overview ?? "",
-        mediaType: input.mediaType || found?.mediaType || "MOVIE",
-        seasonsCount: input.seasonsCount ?? found?.seasonsCount,
-        episodesCount: input.episodesCount ?? found?.episodesCount,
-      };
-
-      setMovies((prev) => {
-        const idx = prev.findIndex(
-          (m) => m.id === resolvedId || (targetTmdbId && m.tmdbId === targetTmdbId),
-        );
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = { ...prev[idx], ...movieToSave };
-          return next;
+  // All watched/rating writes apply only the server-confirmed entry.
+  const saveWatched = useCallback((target: Movie, rating: number | null,
+    notes?: string, catalogMovieId?: number): Promise<SaveResult> => {
+    if (!currentUser || !authApi.getToken()) {
+      return Promise.resolve({ ok: false, error: "Sign in to save watched history." });
+    }
+    if (rating != null && (!Number.isFinite(rating) || rating < 0 || rating > 10 || !Number.isInteger(rating * 2))) {
+      return Promise.resolve({ ok: false, error: "Choose a rating from 0 to 10 in half-point steps." });
+    }
+    const userId = String(currentUser.id);
+    const generation = authGeneration.current;
+    const key = `${generation}:${userId}:${target.tmdbId ?? target.id}`;
+    const signature = JSON.stringify([rating, notes, catalogMovieId]);
+    const pending = watchedRequests.current.get(key);
+    if (pending) return pending.signature === signature ? pending.promise
+      : Promise.resolve({ ok: false, error: "A save is already pending. Wait and try again." });
+    if (watchlistRequests.current.has(key)) {
+      return Promise.resolve({ ok: false, error: "A watchlist save is pending. Wait and try again." });
+    }
+    setPendingWatchlist((prev) => new Set(prev).add(key));
+    const promise = (async (): Promise<SaveResult> => {
+      try {
+        const response = catalogMovieId != null
+          ? await moviesApi.saveWatchedRating(catalogMovieId, rating, notes)
+          : await moviesApi.addMovie({
+              tmdbId: target.tmdbId, title: target.title, releaseYear: target.year,
+              posterUrl: target.posterUrl ?? undefined, overview: target.overview,
+              imdbRating: target.imdb ?? undefined, rottenTomatoesRating: target.rt ?? undefined,
+              mediaType: target.mediaType, seasonsCount: target.seasonsCount,
+              episodesCount: target.episodesCount, status: "WATCHED", personalRating: rating, notes,
+            });
+        if (activeUser.current !== userId || authGeneration.current !== generation) {
+          return { ok: false, error: "Your account changed. Reload your library to check the save." };
         }
-        return [...prev, movieToSave];
-      });
+        const { movie, entry } = fromLibraryResponse(response, userId);
+        libraryRevision.current += 1;
+        setMovies((prev) => [...prev.filter((m) => m.id !== movie.id && m.id !== target.id), movie]);
+        setEntries((prev) => [...prev.filter((e) => String(e.userId) !== userId ||
+          (e.movieId !== movie.id && e.movieId !== target.id)), entry]);
+        return { ok: true, status: entry.status };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : "Could not confirm the save. Please try again." };
+      } finally {
+        watchedRequests.current.delete(key);
+        setPendingWatchlist((prev) => { const next = new Set(prev); next.delete(key); return next; });
+      }
+    })();
+    watchedRequests.current.set(key, { signature, promise });
+    return promise;
+  }, [currentUser]);
 
-      const existing = entries.find(
-        (e) =>
-          e.userId === currentUser.id &&
-          (e.movieId === resolvedId || (targetTmdbId && e.movieId === String(targetTmdbId))),
-      );
+  const addMovie = useCallback<StoreValue["addMovie"]>((input) => {
+    const movie: Movie = {
+      id: input.existingMovieId ?? String(input.tmdbId ?? freshId("m")),
+      tmdbId: input.tmdbId, title: input.title.trim(),
+      year: input.year ?? new Date().getFullYear(), posterSeed: input.posterSeed,
+      posterUrl: input.posterUrl ?? null, imdb: input.imdb, rt: input.rt,
+      overview: input.overview, mediaType: input.mediaType ?? "MOVIE",
+      seasonsCount: input.seasonsCount, episodesCount: input.episodesCount,
+    };
+    return saveWatched(movie, input.rating ?? null, input.description);
+  }, [saveWatched]);
 
-      const entry: Entry = {
-        id: existing?.id ?? freshId("e"),
-        userId: currentUser.id,
-        movieId: resolvedId,
-        status: input.status,
-        rating: input.status === "watched" ? input.rating ?? null : null,
-        description: input.description ?? "",
-        addedAt: new Date().toISOString(),
-        mediaType: input.mediaType || found?.mediaType || "MOVIE",
-      };
-
-      setEntries((prev) =>
-        existing
-          ? prev.map((e) => (e.id === existing.id ? entry : e))
-          : [...prev, entry],
-      );
-
-      // Async backend call
-      moviesApi
-        .addMovie({
-          tmdbId: input.tmdbId,
-          title: input.title.trim(),
-          releaseYear: input.year,
-          posterUrl: input.posterUrl ?? undefined,
-          overview: input.overview,
-          imdbRating: input.imdb ?? undefined,
-          rottenTomatoesRating: input.rt ?? undefined,
-          mediaType: input.mediaType,
-          seasonsCount: input.seasonsCount,
-          episodesCount: input.episodesCount,
-          status: input.status === "watched" ? "WATCHED" : "WATCHLIST",
-          personalRating: input.rating ? Math.round(input.rating) : undefined,
-          notes: input.description,
-        })
-        .then((res) => {
-          if (res) refreshLibrary();
-        })
-        .catch((err) => console.warn("Background movie save error:", err));
-
-      return resolvedId;
-    },
-    [currentUser, entries, movies, refreshLibrary],
-  );
-
-  const markWatched = useCallback<StoreValue["markWatched"]>(
-    (entryId, rating, description) => {
-      setEntries((prev) => {
-        const entry = prev.find((e) => e.id === entryId);
-        if (entry) {
-          moviesApi.updateEntry(entry.movieId, {
-            status: "WATCHED",
-            personalRating: Math.round(rating),
-            notes: description,
-          }).then(() => refreshLibrary()).catch((err) => console.warn("Update entry error:", err));
-        }
-        return prev.map((e) =>
-          e.id === entryId
-            ? { ...e, status: "watched", rating, description }
-            : e,
-        );
-      });
-    },
-    [refreshLibrary],
-  );
+  const markWatched = useCallback<StoreValue["markWatched"]>((entryId, rating, description) => {
+    const entry = entries.find((e) => e.id === entryId && e.userId === currentUser?.id);
+    const movie = entry && movies.find((m) => m.id === entry.movieId);
+    if (!entry || !movie || entry.catalogMovieId == null) {
+      return Promise.resolve({ ok: false, error: "Reload your library before saving this movie." });
+    }
+    return saveWatched(movie, rating, description, entry.catalogMovieId);
+  }, [currentUser, entries, movies, saveWatched]);
 
   const updateDescription = useCallback<StoreValue["updateDescription"]>(
     (entryId, description) => {
       setEntries((prev) => {
         const entry = prev.find((e) => e.id === entryId);
         if (entry) {
-          moviesApi.updateEntry(entry.movieId, {
+          moviesApi.updateEntry(entry.catalogMovieId ?? entry.movieId, {
             notes: description,
           }).then(() => refreshLibrary()).catch((err) => console.warn("Update note error:", err));
         }
@@ -682,6 +644,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       const tmdbId = targetMovie.tmdbId;
       const generation = authGeneration.current;
       const key = `${generation}:${userId}:${tmdbId ?? movieId}`;
+      if (watchedRequests.current.has(key)) {
+        return Promise.resolve({ ok: false, error: "A watched save is pending. Wait and try again." });
+      }
       const inFlight = watchlistRequests.current.get(key);
       if (inFlight) return inFlight;
       setPendingWatchlist((prev) => new Set(prev).add(key));

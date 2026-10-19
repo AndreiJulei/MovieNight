@@ -78,7 +78,7 @@ class FriendshipServiceTest {
                 .user(friendUser)
                 .movie(Movie.builder().id(50L).title("Terminator").build())
                 .status(MovieStatus.WATCHED)
-                .personalRating(9)
+                .personalRating(9.0)
                 .build();
 
         UserMovieEntry watchlistEntry = UserMovieEntry.builder()

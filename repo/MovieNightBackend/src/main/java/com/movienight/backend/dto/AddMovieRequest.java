@@ -1,8 +1,7 @@
 package com.movienight.backend.dto;
 
 import com.movienight.backend.model.MovieStatus;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import com.movienight.backend.validation.PersonalRating;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -65,9 +64,8 @@ public class AddMovieRequest {
     @NotNull(message = "Movie status is required (WATCHLIST, WATCHED, or DROPPED)")
     private MovieStatus status;
 
-    @Min(value = 0, message = "Personal rating must be between 0 and 10")
-    @Max(value = 10, message = "Personal rating must be between 0 and 10")
-    private Integer personalRating;
+    @PersonalRating
+    private Double personalRating;
 
     private String notes;
 

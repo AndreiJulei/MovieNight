@@ -20,7 +20,7 @@ public class FriendRatingResponse {
     private String username;
     private String displayName;
     private MovieStatus status;
-    private Integer personalRating;
+    private Double personalRating;
     private String notes;
     private LocalDateTime watchedAt;
 }

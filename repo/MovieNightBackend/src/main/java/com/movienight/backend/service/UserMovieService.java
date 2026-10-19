@@ -140,9 +140,7 @@ public class UserMovieService {
                 return mapToResponse(entry);
             }
             entry.setStatus(request.getStatus());
-            if (request.getPersonalRating() != null) {
-                entry.setPersonalRating(request.getPersonalRating());
-            }
+            entry.setPersonalRating(request.getPersonalRating());
             if (request.getNotes() != null) {
                 entry.setNotes(request.getNotes());
             }
@@ -189,17 +187,14 @@ public class UserMovieService {
     public UserMovieEntryResponse updateMovieEntry(String username, Long movieId, UpdateMovieEntryRequest request) {
         User user = findUserByUsername(username);
 
-        Optional<UserMovieEntry> entryOpt = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movieId);
-        if (entryOpt.isEmpty()) {
-            entryOpt = userMovieEntryRepository.findByUserIdAndMovieIdOrTmdbId(user.getId(), movieId);
-        }
-        UserMovieEntry entry = entryOpt
+        // Mutations use the catalog key returned by the library API, never a provider ID.
+        UserMovieEntry entry = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movieId)
                 .orElseThrow(() -> new IllegalArgumentException("Movie entry not found in your library for movie ID: " + movieId));
 
         if (request.getStatus() != null) {
             entry.setStatus(request.getStatus());
         }
-        if (request.getPersonalRating() != null) {
+        if (request.isPersonalRatingPresent() || request.getPersonalRating() != null) {
             entry.setPersonalRating(request.getPersonalRating());
         }
         if (request.getNotes() != null) {
