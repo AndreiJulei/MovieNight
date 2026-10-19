@@ -17,10 +17,17 @@ project exists, its engineering context, and what to do next. MovieNight's
 root `spec.md` defines overall product behavior. A feature spec covers one
 small change with concrete acceptance criteria.
 
-The feature's implementation document records how to build the agreed change
-and links its tickets. Its validation document records what actually happened.
-A proposed check belongs in the plan; a command, result, and observed outcome
-belong in validation. Never describe a proposed test as passed.
+For a small feature, keep the outcome, acceptance criteria, essential decisions,
+and validation in one record. Add a separate plan only when the work needs a
+larger task graph. A proposed check belongs with the approach; an actual command,
+result, and observed outcome belong in validation. Record planned checks as
+not run until executed. Test scripts live with application test tooling.
+
+Local drafts capture decisions before publication. Published feature contracts
+and work status live in GitHub Issues; local feature records then link to that
+contract and retain evidence. Keep the roadmap short and specify each slice
+when selected. The root product spec supplies shared rules across features.
+
 The glossary gives domain words one meaning. An ADR explains a consequential
 choice and its trade-off, such as a future production database choice. Create
 ADRs only when the decision is costly to reverse, surprising without context,
@@ -120,3 +127,10 @@ need a parent spec and several dependent tickets. Split by independently
 demonstrable behavior, not by “database ticket, API ticket, UI ticket.” Replan
 between features rather than expanding an implementation without updating its
 contract. The objective is understandable, verified progress.
+
+This repo's one-record default is a documentation convention chosen to reduce
+repetition. `ask-matt` routes work by its size and uncertainty; it does not
+prescribe file counts. The installed `to-spec` template asks for extensive user
+stories. When requesting concise output, specify that each story or acceptance
+criterion should add a distinct behavior, and use the outcome paragraph instead
+of repeating the same requirements in several forms.

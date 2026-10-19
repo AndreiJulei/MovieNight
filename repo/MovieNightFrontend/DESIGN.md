@@ -30,7 +30,8 @@ spacing:
 # Movie Night Design System
 
 ## Overview
-A personal-use tracker for movies, TV, and anime. The tone is **simple, not clinical** — sophisticated through restraint and consistency, not decorative noise. Every screen belongs to the same app; nothing feels bolted on.
+A tracker for movies, TV, and anime TV intended for public deployment.
+Product behavior and privacy follow the [root specification](../../spec.md). The tone is **simple, not clinical** — sophisticated through restraint and consistency, not decorative noise. Every screen belongs to the same app; nothing feels bolted on.
 
 Three core surfaces with three distinct jobs:
 - **Watched / Watchlist**: Your tracking surface (what you've already engaged with).
@@ -77,7 +78,7 @@ Three core surfaces with three distinct jobs:
 
 ## Do's and Don'ts
 - **DO** keep filters unified in one quiet cluster; do not create separate layout rows or mismatched control styles.
-- **DO** hide empty suggestion or friends rows entirely rather than rendering empty placeholders.
+- **DO** explain missing history or insufficient recommendation coverage and show service errors with recovery actions. Optional decorative shelves may be hidden when empty; preserve required explanatory states.
 - **DO** deduplicate rows (e.g. exclude items already in Newest from Most Popular).
 - **DON'T** invent decorative variations between Movies, TV, and Anime pages; let data differences (e.g. Currently Airing) drive the structure.
 - **DON'T** turn Home into an Explore repeat or a carousel; keep it curated to a single hero and two equal suggestion entry panels.
