@@ -108,9 +108,11 @@ public class MovieCatalogLookupService {
         Optional<Movie> existingMovie = movieRepository.findByTmdbId(tmdbId);
         if (existingMovie.isPresent()) {
             Movie existing = existingMovie.get();
-            if (resolvedHint != null && !resolvedHint.isBlank() && !resolvedHint.equalsIgnoreCase(existing.getMediaType())) {
-                existing.setMediaType(resolvedHint.toUpperCase());
-                return movieRepository.save(existing);
+            // A provider ID alone cannot turn an existing series into a movie.
+            // TV and ANIME describe the same provider resource; MOVIE is distinct.
+            if (resolvedHint != null && !resolvedHint.isBlank()
+                    && "MOVIE".equalsIgnoreCase(resolvedHint) != "MOVIE".equalsIgnoreCase(existing.getMediaType())) {
+                throw new IllegalArgumentException("This provider ID belongs to another media type. Separate movie/TV catalog identities are not available yet.");
             }
             return existing;
         }
