@@ -2,6 +2,10 @@
 
 Issues and specs live in GitHub Issues for `AndreiJulei/MovieNight`.
 Use the `gh` CLI from this clone; it infers the repo from the remote.
+Local feature records may hold unpublished drafts and validation evidence.
+Once published, the GitHub issue governs the feature contract and work status;
+replace the local draft contract with a summary/link and retain evidence locally.
+The root `spec.md` remains the product-wide contract.
 
 ## Conventions
 

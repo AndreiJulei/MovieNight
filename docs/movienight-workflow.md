@@ -1,40 +1,39 @@
-# MovieNight: exact feature workflow
+# MovieNight feature workflow
 
-Read [the explanation](spec-driven-development.md) for the concepts. This guide
-gives the sequence to follow in this repo. Keep `specEg.md` as your personal
-notes and `CONTEXT.md` as the original overview; the agreed product contract
-lives in [../spec.md](../spec.md).
+Use [roadmap.md](../roadmap.md) to select work and [spec.md](../spec.md) for the
+product contract. [The explanation](spec-driven-development.md) covers the
+concepts. Public deployment is part of the initial release; local checks prove
+only their stated boundaries.
 
-The target audience includes users beyond the owner and friends, and the release
-goal is a publicly deployed application. Validate early feature slices locally,
-then complete the production-readiness, staging, and public-release milestones.
-A local feature passing its checks does not by itself establish deployed release
-readiness. Broader app access leaves the agreed data-privacy rules intact.
+## Document responsibilities
 
-## Files and authority
-
-| File | When to read or update it |
+| Document | Purpose |
 | --- | --- |
-| `mission.md` | When deciding whether a feature serves the project |
-| `tech-stack.md` | Before choosing implementation or verification tools |
-| `roadmap.md` | Before choosing a slice and after validating/merging it |
-| `spec.md` | Before feature design; update only for agreed product changes |
-| `GLOSSARY.md` | Before naming domain concepts; update as terms are resolved |
-| `docs/adr/NNNN-<decision>.md` | Only for a consequential resolved trade-off |
-| `docs/features/<slug>/spec.md` | Agreed behavior for the selected feature |
-| `docs/features/<slug>/implementation.md` | Plan, test boundaries, ticket links, progress |
-| `docs/features/<slug>/validation.md` | Actual checks, review findings, results, limitations |
-| `docs/agents/*.md` | Existing tracker, triage-label, and domain conventions |
+| `mission.md` | Audience, purpose, and success |
+| `tech-stack.md` | Engineering context and verification entry points |
+| `roadmap.md` | Short milestones, order, and links to selected work |
+| `spec.md` | Product-wide rules and stable P01–P14 examples |
+| `GLOSSARY.md` and `docs/adr/` | Domain terms and consequential decisions |
+| `docs/features/<slug>/spec.md` | One selected feature: acceptance, essential decisions, and validation |
+| `docs/features/000-baseline/report.md` | Dated baseline evidence |
+| GitHub Issues | Published feature contracts, tickets, status, and dependencies |
 
-Use the three files under `docs/templates/` as starting points for feature
-documents. Replace placeholders; do not publish an unanswered template as ready.
-GitHub issues carry active work status and blocking links. When publishing a
-feature spec, link its repo file and make the agreed issue body match it. If
-behavior changes, update both deliberately; do not maintain divergent contracts.
+Use [the feature template](templates/feature-spec.md) when a slice is selected.
+Leave future features as short roadmap entries. Add a separate implementation
+plan only when a larger task graph needs one. Keep test code with the app's
+test tooling and link it from the feature record.
 
-## Step 0: establish today's baseline
+A local feature draft governs until publication. After publication, GitHub is
+the authority for that feature's acceptance contract and work status; the local
+record links to it and retains implementation/validation evidence. Consolidate
+local acceptance text into the issue when publishing, leaving a summary/link
+in the local record. Change the authoritative contract deliberately when intent
+changes. Existing unpublished feature 001 keeps its local acceptance criteria.
 
-Run these read-only commands at the repo root:
+## 1. Establish the starting point
+
+Read the mission, roadmap, product spec, glossary, and relevant feature record.
+Inventory Git state before editing or branching:
 
 ```sh
 git status --short
@@ -42,136 +41,68 @@ git branch --show-current
 git log -5 --oneline
 ```
 
-The exploration found substantial unfinished working-tree code. Review that
-inventory before branching, committing, or merging. Preserve unrelated work;
-do not reset the tree or sweep every modification into a feature commit.
-Decide which current work to finish or isolate first.
+Protect unrelated changes. Use the existing branch when appropriate or an
+isolated branch/worktree when needed. Run relevant baseline checks from
+[tech-stack.md](../tech-stack.md); record pre-existing failures separately.
+Completion: the base revision, work boundary, and existing failures are known.
 
-Run the checks listed in `tech-stack.md`, if prerequisites are available. Record
-existing failures separately from regressions introduced by the next slice.
-Completion: you know the current branch, unfinished work, and baseline check
-results. A new chat alone does not satisfy this step.
+## 2. Specify one outcome
 
-## Step 1: select one complete slice
+Use `grill-with-docs` for unresolved feature decisions. Write a short outcome,
+stable acceptance IDs, essential decisions, test boundary, and exclusions in
+one feature record. Include failures, duplicate actions, authorization, and
+reload cases where relevant. Agree on the test boundary before implementation.
+Completion: no unanswered question blocks the selected slice.
 
-Start with roadmap milestone 1: a discovered movie can be explicitly saved to
-watchlist, survive reload, and report a failed save honestly.
+For example:
 
-Suggested feature folder: `docs/features/001-reliable-watchlist-save/`.
-The folder is created when that feature interview begins; it is not assumed
-implemented merely because the overall product spec exists.
+> Specify the next watched-history slice. Read the product contract and current
+> code. Keep the outcome small, settle rating edge cases, and record acceptance
+> criteria and the test boundary in one feature record.
 
-Suggested request:
+## 3. Choose the execution size
 
-> Use grill-with-docs to specify reliable watchlist saving. Read the constitution,
-> product spec, and existing code. Keep this slice to explicit add, duplicates,
-> reload persistence, and pending/failed save feedback. Ask about unresolved
-> behavior, propose test boundaries, and write its feature documents.
+For work that fits one session, use `implement` with the agreed behavior. For a
+multi-session build, use `to-spec` to synthesize and publish the contract, then
+`to-tickets` to propose independently verifiable vertical slices and blockers.
+Follow that skill's approval step before publishing the ticket breakdown.
+Work tickets with `implement`, or use `implement-spec` for its orchestration
+workflow. A database/API/UI layer split is usually not an independently usable
+slice.
 
-Completion: the slice has an agreed goal, exclusions, concrete examples, and no
-unanswered question that blocks implementation. For this slice, settle duplicate
-clicks, failure recovery, retry, and the chosen browser/API test boundary.
+Read [tracker conventions](agents/issue-tracker.md) before tracker operations.
+Invoking `to-spec` includes publication; a request for local documentation cleanup
+does not invoke that publishing workflow. Use links for tracker status rather
+than maintaining another status table locally.
+Completion: the next work item has acceptance criteria and genuine blockers.
 
-## Step 2: specify and publish
+## 4. Implement and verify
 
-Create the feature `spec.md` from `docs/templates/feature-spec.md`. Assign stable
-acceptance IDs so the implementation and validation can refer to the same cases.
-Check the test boundaries with the user before building.
+Use the agreed test boundary and the implementation skill's TDD/review flow.
+Preserve unrelated changes. Record only essential implementation decisions and
+scope changes; update the authoritative contract when intent changes.
 
-Suggested request:
+In the feature's validation section, record the date and tested revision, map
+all acceptance IDs to passed/failed/blocked/not run, and give commands, results,
+review findings, and practical limitations. Use the most direct observable
+checks available. Distinguish browser fixtures from real API persistence and
+local checks from deployed behavior. Link scripts/artifacts; avoid run diaries.
+Completion: required checks pass and blocking review findings are resolved.
 
-> Use to-spec with docs/features/001-reliable-watchlist-save/spec.md. Synthesize
-> the agreed decisions, confirm the test boundaries, and publish the feature to
-> AndreiJulei/MovieNight. Add its issue link to the local feature documents.
+The existing [watchlist record](features/001-reliable-watchlist-save/spec.md)
+contains historical local results. Its relocated browser script is linked there.
+Those results are evidence for the recorded worktree, not a fresh certification
+of later changes.
 
-Invoking `to-spec` authorizes its documented publishing workflow. Writing this
-guide has not invoked it or created any issues. Once the feature is specified,
-the published issue receives `ready-for-agent` according to the installed skill.
-Completion: the agreed contract is reachable from the issue and local docs.
+## 5. Integrate and replan
 
-## Step 3: choose one issue or a ticket graph
+The installed `implement` skill includes a commit; establish the intended branch
+and change range before invoking it. Supply the spec source and fixed base to
+`code-review`, whose normal comparison covers committed changes. Record any
+review with a different boundary accurately.
 
-For a small slice, implement its spec issue directly. Use `to-tickets` only when
-the feature needs independently verifiable slices or prerequisite work.
-
-Suggested request for a larger feature:
-
-> Use to-tickets with the spec issue. Propose vertical slices and genuine blocking
-> relationships. Let me review the breakdown before publishing it.
-
-Record issue links and blockers in the feature `implementation.md`. A ticket
-can start when all blockers are resolved. Layers alone are not useful slices.
-Completion: every ticket has an outcome and acceptance criteria; dependencies
-reflect actual constraints.
-
-## Step 4: prepare isolated work
-
-Agree on a clean base commit and a feature branch, or an isolated worktree when
-the current tree contains unrelated work. Record the base SHA in the implementation
-document. Use a short feature branch such as `feat/reliable-watchlist-save`.
-
-For a larger parallel task graph, use `implement-spec` and its integration-branch
-workflow. Keep independent implementers in separate worktrees. For this learning
-project, begin with one slice and one implementer so the process is visible.
-Completion: the intended change range is identifiable and unrelated changes
-are protected.
-
-## Step 5: implement against the contract
-
-Suggested request:
-
-> Use implement with issue #<actual-number>. Use the agreed test boundaries,
-> preserve unrelated work, and record implementation progress and check results
-> in the feature documents.
-
-Use red/green tests where an appropriate behavior boundary exists. A failed-save
-case should prove what the user sees and whether the saved state really exists;
-it should not merely assert the name of an internal function.
-
-The installed `implement` skill includes review and a commit. Therefore resolve
-branch ownership and the change range before invoking it. Update the spec and
-plan explicitly if a new discovery changes scope.
-Completion: acceptance behavior works and relevant engineering checks pass, or
-remaining failures are clearly recorded and prevent calling the feature done.
-
-## Step 6: review and validate
-
-Use an independent review of the committed feature range. The installed
-`code-review` skill compares committed changes using a fixed point; it does not
-cover unrelated uncommitted changes. Supply the base SHA and originating spec:
-
-> Use code-review since <base-SHA>, against the feature spec issue and its local
-> spec. Review standards and specification coverage separately.
-
-Record actual commands and outcomes in `validation.md`. Include backend tests,
-frontend typecheck/build, and the user-flow checks affected by the feature.
-Map every acceptance ID to passed, failed, blocked, or not run. Never mark a
-blocked provider-dependent check as passed.
-
-Fix findings. Repeat checks affected by the fixes. Completion: required criteria
-are met, no blocking review findings remain, and validation is reproducible.
-
-## Step 7: merge and reconcile work tracking
-
-Review the final diff and validation evidence. Prepare a PR when that is the
-chosen merge workflow. Perform merge or publication only within the user's
-authorization. Resolve the issues once their implementation is integrated and
-validated; keep pending work open. Link the commit or PR in validation.
-
-Update `roadmap.md` to reflect verified progress. Completion: the intended
-changes are integrated and the tracker and documents agree about completion.
-
-## Step 8: replan and begin fresh
-
-Check the constitution for changes in vision, constraints, and priority. Decide
-whether the next roadmap slice is still useful. Start a new feature task once
-the required context is captured in files and issues.
-
-Suggested fresh-task context:
-
-> Read mission.md, tech-stack.md, roadmap.md, spec.md, and GLOSSARY.md. The next
-> approved feature is <path/issue>. The base commit is <SHA>. Read its plan and
-> validation evidence; explore current code before making changes.
-
-Do not blindly copy the previous conversation. Carry the agreed intent and
-evidence through document pointers, and interview again where decisions remain.
+Integrate within the user's authorization. Link the PR/integration revision,
+reconcile GitHub work status, and update the roadmap only after validation and
+integration. Reassess the next milestone and start a fresh task at a feature or
+ticket boundary once the necessary context is captured.
+Completion: the integrated revision, evidence, and tracker agree.

@@ -1,4 +1,8 @@
- 
+# Original learning notes
+
+These notes record the original learning questions. Follow the
+[current workflow](docs/movienight-workflow.md) for document layout and execution;
+its feature-size branches replace the rough sequencing and context estimates below.
 
 ## What does the workflow look like
 
@@ -18,8 +22,9 @@ The engeenering team: development and deployment technologies
 Living document, sequence of phases, each implemented with their own feature spec process. - should be in small steps easier to review
  
 
-After Constitution is done we work on each feature with a repeatable process:
-1. Specification: plan the feature -> 2. Implementation: implement it -> 3.Validation: validate the result --- md files for each
+After the constitution, each feature follows specification -> implementation ->
+validation. The current convention keeps these in one feature record; add a
+separate plan only when needed. See [the workflow](docs/movienight-workflow.md).
 
 In between features its time for the REPLANNING PHASE 
 Revise the constitution -> Update kthe roadmap -> and even imporve the process itself

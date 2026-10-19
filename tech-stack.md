@@ -1,7 +1,9 @@
 # MovieNight engineering stack
 
-This records declarations observed in the repo, not verified installed versions
-or successful test results. Consult the manifests when versions change.
+The table records declarations observed in the repo. Actual installed versions
+and check outcomes are recorded separately in the
+[2026-10-13 baseline validation](docs/features/000-baseline/report.md).
+Consult the manifests when versions change.
 
 | Area | Current declaration or implementation | Evidence |
 | --- | --- | --- |
@@ -27,8 +29,11 @@ pnpm build
 
 The frontend has a strict TypeScript configuration. Its build runs Vite and does
 not replace typechecking. No automated frontend test framework or test script
-was found during this exploration. Establish one in a feature spec if browser
-behavior needs automated coverage; record manual checks until then.
+was declared during the baseline audit. Feature 001 subsequently used the
+standalone [watchlist browser checks](repo/MovieNightFrontend/tests/browser/watchlist-save.cjs)
+with an externally installed Playwright module and Chrome. Its
+[feature record](docs/features/001-reliable-watchlist-save/spec.md) documents the
+setup and recorded results; no package test runner was added.
 
 From `repo/MovieNightBackend/`:
 
@@ -42,9 +47,20 @@ For a focused existing test:
 ./mvnw -Dtest=MovieCatalogLookupServiceTest test
 ```
 
-Commands are documented here but have not been run as part of creating these
-documents. Prerequisites and provider credentials must be configured separately;
-never include secret values in specs, tickets, or validation reports.
+Task 0 attempted the frontend checks and full backend suite. pnpm was
+unavailable; the installed TypeScript executable and `npm run build` passed as
+fallbacks. `./mvnw test` failed on
+Mockito JVM attachment; a clean test run with an explicit cached Mockito agent
+passed all 77 tests. See baseline validation for exact commands and versions.
+These workarounds do not verify the declared Node 22 / Java 21 setup.
+
+The current Vite config imports ignored `.figma/make/site.json`, and backend
+local `application.properties` is ignored. A fresh checkout needs explicit
+configuration. The tracked properties example contains credential defaults
+that require cleanup before use as a shareable setup template. Prerequisites
+and provider credentials must be configured separately; never include secret
+values in specs, tickets, or validation reports. Live provider connectivity was
+not verified by the baseline test run.
 
 ## Constraints and decisions still ahead
 

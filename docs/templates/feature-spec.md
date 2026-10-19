@@ -1,20 +1,12 @@
 # <Feature name>
 
-Status: draft / agreed / implemented and validated.
-GitHub spec issue: <link after publication>.
-Product requirements: <relevant IDs from root spec>.
+Status: draft / agreed / locally validated / integrated.
+Roadmap: <milestone>. Product requirements: <P IDs>.
+GitHub issue: <link, or not published>. Base/branch: <SHA and branch>.
 
-## Problem statement
+## Outcome
 
-<The user's concrete problem and current observed behavior.>
-
-## Solution
-
-<The observable result and the boundaries of this slice.>
-
-## User stories
-
-1. As a <user>, I want <behavior>, so that <benefit>.
+<The user's problem and the observable improvement, in a short paragraph.>
 
 ## Acceptance criteria
 
@@ -22,26 +14,26 @@ Product requirements: <relevant IDs from root spec>.
 | --- | --- | --- |
 | AC01 | <Concrete setup and action> | <Observable result> |
 
-Include relevant empty, failure, repeat-action, authorization, and reload cases.
+<Include relevant failure, repeat-action, ownership, and reload cases.>
 
-## Implementation decisions
+## Decisions and test boundary
 
-<Agreed module boundaries, contracts, identity rules, and required schema changes.
-Prefer behavioral descriptions over paths and code snippets that go stale.>
-
-## Testing decisions
-
-<Agreed highest practical test boundary, existing test precedents, controlled
-fixtures, user-flow checks, and why these establish acceptance.>
+<Only decisions needed to implement the behavior: contracts, identity, schema,
+and test boundary. Resolve blocking questions before calling the work ready.>
 
 ## Out of scope
 
-<Explicit exclusions that keep the slice small.>
+<The exclusions needed to keep this slice reviewable.>
 
-## Open questions
+## Validation
 
-<Blocking questions and their owner; resolve before ready-for-agent.>
+<Add actual evidence after execution; planned checks are not passes.>
 
-## Further notes
+| Acceptance ID | Result | Check / evidence |
+| --- | --- | --- |
+| AC01 | <Passed / failed / blocked / not run> | <Observed outcome> |
 
-<Links to glossary, relevant ADRs, research, and evidence.>
+<Run date, tested revision, commands, review findings/resolutions, limitations,
+and integration link. Add a separate plan only for a larger task graph; link
+scripts and artifacts instead of embedding logs. After GitHub publication,
+keep its issue as the behavior authority and use this record for links/evidence.>

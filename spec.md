@@ -4,6 +4,11 @@ Status: agreed product direction, with feature-level design and validation still
 required. This is the overall product contract. It is not a single
 `ready-for-agent` implementation ticket and does not certify the working tree.
 
+Roadmap task 0 checks the existing application and records its baseline; it does
+not replace this contract or settle later feature-level decisions. See the
+[2026-10-13 baseline validation](docs/features/000-baseline/report.md) for
+the audited commit, actual check results, and remaining verification gaps.
+
 ## Problem statement
 
 A person needs one place to organize what they plan to watch and what they have
@@ -19,34 +24,20 @@ application, then follow [roadmap.md](roadmap.md) through production readiness,
 deployment, and public release. Early slices are developed and tested locally;
 the release goal includes deployment. Anime films remain deferred.
 
-## User stories
+## User goals
 
-1. As a user, I want to sign in so that my library belongs to me.
-2. As a user, I want to browse and search titles without changing my library.
-3. As a user, I want to open details with posters and available metadata so I can decide whether a title interests me.
-4. As a user, I want to explicitly add a title to my watchlist and find it there after reloading.
-5. As a user, I want to mark a title watched, including directly from discovery.
-6. As a user, I want a watched title removed from my watchlist automatically so its state is unambiguous.
-7. As a user, I want to leave a watched title unrated or rate it from 0 to 10 in half-points.
-8. As a user, I want zero and fractional ratings to survive saving unchanged.
-9. As a user, I want private notes that other users cannot read.
-10. As a user, I want to create, rename, and delete private custom lists.
-11. As a user, I want a title in several custom lists independently of whether I plan to watch it or have watched it.
-12. As a user, I want to remove a title from a custom list without changing my library status.
-13. As a user, I want to accept a friendship invitation before the other user gains friend access.
-14. As a friend, I want to see an accepted friend's watchlist, watched titles, and ratings without their private notes.
-15. As a user, I want removing a friendship to end friend-only access.
-16. As a user, I want friend suggestions informed by the number of friends who rated a watched title and those ratings.
-17. As a user, I want friend-watchlist suggestions identified separately from rated, watched suggestions.
-18. As a user, I want personal recommendations based on my own watched history.
-19. As a user, I want recommendations to exclude titles already in my library.
-20. As a user, I want a clear explanation when history or provider coverage is insufficient for personalized results.
-21. As a user, I want general discovery identified honestly when offered instead of personalized results.
-22. As a user, I want distinct movie, TV, and anime TV discovery sections.
-23. As a user, I want movie and TV titles with the same provider numeric ID to remain distinct.
-24. As a user, I want service failures distinguished from genuinely empty lists and unsuccessful saves distinguished from confirmed saves.
-25. As a user beyond the owner's friend group, I want to access the deployed application and obtain an account through its supported onboarding process.
-26. As a user, I want my library, ratings, notes, and custom lists retained across application restarts and releases.
+- Sign in and keep a personal watchlist and watched history.
+- Browse/search titles and open details with posters and available metadata
+  without changing personal collections.
+- Deliberately save titles, mark them watched, and retain optional ratings/notes.
+- Create, rename, and delete private custom lists independently of library
+  membership.
+- Accept friendships and share viewing status/ratings while keeping notes private.
+- Discover choices from accepted friends and personal watched history, with
+  sources and limitations explained.
+- Discover movies, TV, and anime TV with distinct catalog identities.
+- Use the publicly deployed app with supported onboarding and data retained
+  across restarts and releases.
 
 ## Product rules
 
@@ -149,20 +140,17 @@ a test for every internal helper.
 
 Typechecking, a production build, and backend tests are necessary engineering
 checks but do not by themselves prove the product stories. Record user-flow
-checks and failures in the feature's validation document. Performance has not
-been measured; no latency target or recommendation-quality score is promised.
+checks and failures in the feature record's validation section. Performance has
+not been measured; no latency target or recommendation-quality score is promised.
 
-## Observed gaps to validate or fix
+## Implementation evidence
 
-The exploration found immediate friendship creation, private notes included in
-friend-library responses, raw provider numeric IDs used across media types,
-half-point ratings rounded and zero sometimes omitted, frontend error responses
-converted to empty/null, and optimistic writes without reliable failure recovery.
-Custom-list operations also risk confusing provider IDs with catalog IDs.
-Recommendation seed and fallback behavior differs between frontend and backend.
-
-These are inspection findings in an unfinished working tree, not a complete
-bug audit. Tests and manual verification must establish their actual impact.
+The [baseline audit](docs/features/000-baseline/report.md) records source gaps
+and checks at the audited commit. Later feature records establish which changes
+were locally validated or integrated; the
+[watchlist slice](docs/features/001-reliable-watchlist-save/spec.md) is locally
+validated with integration pending. Historical gaps are evidence to investigate,
+not exceptions to this contract or a current defect inventory.
 
 ## Further feature-level decisions
 
@@ -179,5 +167,5 @@ policy, supported recovery flow, configuration, and operating requirements.
 
 Public custom-list sharing, anime films, episode-level tracking, webhook
 integrations, new ML training methods, and numeric performance guarantees.
-Existing code may contain these
-capabilities; their presence does not expand the agreed release scope.
+Existing code may contain these capabilities; their presence does not expand
+the agreed release scope.
