@@ -226,7 +226,7 @@ export default function FriendProfilePage() {
       {tab === "watched" && libraryEntries.length > 0 && (
         <ul
           aria-label="Personal ratings"
-          className="mt-4 space-y-2 text-sm text-text-primary"
+          className="nums mt-4 space-y-2 text-sm text-text-primary"
         >
           {libraryEntries.map((entry) => (
             <li key={entry.id}>

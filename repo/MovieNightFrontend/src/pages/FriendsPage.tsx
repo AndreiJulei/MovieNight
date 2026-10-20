@@ -210,7 +210,7 @@ export default function FriendsPage() {
                       @{f.username}
                     </span>
                   </span>
-                  <span className="text-sm text-text-muted">
+                  <span className="nums text-sm text-text-muted">
                     {f.watchedCount} watched · {f.watchlistCount} to watch
                     {f.avgRating != null
                       ? ` · avg ${f.avgRating.toFixed(1)}`
