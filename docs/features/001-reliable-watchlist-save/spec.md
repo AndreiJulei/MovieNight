@@ -1,6 +1,7 @@
 # Reliable watchlist saving
 
-Status: implemented and locally validated; integration pending.
+Status as of 2026-10-21: implementation committed as `9a585ef`, included in local
+`main` at `3fc94fd`. Validation below retains its original date and test boundary.
 GitHub spec issue: none published; local contract for this slice.
 Base: `891b5078416ee754bd1293314e15eeb940884691`.
 Branch: `feat/001-reliable-movie-library`.

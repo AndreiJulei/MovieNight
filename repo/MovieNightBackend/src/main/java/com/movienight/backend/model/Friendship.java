@@ -46,6 +46,10 @@ public class Friendship {
     @JoinColumn(name = "friend_id", nullable = false)
     private User friend;
 
+    // Legacy links have no recorded consent and grant no access.
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean accepted;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

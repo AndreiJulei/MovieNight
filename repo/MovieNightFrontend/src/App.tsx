@@ -9,6 +9,7 @@ import MoviesPage from "./pages/MoviesPage";
 import MovieDetailPage from "./pages/MovieDetailPage";
 import AddMoviePage from "./pages/AddMoviePage";
 import SuggestionsPage from "./pages/SuggestionsPage";
+import FriendSuggestionsPage from "./pages/FriendSuggestionsPage";
 import SuggestionCategoryPage from "./pages/SuggestionCategoryPage";
 import ExploreContentPage from "./pages/ExploreContentPage";
 import FriendsPage from "./pages/FriendsPage";
@@ -40,6 +41,7 @@ function Routes() {
   if (path === "/movies") return <MoviesPage />;
   if (matchPath("/lists/:id", path)) return <CustomListDetailPage />;
   if (path === "/lists") return <CustomListsIndexPage />;
+  if (path === "/suggestions/friends") return <FriendSuggestionsPage />;
   if (matchPath("/suggestions/:category", path)) return <SuggestionCategoryPage />;
   if (path === "/suggestions") return <SuggestionsPage />;
   if (matchPath("/explore/:type/:rowId", path)) return <ExploreContentPage />;
