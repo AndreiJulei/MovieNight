@@ -80,13 +80,15 @@ public interface UserMovieEntryRepository extends JpaRepository<UserMovieEntry, 
         "       (AVG(e.personalRating) * COUNT(DISTINCT e.user.id)) AS consensusScore " +
         "FROM UserMovieEntry e " +
         "WHERE e.user.id IN :friendUserIds " +
+        "  AND (e.movie.mediaType IS NULL OR UPPER(e.movie.mediaType) = 'MOVIE') " +
+        "  AND e.movie.tmdbId IS NOT NULL " +
         "  AND e.status = 'WATCHED' " +
         "  AND e.personalRating IS NOT NULL " +
         "  AND e.movie.id NOT IN (" +
-        "      SELECT myEntry.movie.id FROM UserMovieEntry myEntry WHERE myEntry.user.id = :userId" +
+        "      SELECT myEntry.movie.id FROM UserMovieEntry myEntry WHERE myEntry.user.id = :userId AND myEntry.status IN ('WATCHLIST', 'WATCHED')" +
         "  ) " +
         "GROUP BY e.movie.tmdbId, e.movie.title, e.movie.posterUrl, e.movie.releaseYear, e.movie.imdbRating, e.movie.rottenTomatoesRating " +
-        "ORDER BY (AVG(e.personalRating) * COUNT(DISTINCT e.user.id)) DESC"
+        "ORDER BY (AVG(e.personalRating) * COUNT(DISTINCT e.user.id)) DESC, e.movie.tmdbId ASC"
     )
     List<com.movienight.backend.dto.FriendsConsensusProjection> findFriendsConsensusWatched(
         @org.springframework.data.repository.query.Param("friendUserIds") List<Long> friendUserIds,
@@ -107,12 +109,14 @@ public interface UserMovieEntryRepository extends JpaRepository<UserMovieEntry, 
         "       COUNT(DISTINCT e.user.id) AS friendsCount " +
         "FROM UserMovieEntry e " +
         "WHERE e.user.id IN :friendUserIds " +
+        "  AND (e.movie.mediaType IS NULL OR UPPER(e.movie.mediaType) = 'MOVIE') " +
+        "  AND e.movie.tmdbId IS NOT NULL " +
         "  AND e.status = 'WATCHLIST' " +
         "  AND e.movie.id NOT IN (" +
-        "      SELECT myEntry.movie.id FROM UserMovieEntry myEntry WHERE myEntry.user.id = :userId" +
+        "      SELECT myEntry.movie.id FROM UserMovieEntry myEntry WHERE myEntry.user.id = :userId AND myEntry.status IN ('WATCHLIST', 'WATCHED')" +
         "  ) " +
         "GROUP BY e.movie.tmdbId, e.movie.title, e.movie.posterUrl, e.movie.releaseYear, e.movie.imdbRating, e.movie.rottenTomatoesRating " +
-        "ORDER BY COUNT(DISTINCT e.user.id) DESC"
+        "ORDER BY COUNT(DISTINCT e.user.id) DESC, e.movie.tmdbId ASC"
     )
     List<com.movienight.backend.dto.FriendsWatchlistProjection> findFriendsWatchlistMovies(
         @org.springframework.data.repository.query.Param("friendUserIds") List<Long> friendUserIds,

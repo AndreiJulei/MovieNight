@@ -67,7 +67,7 @@ class SuggestionServiceTest {
     }
 
     @Test
-    @DisplayName("getSuggestions should return 5 discovery rows and exclude user's own movies")
+    @DisplayName("getSuggestions should return 6 discovery rows and exclude user's own movies")
     void testGetSuggestions() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
         when(userMovieEntryRepository.findTmdbIdsByUserId(1L)).thenReturn(Set.of(100L));
@@ -112,7 +112,7 @@ class SuggestionServiceTest {
         SuggestionsResponse response = suggestionService.getSuggestions("john@example.com");
 
         assertThat(response).isNotNull();
-        assertThat(response.getCategories()).hasSize(5);
+        assertThat(response.getCategories()).hasSize(6);
 
         // Check for-you category
         assertThat(response.getCategories().get(0).getId()).isEqualTo("for-you");

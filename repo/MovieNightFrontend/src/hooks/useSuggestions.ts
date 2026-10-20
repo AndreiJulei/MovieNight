@@ -168,76 +168,6 @@ export function usePersonalRecommendations(): SuggestionRow[] {
 }
 
 /**
- * Dedicated Friends' Recommendations hook for /suggestions/friends.
- */
-export function useFriendsRecommendations(): SuggestionRow {
-  const store = useStore();
-  const [backendFriends, setBackendFriends] = useState<ApiSuggestionsResponse | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    moviesApi.getFriendsRecommendations().then((res) => {
-      if (active && res) {
-        setBackendFriends(res);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [store.currentUser]);
-
-  return useMemo(() => {
-    const user = store.currentUser;
-    if (!user) {
-      return { id: "friends", title: "Friends' Recommendations", movies: [] };
-    }
-
-    if (backendFriends && backendFriends.categories && backendFriends.categories.length > 0) {
-      const friendsCat = backendFriends.categories.find((c) => c.id === "friends") || backendFriends.categories[0];
-      if (friendsCat && friendsCat.movies && friendsCat.movies.length > 0) {
-        return {
-          id: "friends",
-          title: "Friends' Recommendations",
-          movies: friendsCat.movies.map((m) => mapApiMovie(m, store)),
-        };
-      }
-    }
-
-    // Local fallback: friends' high ratings (>= 7) and watchlists
-    const myMovieIds = new Set<string>();
-    for (const e of store.entriesFor(user.id, "watched")) myMovieIds.add(e.movieId);
-    for (const e of store.entriesFor(user.id, "watchlist")) myMovieIds.add(e.movieId);
-
-    const friends = store.friendsOf(user.id);
-    const friendIds = new Set(friends.map((f) => f.id));
-    const allEntries = store.allEntries();
-
-    const scoreMap = new Map<string, number>();
-
-    for (const e of allEntries) {
-      if (friendIds.has(e.userId) && !myMovieIds.has(e.movieId)) {
-        if (e.status === "watched" && e.rating != null && e.rating >= 7) {
-          scoreMap.set(e.movieId, Math.max(scoreMap.get(e.movieId) ?? 0, e.rating));
-        } else if (e.status === "watchlist" && !scoreMap.has(e.movieId)) {
-          scoreMap.set(e.movieId, 6.5);
-        }
-      }
-    }
-
-    const movies = [...scoreMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([id]) => store.movieById(id))
-      .filter((m): m is Movie => m != null);
-
-    return {
-      id: "friends",
-      title: "Friends' Recommendations",
-      movies,
-    };
-  }, [backendFriends, store]);
-}
-
-/**
  * Explore catalog hook for /explore/:type pages.
  */
 export function useExploreMedia(mediaType: "movies" | "tv" | "anime"): SuggestionRow[] {
@@ -330,21 +260,6 @@ export function useSuggestions(): SuggestionRow[] {
       .map(([id]) => store.movieById(id))
       .filter((m): m is Movie => m != null);
 
-    // 2. Friends' Recommendations
-    const friendWatchlistIds = new Set<string>();
-    for (const e of allEntries) {
-      if (
-        friendIds.has(e.userId) &&
-        e.status === "watchlist" &&
-        !myMovieIds.has(e.movieId)
-      ) {
-        friendWatchlistIds.add(e.movieId);
-      }
-    }
-    const friendsSuggestions = [...friendWatchlistIds]
-      .map((id) => store.movieById(id))
-      .filter((m): m is Movie => m != null);
-
     return [
       {
         id: "for-you",
@@ -354,7 +269,7 @@ export function useSuggestions(): SuggestionRow[] {
       {
         id: "friends",
         title: "Friends' Recommendations",
-        movies: friendsSuggestions,
+        movies: [],
       },
       {
         id: "popular",
@@ -389,7 +304,7 @@ export function useSuggestionsByCategory(category: string): { title: string; mov
   return { title: "Recommendations", movies: [] };
 }
 
-function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
+export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
   const existing = store.movieById(String(m.tmdbId));
   return {
     id: String(m.tmdbId),

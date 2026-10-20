@@ -1,3 +1,5 @@
+import useFriendSuggestions from "../hooks/useFriendSuggestions";
+import { mapApiMovie } from "../hooks/useSuggestions";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
@@ -85,71 +87,12 @@ export default function HomePage() {
     };
   }, [store, currentUser]);
 
-  // 2. Compute Friends' recommendations
-  const { friendsMovies, topFriendMovie, sampleFriends, friendContributors } = useMemo(() => {
-    if (!currentUser) {
-      return {
-        friendsMovies: [],
-        topFriendMovie: null,
-        sampleFriends: [],
-        friendContributors: [],
-      };
-    }
-
-    const myMovieIds = new Set<string>();
-    for (const e of store.entriesFor(currentUser.id, "watched")) myMovieIds.add(e.movieId);
-    for (const e of store.entriesFor(currentUser.id, "watchlist")) myMovieIds.add(e.movieId);
-
-    const friends = store.friendsOf(currentUser.id);
-    const friendMap = new Map(friends.map((f) => [f.id, f]));
-    const allEntries = store.allEntries();
-
-    const watchlistCounts = new Map<string, User[]>();
-    for (const e of allEntries) {
-      if (
-        friendMap.has(e.userId) &&
-        e.status === "watchlist" &&
-        !myMovieIds.has(e.movieId)
-      ) {
-        const list = watchlistCounts.get(e.movieId) ?? [];
-        list.push(friendMap.get(e.userId)!);
-        watchlistCounts.set(e.movieId, list);
-      }
-    }
-
-    let ranked = [...watchlistCounts.entries()]
-      .map(([movieId, friendsList]) => ({
-        movie: store.movieById(movieId),
-        friendsList,
-      }))
-      .filter((r): r is { movie: Movie; friendsList: User[] } => r.movie != null)
-      .sort((a, b) => b.friendsList.length - a.friendsList.length || (b.movie.imdb ?? 0) - (a.movie.imdb ?? 0));
-
-    const rankedMovies = ranked.map((r) => r.movie);
-    const seenIds = new Set(rankedMovies.map((m) => m.id));
-    const extras = store.movies
-      .filter((m) => !myMovieIds.has(m.id) && !seenIds.has(m.id))
-      .sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
-
-    let fullList = [...rankedMovies, ...extras];
-
-    // Avoid exact duplicate top pick if personalized already picked it
-    let topIndex = 0;
-    if (fullList[0] && topPersonalized && fullList[0].id === topPersonalized.id && fullList.length > 1) {
-      topIndex = 1;
-    }
-
-    const top = fullList[topIndex] ?? fullList[0] ?? store.movies[1] ?? store.movies[0];
-    const sample = fullList.filter((m) => m.id !== top.id).slice(0, 6);
-    const topContributors = ranked.find((r) => r.movie.id === top?.id)?.friendsList ?? [];
-
-    return {
-      friendsMovies: fullList,
-      topFriendMovie: top ?? null,
-      sampleFriends: sample,
-      friendContributors: topContributors,
-    };
-  }, [store, currentUser, topPersonalized]);
+  // Friend choices come only from the accepted-friend API, in its source order.
+  const friendSuggestions = useFriendSuggestions();
+  const friendItems = friendSuggestions.data?.categories.flatMap((category) => category.movies) ?? [];
+  const friendsMovies = friendItems.map((item) => mapApiMovie(item, store));
+  const topFriendMovie = friendsMovies[0] ?? null;
+  const sampleFriends = friendsMovies.slice(1, 7);
 
   const handleWatchlistToggle = (movie: Movie) => {
     if (!currentUser) return;
@@ -420,6 +363,15 @@ export default function HomePage() {
         )}
 
         {/* ── Section 2: Friends Recommendations ── */}
+        {!topFriendMovie && (
+          <section aria-label="Friend suggestions" className="rounded-xl border border-white/[0.08] bg-surface p-6">
+            <h2 className="text-xl font-semibold text-text-primary">Friend suggestions</h2>
+            {friendSuggestions.loading ? <p role="status" className="mt-2 text-sm text-text-muted">Loading friend suggestions…</p> :
+              friendSuggestions.error ? <p role="alert" className="mt-2 text-sm text-danger">{friendSuggestions.error}</p> :
+              <p className="mt-2 text-sm text-text-muted">No eligible movies from accepted friends yet. Accept a friendship or return after friends add ratings or watchlist plans.</p>}
+            <Link to="/suggestions/friends" className="mt-4 inline-block text-sm text-accent hover:underline">View friend suggestions</Link>
+          </section>
+        )}
         {topFriendMovie && (
           <section className="space-y-4">
             <div className="rounded-xl border border-white/[0.08] bg-[#0b1019] overflow-hidden shadow-2xl">
@@ -542,33 +494,17 @@ export default function HomePage() {
                   <div>
                     {/* Clean Heading without redundant kicker tags */}
                     <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                      Friends Recommendations
+                      Friend suggestions
                     </h3>
 
                     {/* Richer descriptive text */}
                     <p className="mt-3 text-sm text-text-muted leading-relaxed">
-                      Most appreciated movies seen by your friends that you have not seen, pulled straight from what your circle rated highly and added to their personal watchlists.
+                      Movies from accepted friends, ranked by supplied watched ratings, with watchlist plans presented separately on the suggestions page.
                     </p>
 
-                    {/* Friend contributors indicator */}
-                    {friendContributors.length > 0 && (
-                      <div className="mt-3 flex items-center gap-2 text-xs text-text-muted">
-                        <div className="flex -space-x-1 overflow-hidden">
-                          {friendContributors.map((f) => (
-                            <span
-                              key={f.id}
-                              className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-[9px] font-bold text-accent border border-[#0b1019]"
-                              title={f.displayName}
-                            >
-                              {f.displayName.charAt(0)}
-                            </span>
-                          ))}
-                        </div>
-                        <span className="text-[11px]">
-                          On {friendContributors.map((f) => f.displayName).join(", ")}'s watchlist
-                        </span>
-                      </div>
-                    )}
+                    <p className="nums mt-3 text-sm text-text-primary">
+                      {friendItems[0]?.reason}{friendItems[0]?.score != null ? ` · Score ${friendItems[0].score}` : ""}
+                    </p>
 
                     {/* Thin hairline divider separating description from preview */}
                     <div className="my-6 h-px w-full bg-white/[0.08]" />
