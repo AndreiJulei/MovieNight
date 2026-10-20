@@ -85,6 +85,8 @@ public class SecurityConfig {
                 // Stateless REST API
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Friend-only data must precede the broad public catalog matcher.
+                        .requestMatchers("/api/movies/*/friends-ratings").authenticated()
                         // Public endpoints
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/webhooks/incoming/**").permitAll()

@@ -148,8 +148,9 @@ not been measured; no latency target or recommendation-quality score is promised
 The [baseline audit](docs/features/000-baseline/report.md) records source gaps
 and checks at the audited commit. Later feature records establish which changes
 were locally validated or integrated; the
-[watchlist slice](docs/features/001-reliable-watchlist-save/spec.md) is locally
-validated with integration pending. Historical gaps are evidence to investigate,
+[watchlist slice](docs/features/001-reliable-watchlist-save/spec.md) is included
+in local `main` at `3fc94fd`. See [roadmap.md](roadmap.md) for current work.
+Historical gaps are evidence to investigate,
 not exceptions to this contract or a current defect inventory.
 
 ## Further feature-level decisions

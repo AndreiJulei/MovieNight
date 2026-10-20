@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * Data transfer object showing how a specific friend rated and reviewed a movie.
+ * Data transfer object showing how a specific friend rated a movie.
  */
 @Data
 @Builder
@@ -21,6 +21,5 @@ public class FriendRatingResponse {
     private String displayName;
     private MovieStatus status;
     private Double personalRating;
-    private String notes;
     private LocalDateTime watchedAt;
 }

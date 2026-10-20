@@ -60,43 +60,8 @@ public class SuggestionService {
                         .build())
                 .collect(Collectors.toList());
 
-        // 2. Friends' Recommendations ("friends")
-        List<Long> friendIds = friendshipRepository.findAllFriendIdsForUser(userId);
-        List<SuggestionMovieItem> friendsMovies = new ArrayList<>();
-
-        if (!friendIds.isEmpty()) {
-            List<FriendsConsensusProjection> consensusList = userMovieEntryRepository.findFriendsConsensusWatched(friendIds, userId);
-            for (FriendsConsensusProjection p : consensusList) {
-                if (p.getTmdbId() != null && !userLibraryTmdbIds.contains(p.getTmdbId())) {
-                    friendsMovies.add(SuggestionMovieItem.builder()
-                            .tmdbId(p.getTmdbId())
-                            .title(p.getTitle())
-                            .posterUrl(p.getPosterUrl())
-                            .releaseYear(p.getReleaseYear())
-                            .imdbRating(p.getImdbRating())
-                            .rottenTomatoesRating(p.getRottenTomatoesRating())
-                            .score(p.getAvgRating())
-                            .reason(String.format("Rated %.1f★ by %d friend%s", p.getAvgRating(), p.getFriendsCount(), p.getFriendsCount() > 1 ? "s" : ""))
-                            .build());
-                }
-            }
-
-            List<FriendsWatchlistProjection> watchlistList = userMovieEntryRepository.findFriendsWatchlistMovies(friendIds, userId);
-            Set<Long> alreadyAdded = friendsMovies.stream().map(SuggestionMovieItem::getTmdbId).collect(Collectors.toSet());
-            for (FriendsWatchlistProjection w : watchlistList) {
-                if (w.getTmdbId() != null && !userLibraryTmdbIds.contains(w.getTmdbId()) && !alreadyAdded.contains(w.getTmdbId())) {
-                    friendsMovies.add(SuggestionMovieItem.builder()
-                            .tmdbId(w.getTmdbId())
-                            .title(w.getTitle())
-                            .posterUrl(w.getPosterUrl())
-                            .releaseYear(w.getReleaseYear())
-                            .imdbRating(w.getImdbRating())
-                            .rottenTomatoesRating(w.getRottenTomatoesRating())
-                            .reason(String.format("On %d friend%s watchlist", w.getFriendsCount(), w.getFriendsCount() > 1 ? "s'" : "'s"))
-                            .build());
-                }
-            }
-        }
+        // 2. Use the same accepted-friend sources as the dedicated endpoint.
+        List<SuggestionCategoryResponse> friendCategories = friendCategories(userId);
 
         // 3. Most Popular ("popular")
         List<SuggestionMovieItem> popularMovies = getCachedCategoryMovies("MOVIE", MovieListType.POPULAR, userLibraryTmdbIds);
@@ -111,33 +76,16 @@ public class SuggestionService {
             forYouMovies = popularMovies.stream().limit(10).collect(Collectors.toList());
         }
 
-        List<SuggestionCategoryResponse> categories = List.of(
-                SuggestionCategoryResponse.builder()
-                        .id("for-you")
-                        .title("Personal Recommendations")
-                        .movies(forYouMovies)
-                        .build(),
-                SuggestionCategoryResponse.builder()
-                        .id("friends")
-                        .title("Friends' Recommendations")
-                        .movies(friendsMovies)
-                        .build(),
-                SuggestionCategoryResponse.builder()
-                        .id("popular")
-                        .title("Most Popular")
-                        .movies(popularMovies)
-                        .build(),
-                SuggestionCategoryResponse.builder()
-                        .id("recent")
-                        .title("Most Recent")
-                        .movies(recentMovies)
-                        .build(),
-                SuggestionCategoryResponse.builder()
-                        .id("upcoming")
-                        .title("Upcoming & Releases")
-                        .movies(upcomingMovies)
-                        .build()
-        );
+        List<SuggestionCategoryResponse> categories = new ArrayList<>();
+        categories.add(SuggestionCategoryResponse.builder().id("for-you")
+                .title("Personal Recommendations").movies(forYouMovies).build());
+        categories.addAll(friendCategories);
+        categories.add(SuggestionCategoryResponse.builder().id("popular")
+                .title("Most Popular").movies(popularMovies).build());
+        categories.add(SuggestionCategoryResponse.builder().id("recent")
+                .title("Most Recent").movies(recentMovies).build());
+        categories.add(SuggestionCategoryResponse.builder().id("upcoming")
+                .title("Upcoming & Releases").movies(upcomingMovies).build());
 
         return SuggestionsResponse.builder()
                 .categories(categories)
@@ -227,56 +175,38 @@ public class SuggestionService {
      */
     @Transactional
     public SuggestionsResponse getFriendsRecommendations(String username) {
-        User user = findUser(username);
+        return SuggestionsResponse.builder().categories(friendCategories(findUser(username).getId())).build();
+    }
 
-        Long userId = user.getId();
-        Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findTmdbIdsByUserId(userId);
-        List<Long> friendIds = friendshipRepository.findAllFriendIdsForUser(userId);
-        List<SuggestionMovieItem> friendsMovies = new ArrayList<>();
-
+    private List<SuggestionCategoryResponse> friendCategories(Long userId) {
+        List<Long> friendIds = friendshipRepository.findAcceptedFriendIdsForUser(userId);
+        List<SuggestionMovieItem> rated = new ArrayList<>();
+        List<SuggestionMovieItem> watchlist = new ArrayList<>();
         if (!friendIds.isEmpty()) {
-            List<FriendsConsensusProjection> consensusList = userMovieEntryRepository.findFriendsConsensusWatched(friendIds, userId);
-            for (FriendsConsensusProjection p : consensusList) {
-                if (p.getTmdbId() != null && !userLibraryTmdbIds.contains(p.getTmdbId())) {
-                    friendsMovies.add(SuggestionMovieItem.builder()
-                            .tmdbId(p.getTmdbId())
-                            .title(p.getTitle())
-                            .posterUrl(p.getPosterUrl())
-                            .releaseYear(p.getReleaseYear())
-                            .imdbRating(p.getImdbRating())
-                            .rottenTomatoesRating(p.getRottenTomatoesRating())
-                            .score(p.getAvgRating())
-                            .reason(String.format("Rated %.1f★ by %d friend%s", p.getAvgRating(), p.getFriendsCount(), p.getFriendsCount() > 1 ? "s" : ""))
-                            .build());
-                }
+            for (FriendsConsensusProjection p : userMovieEntryRepository.findFriendsConsensusWatched(friendIds, userId)) {
+                rated.add(SuggestionMovieItem.builder()
+                        .tmdbId(p.getTmdbId()).title(p.getTitle()).posterUrl(p.getPosterUrl())
+                        .releaseYear(p.getReleaseYear()).imdbRating(p.getImdbRating())
+                        .rottenTomatoesRating(p.getRottenTomatoesRating()).mediaType("MOVIE")
+                        .score(p.getConsensusScore())
+                        .reason(String.format(Locale.ROOT, "Average %.1f/10 × %d friend%s", p.getAvgRating(), p.getFriendsCount(), p.getFriendsCount() == 1 ? "" : "s"))
+                        .build());
             }
-
-            List<FriendsWatchlistProjection> watchlistList = userMovieEntryRepository.findFriendsWatchlistMovies(friendIds, userId);
-            Set<Long> alreadyAdded = friendsMovies.stream().map(SuggestionMovieItem::getTmdbId).collect(Collectors.toSet());
-            for (FriendsWatchlistProjection w : watchlistList) {
-                if (w.getTmdbId() != null && !userLibraryTmdbIds.contains(w.getTmdbId()) && !alreadyAdded.contains(w.getTmdbId())) {
-                    friendsMovies.add(SuggestionMovieItem.builder()
-                            .tmdbId(w.getTmdbId())
-                            .title(w.getTitle())
-                            .posterUrl(w.getPosterUrl())
-                            .releaseYear(w.getReleaseYear())
-                            .imdbRating(w.getImdbRating())
-                            .rottenTomatoesRating(w.getRottenTomatoesRating())
-                            .reason(String.format("On %d friend%s watchlist", w.getFriendsCount(), w.getFriendsCount() > 1 ? "s'" : "'s"))
+            Set<Long> ratedIds = rated.stream().map(SuggestionMovieItem::getTmdbId).collect(Collectors.toSet());
+            for (FriendsWatchlistProjection w : userMovieEntryRepository.findFriendsWatchlistMovies(friendIds, userId)) {
+                if (!ratedIds.contains(w.getTmdbId())) {
+                    watchlist.add(SuggestionMovieItem.builder()
+                            .tmdbId(w.getTmdbId()).title(w.getTitle()).posterUrl(w.getPosterUrl())
+                            .releaseYear(w.getReleaseYear()).imdbRating(w.getImdbRating())
+                            .rottenTomatoesRating(w.getRottenTomatoesRating()).mediaType("MOVIE")
+                            .reason(String.format(Locale.ROOT, "On %d friend%s watchlist%s", w.getFriendsCount(), w.getFriendsCount() == 1 ? "’s" : "s’", w.getFriendsCount() == 1 ? "" : "s"))
                             .build());
                 }
             }
         }
-
-        return SuggestionsResponse.builder()
-                .categories(List.of(
-                        SuggestionCategoryResponse.builder()
-                                .id("friends")
-                                .title("Friends' Recommendations")
-                                .movies(friendsMovies)
-                                .build()
-                ))
-                .build();
+        return List.of(
+                SuggestionCategoryResponse.builder().id("friends").title("Rated by friends").movies(rated).build(),
+                SuggestionCategoryResponse.builder().id("friends-watchlist").title("On friends’ watchlists").movies(watchlist).build());
     }
 
     /**
