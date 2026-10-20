@@ -3,8 +3,9 @@
 Unpublished local contract for roadmap milestone 4; product P06, P07, P12.
 Original feature base: `3fc94fd941b5b94f1499c7cb125855fc11e32d72`.
 Existing implementation commit: `b94cb818e0033fc61e5d2621f5497068a0e39fe5`.
-Current review branch: `feat/004-accepted-friendships-privacy-review`.
-Stop before committing the new review changes.
+Review fix committed as `75597e5`. Both commits are present on
+`feat/005-friend-suggestions`, ahead of local `main` at `3fc94fd`
+(checked 2026-10-21). Review checkpoints below are historical.
 GitHub issue list (all states, 2026-10-19) returned no issues.
 
 ## Outcome and scope

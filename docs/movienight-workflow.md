@@ -62,6 +62,13 @@ For example:
 
 ## 3. Choose the execution size
 
+Optimize total token use with one bounded feature or ticket per fresh session.
+Provide the outcome, acceptance IDs, exclusions, fixed base, relevant paths, and
+check commands through links to existing records. Load historical evidence and
+unrelated code only when needed. Use one implementer by default; delegate required
+reviews and bounded investigations. Use parallel implementation when its benefit
+justifies the additional context and coordination.
+
 For work that fits one session, use `implement` with the agreed behavior. For a
 multi-session build, use `to-spec` to synthesize and publish the contract, then
 `to-tickets` to propose independently verifiable vertical slices and blockers.
@@ -81,6 +88,10 @@ Completion: the next work item has acceptance criteria and genuine blockers.
 Use the agreed test boundary and the implementation skill's TDD/review flow.
 Preserve unrelated changes. Record only essential implementation decisions and
 scope changes; update the authoritative contract when intent changes.
+Reuse existing authenticated API tests and browser fixtures. Keep reproducible
+setup/check commands in the relevant tooling or engineering record. Run focused
+checks during changes and required full checks at completion; repeat broad checks
+when subsequent edits, failures, or unresolved concerns justify them.
 
 In the feature's validation section, record the date and tested revision, map
 all acceptance IDs to passed/failed/blocked/not run, and give commands, results,
