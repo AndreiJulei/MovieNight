@@ -1,8 +1,9 @@
 # Private custom lists
 
 Status: implementation committed as `b36ae89` and merged into `main` at
-`3fc94fd`. Revalidation and record correction are awaiting human review on
-`feat/003-private-custom-lists-review`; no commit made in that review session.
+`3fc94fd`. Revalidation and record correction were subsequently committed in
+`b94cb81`, present on `feat/005-friend-suggestions` but ahead of local `main`
+(checked 2026-10-21). Review checkpoints below are historical.
 No GitHub issue published (tracker rechecked on 2026-10-19).
 Roadmap: milestone 3. Product requirements: P05, P06, P12.
 Base: `5a9b2c9` on `main`; branch: `feat/003-private-custom-lists`.

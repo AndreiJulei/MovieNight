@@ -1,6 +1,9 @@
 # Friend suggestions
 
 Status: agreed unpublished local contract. Roadmap milestone 5; product P08/P09.
+Implementation committed as `b9f6b96` on the branch below, ahead of local `main`
+at `3fc94fd` (checked 2026-10-21). Validation and review checkpoints below describe
+the original uncommitted worktree; they are not fresh validation of this commit.
 Base: `75597e585ad45939ebb4b07adf2a344482a6b7b5`.
 Branch: `feat/005-friend-suggestions`. No open GitHub issues on 2026-10-20.
 
@@ -8,7 +11,8 @@ Branch: `feat/005-friend-suggestions`. No open GitHub issues on 2026-10-20.
 
 Show movie choices from accepted friends, ranked by their supplied watched
 ratings, with watchlist suggestions in a separate section. Preserve the existing
-visual system. No commit, push, merge, publication, or deployment is authorized.
+visual system. The original implementation session excluded commit, push, merge,
+publication, and deployment; subsequent Git state is recorded above.
 
 ## Acceptance
 

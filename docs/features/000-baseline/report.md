@@ -1,6 +1,7 @@
 # MovieNight baseline audit
 
-Date: 2026-10-13, Europe/Bucharest. Status: audit recorded; integration pending.
+Date: 2026-10-13, Europe/Bucharest. Audit committed as `a775f3c`, included in
+local `main` at `3fc94fd` (ancestry checked 2026-10-21). Findings below are historical.
 Audited commit: `891b5078416ee754bd1293314e15eeb940884691` on `main`.
 Product contract: [root spec](../../../spec.md). No GitHub issue was published.
 

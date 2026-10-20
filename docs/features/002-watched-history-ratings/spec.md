@@ -3,7 +3,8 @@
 Local feature contract; no GitHub issue published. Product: P03, P04, P12.
 Base: `0f35ba9cb57721c9ed57f8510b200bdc8d777680` on
 `feat/001-reliable-movie-library`.
-Status: implemented locally; awaiting human review, uncommitted.
+Status as of 2026-10-21: implementation committed as `5a9b2c9`, included in local
+`main` at `3fc94fd`. The review and validation below describe the historical worktree.
 
 ## Outcome and scope
 
