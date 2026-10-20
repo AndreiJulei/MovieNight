@@ -764,6 +764,10 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       if (!active()) return { ok: false, error: "Account changed. Reload friends." };
       return reloaded ? { ok: true } : { ok: true, warning: "Change saved, but friends could not reload. Use Reload friends before another action." };
     } catch (error) {
+      // The mutation invalidated any pending read. Recover server state even
+      // after a failed or uncertain write so loading and retry stay usable.
+      if (active()) await refreshFriends();
+      if (!active()) return { ok: false, error: "Account changed. Reload friends." };
       return { ok: false, error: error instanceof Error ? error.message : "Could not confirm the change. Retry." };
     } finally {
       if (active()) { friendWritePending.current = false; setFriendsSaving(false); }

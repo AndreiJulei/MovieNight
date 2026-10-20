@@ -1,8 +1,10 @@
 # Accepted friendships and privacy
 
 Unpublished local contract for roadmap milestone 4; product P06, P07, P12.
-Base: `3fc94fd941b5b94f1499c7cb125855fc11e32d72`.
-Branch: `feat/004-accepted-friendships-privacy`. Stop before committing.
+Original feature base: `3fc94fd941b5b94f1499c7cb125855fc11e32d72`.
+Existing implementation commit: `b94cb818e0033fc61e5d2621f5497068a0e39fe5`.
+Current review branch: `feat/004-accepted-friendships-privacy-review`.
+Stop before committing the new review changes.
 GitHub issue list (all states, 2026-10-19) returned no issues.
 
 ## Outcome and scope
@@ -50,7 +52,13 @@ No new automated browser tests. UI behavior requires human review; API tests
 do not establish browser outcomes or live provider connectivity. Run strict TypeScript, production build, focused
 checks during implementation, and the full backend test suite at the end.
 
-## Validation and human review — 2026-10-19
+## Historical validation and human review — 2026-10-19
+
+The following records the earlier working-tree review. At the start of the
+2026-10-20 session, Git was clean and commit `b94cb81` already contained these
+changes, including the feature-003 document edit described below as excluded.
+The historical statements about uncommitted work and proposed scope do not
+describe the current Git state. See the fresh review checkpoint at the end.
 
 Tested the uncommitted working tree against base
 `3fc94fd941b5b94f1499c7cb125855fc11e32d72` on
@@ -225,3 +233,125 @@ git diff -- docs/features/003-private-custom-lists/spec.md
 
 Wait for explicit approval of this reviewed feature change set before committing,
 per [the project human-review checkpoint](../../movienight-workflow.md).
+
+## Fresh human-review checkpoint — 2026-10-20
+
+Starting revision: `b94cb818e0033fc61e5d2621f5497068a0e39fe5`, clean working
+tree. Created `feat/004-accepted-friendships-privacy-review` from that revision.
+The user confirmed retaining this contract and the API-only automated test seam.
+No new domain decision was needed: the existing glossary's definition of Friend
+already requires acceptance. No glossary or ADR changes were made.
+
+### Outcome and exact new change set
+
+The feature already existed in the starting commit. This session fixes one
+review finding and reconciles the evidence with the actual Git state. Only
+these two tracked files are proposed for a new commit; no additions/deletions,
+unrelated working-tree changes, staging, commits, push, merge, or deployment:
+
+| File | Reason / acceptance |
+| --- | --- |
+| `repo/MovieNightFrontend/src/store/MovieStore.tsx` | Refresh server state after failed/uncertain friendship writes, retaining account guards, so invalidated reads cannot leave loading and Reload stuck (AC06). |
+| `docs/features/004-accepted-friendships-privacy/spec.md` | Identify the existing feature commit and new branch; distinguish historical evidence from this validation and record the complete new review scope. |
+
+The earlier 24-file inventory describes the original feature delta against
+`3fc94fd`, not new uncommitted work. Commit `b94cb81` also includes the unrelated
+feature-003 record. That historical inclusion is reported, not rewritten.
+Recommendations, onboarding, deployment, migrations, and the visual system
+remain outside this follow-up's scope.
+
+Before this fix: sending an invitation during an initial friend load invalidated
+that read. If the write failed, neither the invalidated read nor the write cleared
+loading, leaving Reload disabled. After: a failed write starts a fresh authorized
+read, which settles loading on success or failure. The original write still
+returns failure, preserves input, and makes no success claim. A timeout likewise
+refreshes actual state before allowing another attempt; this can add up to the
+existing 15-second read timeout. Account changes discard obsolete results.
+
+### Actual validation
+
+Validated the uncommitted two-file change against `b94cb81` on 2026-10-20:
+
+| Check | Result |
+| --- | --- |
+| Focused real JWT/HTTP/H2 feature suite, clean compile | 6 tests passed, 0 failures/errors/skipped. |
+| Full backend suite after recovery fix | 105 tests passed, 0 failures/errors/skipped. |
+| Strict frontend TypeScript | Passed before and after the fix. |
+| Production frontend build | Passed before and after the fix. |
+| Whitespace diff check | Passed. |
+| Browser failure/retry/account-change scenarios | Not run; API-only automated seam reconfirmed. Recovery fix verified by source trace, typecheck and build, not a browser regression test. |
+
+The first focused run failed during application-context startup with
+`ClassFormatError: Invalid method Code length 0` for `CustomListEntry` in existing
+compiled output. A clean compile resolved it without source changes; it was
+not an assertion failure. No new tests or new TDD red/green claim in this session.
+
+Commands actually run from the respective app directories:
+
+```sh
+# repo/MovieNightBackend
+./mvnw -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar -Dtest=AcceptedFriendshipsPersistenceTest test
+./mvnw -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar -Dtest=AcceptedFriendshipsPersistenceTest clean test
+./mvnw -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar test
+# repo/MovieNightFrontend
+./node_modules/.bin/tsc --noEmit
+npm run build
+# repository root
+git diff --check
+```
+
+Logs: `/tmp/movienight-004-review-focused.log` (clean rerun replaced the initial
+failure log), `/tmp/movienight-004-review-full.log`, and
+`/tmp/movienight-004-review-build.log`. Node 25.3.0, Java 25, npm and the cached
+Mockito agent were used; declared Node 22/Java 21/pnpm were not validated.
+Existing Vite native-config warnings remain. Earlier limitations on browser
+outcomes, legacy consent reset, live providers, restart retention, deployment
+and production migration still apply.
+
+### Acceptance and behavior demonstration
+
+AC01–AC05 passed at the existing API boundary in the six-test clean rerun.
+AC06 remains partial: backend failures preserve consent state; UI recovery is
+implemented and statically reviewed, with browser validation outstanding.
+The earlier acceptance table's detailed coverage limits still apply, including
+the absence of a dedicated populated pending-suggestions assertion.
+
+The executed lifecycle test performs independent authenticated API reads:
+
+| Action | Observed assertion |
+| --- | --- |
+| Alice invites Bob | 201; both accepted-friend lists empty; pending pair recovered. |
+| Read library/profile while pending | 403. |
+| Bob explicitly accepts Alice | 200; both friend lists include the other account. |
+| Read accepted friend's library/ratings | Zero, unrated and 7.5 preserved; notes key absent; owner notes retained; private list denied. |
+| Remove accepted friendship | 200; future library/profile reads 403; ratings and populated suggestions exclude the account. |
+
+Human scenario for the new recovery fix: throttle initial Friends reads, send an
+invitation, and reject its POST. Let the subsequent GETs finish or fail. Loading
+must settle, the write failure must remain visible, input must remain, and Reload
+must become available. Repeat with an account change during recovery; the old
+response must not repopulate friends. This scenario was not executed here.
+
+### Independent review and inspection
+
+Code-review used separate read-only Standards and Spec agents against
+`git diff 3fc94fd..b94cb81` for the original feature, then a Spec recheck of the
+new working-tree fix. Standards: no findings. Spec: one loading/retry defect
+identified and addressed by the recovery refresh described above. Independent
+Spec recheck confirmed the fix and found no new blocking issues; browser behavior
+remains unverified.
+
+Inspect the exact new proposed commit scope:
+
+```sh
+git branch --show-current
+git status --short --untracked-files=all
+git diff --stat
+git diff -- repo/MovieNightFrontend/src/store/MovieStore.tsx docs/features/004-accepted-friendships-privacy/spec.md
+# Review the already-existing feature separately:
+git show --stat b94cb81
+git diff 3fc94fd..b94cb81 -- repo/MovieNightBackend repo/MovieNightFrontend docs/features/004-accepted-friendships-privacy/spec.md
+git show b94cb81 -- docs/features/003-private-custom-lists/spec.md
+```
+
+Stop here for explicit approval of this two-file change set before committing.
