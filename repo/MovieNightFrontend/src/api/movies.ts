@@ -316,16 +316,25 @@ export const moviesApi = {
   /**
    * Fetch friends' recommendations.
    */
-  async getFriendsRecommendations(): Promise<ApiSuggestionsResponse | null> {
+  async getFriendsRecommendations(): Promise<ApiSuggestionsResponse> {
     try {
       const res = await fetch(`${API_BASE}/api/suggestions/friends`, {
-        headers: getAuthHeaders(),
+        headers: getAuthHeaders(), signal: AbortSignal.timeout(15000),
       });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn("Failed to fetch friends' recommendations:", err);
-      return null;
+      if (!res.ok) throw new Error("Friend suggestions request failed.");
+      const data = await res.json() as ApiSuggestionsResponse;
+      const ids = ["friends", "friends-watchlist"];
+      if (!Array.isArray(data?.categories) || data.categories.length !== 2 ||
+          !ids.every((id) => data.categories.filter((c) => c.id === id).length === 1) ||
+          data.categories.some((c) => !Array.isArray(c.movies) || c.movies.some((m) =>
+            !Number.isSafeInteger(m.tmdbId) || m.tmdbId <= 0 || typeof m.title !== "string" ||
+            !m.title.trim() || m.mediaType !== "MOVIE" || typeof m.reason !== "string" ||
+            (c.id === "friends" && (typeof m.score !== "number" || !Number.isFinite(m.score)))))) {
+        throw new Error("Invalid friend suggestions response.");
+      }
+      return data;
+    } catch {
+      throw new Error("Could not load friend suggestions. Reload to try again.");
     }
   },
 

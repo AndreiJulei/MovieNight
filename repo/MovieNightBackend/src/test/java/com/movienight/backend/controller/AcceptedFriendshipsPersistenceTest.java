@@ -125,7 +125,8 @@ class AcceptedFriendshipsPersistenceTest {
         var created = write(bob, "POST", "/api/lists", "{\"title\":\"Private list\"}").andExpect(status().isCreated());
         long listId = com.jayway.jsonpath.JsonPath.<Number>read(created.andReturn().getResponse().getContentAsString(), "$.id").longValue();
         read(alice, "/api/lists/" + listId).andExpect(status().isForbidden());
-        read(alice, "/api/suggestions/friends").andExpect(jsonPath("$.categories[0].movies", hasSize(2)));
+        read(alice, "/api/suggestions/friends").andExpect(jsonPath("$.categories[0].movies", hasSize(1)))
+            .andExpect(jsonPath("$.categories[1].movies", hasSize(1)));
         write(bob, "DELETE", "/api/friends/" + alice.getId(), "").andExpect(status().isOk());
         read(alice, "/api/suggestions/friends").andExpect(jsonPath("$.categories[0].movies", hasSize(0)));
         read(alice, "/api/movies/" + movieId + "/friends-ratings").andExpect(jsonPath("$", hasSize(0)));

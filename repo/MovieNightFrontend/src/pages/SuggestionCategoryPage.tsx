@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
-import { usePersonalRecommendations, useFriendsRecommendations, useSuggestionsByCategory } from "../hooks/useSuggestions";
+import { usePersonalRecommendations, useSuggestionsByCategory } from "../hooks/useSuggestions";
 import { useStore } from "../store/MovieStore";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 
@@ -15,17 +15,9 @@ export default function SuggestionCategoryPage() {
   const category = (params?.category || "for-you");
 
   const personalRows = usePersonalRecommendations();
-  const friendsData = useFriendsRecommendations();
   const fallbackData = useSuggestionsByCategory(category);
 
   const { title, subtitle, movies: rawMovies } = useMemo(() => {
-    if (category === "friends") {
-      return {
-        title: "Friends' Recommendations",
-        subtitle: "Titles recommended by your friends through high ratings and shared watchlists.",
-        movies: friendsData.movies || [],
-      };
-    }
     const personalMatch = personalRows.find((r) => r.id === category);
     if (personalMatch) {
       return {
@@ -39,7 +31,7 @@ export default function SuggestionCategoryPage() {
       subtitle: "Explore all titles in this curated collection.",
       movies: fallbackData.movies || [],
     };
-  }, [category, fallbackData, friendsData, personalRows]);
+  }, [category, fallbackData, personalRows]);
 
   // Initialize view mode from localStorage or grid
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
