@@ -35,6 +35,9 @@ class UserMovieServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.movienight.backend.repository.FriendshipRepository friendshipRepository;
+
     @InjectMocks
     private UserMovieService userMovieService;
 
@@ -188,11 +191,12 @@ class UserMovieServiceTest {
 
         when(userMovieEntryRepository.findByMovieIdAndUserIdIn(100L, List.of(2L))).thenReturn(List.of(friendEntry));
 
-        List<FriendRatingResponse> ratings = userMovieService.getFriendsRatings(100L, List.of(2L));
+        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(friendshipRepository.findAcceptedFriendIdsForUser(sampleUser.getId())).thenReturn(List.of(2L));
+        List<FriendRatingResponse> ratings = userMovieService.getFriendsRatings("john@example.com", 100L, List.of(2L));
 
         assertEquals(1, ratings.size());
         assertEquals("SarahConnor", ratings.get(0).getDisplayName());
         assertEquals(8.0, ratings.get(0).getPersonalRating());
-        assertEquals("Great sci-fi concept!", ratings.get(0).getNotes());
     }
 }

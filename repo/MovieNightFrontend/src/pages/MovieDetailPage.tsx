@@ -14,8 +14,7 @@ import { useToast } from "../components/Toast";
 interface FriendReview {
   userId: string | number;
   displayName: string;
-  rating: number;
-  notes?: string | null;
+  rating: number | null;
   status?: string;
   watchedAt?: string | null;
 }
@@ -65,6 +64,8 @@ export default function MovieDetailPage() {
   const [isLoadingDetails, setIsLoadingDetails] = useState(!initialMovie);
   const [friendReviews, setFriendReviews] = useState<FriendReview[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [friendError, setFriendError] = useState<string | null>(null);
+  const [friendRetry, setFriendRetry] = useState(0);
 
   const destPosterRef = useRef<HTMLDivElement>(null);
 
@@ -213,22 +214,16 @@ export default function MovieDetailPage() {
     if (!movieIdParam) return;
     let active = true;
 
-    // 2. Load friend reviews & ratings
+    setFriendReviews([]);
+    setIsLoadingFriends(false);
+    setFriendError(null);
+    // Load accepted friends’ ratings
     if (user) {
       const friends = store.friendsOf(user.id);
       const friendIds = friends.map((f) => f.id);
 
-      // Seed with local store data first
       const currentMovieId = movie?.id || movieIdParam;
-      const localReviews = store.friendRatings(currentMovieId).map((r) => ({
-        userId: r.user.id,
-        displayName: r.user.displayName,
-        rating: r.rating,
-        notes: store.entryFor(r.user.id, currentMovieId)?.description || null,
-        status: "watched",
-      }));
-      setFriendReviews(localReviews);
-
+      setFriendReviews([]);
       // Query live backend for friends' ratings
       if (friendIds.length > 0) {
         setIsLoadingFriends(true);
@@ -236,19 +231,18 @@ export default function MovieDetailPage() {
           .getFriendsRatings(currentMovieId, friendIds)
           .then((backendRatings) => {
             if (!active) return;
-            if (backendRatings && backendRatings.length > 0) {
+            if (backendRatings) {
               const liveRatings: FriendReview[] = backendRatings.map((br) => ({
                 userId: br.userId,
                 displayName: br.displayName,
-                rating: br.personalRating ?? 0,
-                notes: br.notes,
+                rating: br.personalRating ?? null,
                 status: br.status ? br.status.toLowerCase() : "watched",
                 watchedAt: br.watchedAt,
               }));
               setFriendReviews(liveRatings);
             }
           })
-          .catch((err) => console.warn("Failed to load friend reviews:", err))
+          .catch((err) => { if (active) setFriendError(err instanceof Error ? err.message : "Could not load ratings. Retry."); })
           .finally(() => {
             if (active) setIsLoadingFriends(false);
           });
@@ -258,7 +252,7 @@ export default function MovieDetailPage() {
     return () => {
       active = false;
     };
-  }, [params?.id, movie?.id, user, store.friendsOf, store.friendRatings, store.entryFor]);
+  }, [params?.id, movie?.id, user, store.friendsOf, friendRetry]);
 
   const hasTransition = Boolean(
     transitionData &&
@@ -446,10 +440,8 @@ export default function MovieDetailPage() {
   }
 
   const entry = store.entryFor(user.id, movie.id);
-  const friendAvg =
-    friendReviews.length > 0
-      ? friendReviews.reduce((s, r) => s + r.rating, 0) / friendReviews.length
-      : null;
+  const suppliedRatings = friendReviews.flatMap((r) => r.rating == null ? [] : [r.rating]);
+  const friendAvg = suppliedRatings.length ? suppliedRatings.reduce((sum, rating) => sum + rating, 0) / suppliedRatings.length : null;
 
   return (
     <AppShell>
@@ -757,7 +749,7 @@ export default function MovieDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <h2 className="text-sm font-semibold text-white">
-                      Friends&apos; Reviews &amp; Ratings
+                      Friends&apos; Ratings
                     </h2>
                     {friendAvg != null && (
                       <span className="nums inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/20 px-2.5 py-0.5 text-xs font-bold text-accent">
@@ -765,11 +757,15 @@ export default function MovieDetailPage() {
                       </span>
                     )}
                   </div>
-                  {isLoadingFriends && (
+                  {(isLoadingFriends || store.friendsLoading) && (
                     <span className="text-xs text-text-muted">Updating...</span>
                   )}
                 </div>
 
+                {(friendError || store.friendsError) && <div role="alert" className="mt-3 text-sm text-danger">
+                  {friendError || store.friendsError}
+                  <button className="ml-3 underline" onClick={() => { void store.refreshFriends(); setFriendRetry((r) => r + 1); }}>Retry ratings</button>
+                </div>}
                 {friendReviews.length > 0 ? (
                   <ul className="mt-4 space-y-3">
                     {friendReviews.map((r) => (
@@ -791,27 +787,22 @@ export default function MovieDetailPage() {
                               </span>
                             )}
                           </div>
-                          {r.rating > 0 ? (
+                          {r.rating != null ? (
                             <span className="nums font-bold text-accent text-sm">
                               ★ {r.rating.toFixed(1)}
                             </span>
                           ) : (
-                            <span className="text-xs text-text-muted">No score</span>
+                            <span className="text-xs text-text-muted">Unrated</span>
                           )}
                         </div>
-                        {r.notes && (
-                          <p className="mt-2 text-xs leading-relaxed text-zinc-300 italic">
-                            &ldquo;{r.notes}&rdquo;
-                          </p>
-                        )}
                       </li>
                     ))}
                   </ul>
-                ) : (
+                ) : !friendError && !store.friendsError && !store.friendsLoading && !isLoadingFriends ? (
                   <p className="mt-3 text-xs text-text-muted">
-                    None of your friends have reviewed this movie yet.
+                    No shared friend ratings for this movie.
                   </p>
-                )}
+                ) : null}
               </section>
             </div>
           </div>

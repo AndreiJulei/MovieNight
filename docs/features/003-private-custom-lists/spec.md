@@ -1,6 +1,9 @@
 # Private custom lists
 
-Status: implemented and locally validated; awaiting human review, uncommitted. No GitHub issue published.
+Status: implementation committed as `b36ae89` and merged into `main` at
+`3fc94fd`. Revalidation and record correction are awaiting human review on
+`feat/003-private-custom-lists-review`; no commit made in that review session.
+No GitHub issue published (tracker rechecked on 2026-10-19).
 Roadmap: milestone 3. Product requirements: P05, P06, P12.
 Base: `5a9b2c9` on `main`; branch: `feat/003-private-custom-lists`.
 
@@ -62,7 +65,11 @@ TV/anime identity migration, public sharing, description/reorder UI, friendships
 recommendations, library removal/notes reliability, deployment, database upgrades,
 and restart/release retention. Keep the current visual system and in-memory router.
 
-## Validation on 2026-10-19
+## Original implementation validation on 2026-10-19
+
+The evidence below records the original implementation session before commit.
+Its references to uncommitted work and the original branch describe that
+historical boundary, rather than the current Git state.
 
 Tested boundary: the uncommitted working tree against
 `5a9b2c9d66c1d39a90858cbd945440cfb0c0d25b`. Starting tree was clean. No staging,
@@ -165,7 +172,7 @@ conflicting resource identities return an error, and TV/anime list additions are
 outside this movie slice. Full accessibility, image-failure, and large-list
 performance audits were not performed.
 
-### Proposed human-review scope
+### Original implementation human-review scope
 
 All 15 affected files belong to feature 3; no unrelated changes or deletions.
 No roadmap/integration status was advanced.
@@ -202,4 +209,85 @@ cat repo/MovieNightFrontend/tests/browser/private-custom-lists.cjs
 ```
 
 Stop before committing under [the project review checkpoint](../../movienight-workflow.md).
+
+## Revalidation and current human-review checkpoint — 2026-10-19
+
+The requested feature was already present on clean `main` at
+`3fc94fd941b5b94f1499c7cb125855fc11e32d72`, following implementation commit
+`b36ae89`. Created `feat/003-private-custom-lists-review` from that revision.
+No application changes were needed by this revalidation. The original 15-file
+inventory above describes the merged implementation, not new work on this branch.
+The sole proposed commit scope now is this feature record: correct stale
+uncommitted status, distinguish historical evidence, and record fresh checks.
+No new/deleted files or unrelated changes; no staging, commit, push, or merge.
+
+### Fresh validation
+
+All commands below were actually run against the existing implementation:
+
+- Strict frontend `./node_modules/.bin/tsc --noEmit`: passed.
+- Frontend `npm run build`: passed; existing Vite configuration warnings remain.
+- Focused `PrivateCustomListsPersistenceTest`: 7 tests passed.
+- Full clean backend suite: 99 tests passed, zero failures/errors/skips.
+  Both Maven commands used the cached Mockito Java agent shown above.
+- Existing browser script against local Vite on port 8444: all 15 scenarios
+  passed, zero browser exceptions, zero library writes from list operations.
+  Used the Playwright module path shown above and
+  `MOVIENIGHT_BROWSER_ARTIFACTS=/tmp/movienight-003-review-browser`.
+- Desktop and mobile screenshots inspected. These are fixture-based list views,
+  not a comprehensive responsive or accessibility audit.
+- GitHub issue list (all states, limit 100): returned no issues; local contract
+  remains authoritative. Initial sandbox network read failed; retry succeeded.
+
+Acceptance mapping: AC01 passed (API create/rename/validation/reload and browser
+rename retry); AC02 passed (API deduplication/concurrency/catalog identities and
+browser multi-list/reload identity checks); AC03 passed within the original
+boundary (independent removal/deletion and watched rating/notes preservation);
+AC04 passed (real JWT/API ownership and anonymous/public access checks);
+AC05 passed within the original boundary (browser failure, timeout, pending,
+retry and confirmed writes); AC06 passed for executed cases (load failures,
+empty reload, overlapping refresh, late prior-account reads/writes).
+The original limitations above still apply, including no separate watchlisted
+preservation fixture, no combined real-provider/browser persistence flow, and
+no deployment or restart/release retention proof.
+
+Logs: `/tmp/movienight-003-review-focused.log`,
+`/tmp/movienight-003-review-backend.log`,
+`/tmp/movienight-003-review-build.log`. Browser results and screenshots:
+`/tmp/movienight-003-review-browser/{results.json,desktop-lists.png,mobile-lists.png}`.
+These are temporary local artifacts.
+
+### Fresh code review
+
+Applied the code-review skill with two independent read-only agents to the
+merged feature diff `git diff 5a9b2c9...3fc94fd`, using this feature contract and
+root `spec.md`. This deliberately reviews the existing implementation, since
+the new branch has only a documentation correction.
+
+- **Standards:** zero documented breaches or actionable smell findings.
+- **Spec:** zero actionable findings; AC01–AC06 are represented. Full movie/TV
+  identity persistence remains deferred, as explicitly recorded above.
+
+### Reviewable behavior and diff
+
+Application behavior is unchanged on this branch. The documentation previously
+called merged work uncommitted; it now identifies the actual implementation,
+merge, fresh review branch, and validation boundary. The human scenario above
+remains the behavior demonstration: create/rename/reload, add to two lists,
+remove from one, delete the other, and verify library independence. Fresh browser
+checks exercised those flows and visible failures; real API tests separately
+verified persistence and ownership.
+
+Inspect this branch's entire proposed change before approving a commit:
+
+```sh
+git status --short --untracked-files=all
+git diff --stat
+git diff -- docs/features/003-private-custom-lists/spec.md
+# Inspect all 15 already-merged feature files and their reasons in the table above:
+git diff --stat 5a9b2c9...3fc94fd
+git diff 5a9b2c9...3fc94fd -- repo/MovieNightBackend repo/MovieNightFrontend
+```
+
+Stop here for explicit approval under the project human-review checkpoint.
 

@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserMovieService {
 
+    private final com.movienight.backend.repository.FriendshipRepository friendshipRepository;
     private final MovieRepository movieRepository;
     private final UserMovieEntryRepository userMovieEntryRepository;
     private final UserRepository userRepository;
@@ -251,26 +252,28 @@ public class UserMovieService {
     }
 
     /**
-     * Retrieve friend ratings and notes for a specific movie.
+     * Retrieve accepted friend ratings for a specific movie.
      */
     @Transactional(readOnly = true)
-    public List<FriendRatingResponse> getFriendsRatings(Long movieId, List<Long> friendUserIds) {
-        if (friendUserIds == null || friendUserIds.isEmpty()) {
-            return Collections.emptyList();
-        }
+    public List<FriendRatingResponse> getFriendsRatings(String username, Long movieId, List<Long> requestedFriendIds) {
+        User viewer = findUserByUsername(username);
+        List<Long> acceptedIds = friendshipRepository.findAcceptedFriendIdsForUser(viewer.getId());
+        List<Long> friendUserIds = requestedFriendIds == null ? acceptedIds : acceptedIds.stream()
+                .filter(requestedFriendIds::contains).toList();
+        if (friendUserIds.isEmpty()) return Collections.emptyList();
 
         List<UserMovieEntry> friendEntries = userMovieEntryRepository.findByMovieIdAndUserIdIn(movieId, friendUserIds);
         if (friendEntries.isEmpty()) {
             friendEntries = userMovieEntryRepository.findByMovieIdOrTmdbIdAndUserIdIn(movieId, friendUserIds);
         }
         return friendEntries.stream()
+                .filter(entry -> entry.getStatus() == MovieStatus.WATCHED || entry.getStatus() == MovieStatus.WATCHLIST)
                 .map(entry -> FriendRatingResponse.builder()
                         .userId(entry.getUser().getId())
                         .username(entry.getUser().getUsername())
                         .displayName(entry.getUser().getDisplayName())
                         .status(entry.getStatus())
                         .personalRating(entry.getPersonalRating())
-                        .notes(entry.getNotes())
                         .watchedAt(entry.getWatchedAt())
                         .build())
                 .collect(Collectors.toList());

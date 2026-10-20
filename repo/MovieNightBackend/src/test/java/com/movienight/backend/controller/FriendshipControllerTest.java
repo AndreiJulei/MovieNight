@@ -82,14 +82,14 @@ class FriendshipControllerTest {
                 .build();
 
         when(friendshipService.addFriend("john@example.com", "sarah@example.com"))
-                .thenReturn(sampleFriendResponse);
+                .thenReturn(new com.movienight.backend.dto.FriendInvitationResponse(1L, "john", "John", 2L, "sarah", "SarahConnor"));
 
         mockMvc.perform(post("/api/friends/add")
                         .principal(mockPrincipal)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.displayName").value("SarahConnor"));
+                .andExpect(jsonPath("$.recipientDisplayName").value("SarahConnor"));
     }
 
     @Test
@@ -105,7 +105,7 @@ class FriendshipControllerTest {
     @Test
     void getFriendLibrary_returnsOk() throws Exception {
         when(friendshipService.getFriendLibrary(eq("john@example.com"), eq(2L), eq(null)))
-                .thenReturn(List.of(new UserMovieEntryResponse()));
+                .thenReturn(List.of(new com.movienight.backend.dto.FriendLibraryEntryResponse(1L, null, null, null, null)));
 
         mockMvc.perform(get("/api/friends/2/library")
                         .principal(mockPrincipal))

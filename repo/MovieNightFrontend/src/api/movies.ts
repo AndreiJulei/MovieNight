@@ -75,7 +75,6 @@ export interface ApiFriendRatingResponse {
   displayName: string;
   status: "WATCHLIST" | "WATCHED" | "DROPPED";
   personalRating?: number;
-  notes?: string;
   watchedAt?: string;
 }
 
@@ -270,18 +269,16 @@ export const moviesApi = {
     friendIds: (number | string)[],
   ): Promise<ApiFriendRatingResponse[]> {
     if (!friendIds || friendIds.length === 0) return [];
-    try {
-      const numericIds = friendIds.map((id) => Number(id)).filter((id) => !isNaN(id));
-      if (numericIds.length === 0) return [];
-      const res = await fetch(
-        `${API_BASE}/api/movies/${movieId}/friends-ratings?friendIds=${numericIds.join(",")}`,
-        { headers: getAuthHeaders() },
-      );
-      if (!res.ok) return [];
-      return await res.json();
-    } catch (err) {
-      return [];
-    }
+    const numericIds = friendIds.map((id) => Number(id)).filter((id) => Number.isSafeInteger(id) && id > 0);
+    if (numericIds.length === 0) return [];
+    const res = await fetch(
+      `${API_BASE}/api/movies/${movieId}/friends-ratings?friendIds=${numericIds.join(",")}`,
+      { headers: getAuthHeaders(), signal: AbortSignal.timeout(15000) },
+    );
+    if (!res.ok) throw new Error("Could not load friend ratings. Retry or sign in again.");
+    const ratings = await res.json();
+    if (!Array.isArray(ratings)) throw new Error("Could not read friend ratings. Retry.");
+    return ratings;
   },
 
   /**
