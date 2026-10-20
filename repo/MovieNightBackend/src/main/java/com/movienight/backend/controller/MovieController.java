@@ -13,7 +13,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -76,16 +75,14 @@ public class MovieController {
     }
 
     /**
-     * Get friend ratings and reviews for a specific movie.
+     * Get accepted friend ratings for a specific movie.
      */
     @GetMapping("/{movieId}/friends-ratings")
     public ResponseEntity<List<FriendRatingResponse>> getFriendsRatings(
             @PathVariable Long movieId,
-            @RequestParam(required = false) List<Long> friendIds
+            @RequestParam(required = false) List<Long> friendIds,
+            Authentication authentication
     ) {
-        if (friendIds == null || friendIds.isEmpty()) {
-            return ResponseEntity.ok(Collections.emptyList());
-        }
-        return ResponseEntity.ok(userMovieService.getFriendsRatings(movieId, friendIds));
+        return ResponseEntity.ok(userMovieService.getFriendsRatings(authentication.getName(), movieId, friendIds));
     }
 }

@@ -2,7 +2,8 @@ package com.movienight.backend.controller;
 
 import com.movienight.backend.dto.AddFriendRequest;
 import com.movienight.backend.dto.FriendProfileResponse;
-import com.movienight.backend.dto.UserMovieEntryResponse;
+import com.movienight.backend.dto.FriendInvitationResponse;
+import com.movienight.backend.dto.FriendLibraryEntryResponse;
 import com.movienight.backend.model.MovieStatus;
 import com.movienight.backend.service.FriendshipService;
 import jakarta.validation.Valid;
@@ -37,12 +38,22 @@ public class FriendshipController {
      * Add a friend by their username or display name.
      */
     @PostMapping("/add")
-    public ResponseEntity<FriendProfileResponse> addFriend(
+    public ResponseEntity<FriendInvitationResponse> addFriend(
             @Valid @RequestBody AddFriendRequest request,
             Authentication authentication
     ) {
-        FriendProfileResponse response = friendshipService.addFriend(authentication.getName(), request.getIdentifier());
+        FriendInvitationResponse response = friendshipService.addFriend(authentication.getName(), request.getIdentifier());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/invitations")
+    public ResponseEntity<List<FriendInvitationResponse>> getInvitations(Authentication authentication) {
+        return ResponseEntity.ok(friendshipService.getInvitations(authentication.getName()));
+    }
+
+    @PostMapping("/{senderId}/accept")
+    public ResponseEntity<FriendProfileResponse> acceptInvitation(@PathVariable Long senderId, Authentication authentication) {
+        return ResponseEntity.ok(friendshipService.acceptInvitation(authentication.getName(), senderId));
     }
 
     /**
@@ -61,7 +72,7 @@ public class FriendshipController {
      * View a friend's movie library (optionally filtered by WATCHED or WATCHLIST).
      */
     @GetMapping("/{friendId}/library")
-    public ResponseEntity<List<UserMovieEntryResponse>> getFriendLibrary(
+    public ResponseEntity<List<FriendLibraryEntryResponse>> getFriendLibrary(
             @PathVariable Long friendId,
             @RequestParam(required = false) MovieStatus status,
             Authentication authentication

@@ -61,7 +61,7 @@ public class SuggestionService {
                 .collect(Collectors.toList());
 
         // 2. Friends' Recommendations ("friends")
-        List<Long> friendIds = friendshipRepository.findAllFriendIdsForUser(userId);
+        List<Long> friendIds = friendshipRepository.findAcceptedFriendIdsForUser(userId);
         List<SuggestionMovieItem> friendsMovies = new ArrayList<>();
 
         if (!friendIds.isEmpty()) {
@@ -231,7 +231,7 @@ public class SuggestionService {
 
         Long userId = user.getId();
         Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findTmdbIdsByUserId(userId);
-        List<Long> friendIds = friendshipRepository.findAllFriendIdsForUser(userId);
+        List<Long> friendIds = friendshipRepository.findAcceptedFriendIdsForUser(userId);
         List<SuggestionMovieItem> friendsMovies = new ArrayList<>();
 
         if (!friendIds.isEmpty()) {

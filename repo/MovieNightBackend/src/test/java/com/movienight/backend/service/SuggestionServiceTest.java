@@ -82,7 +82,7 @@ class SuggestionServiceTest {
                 .thenReturn(List.of(rec));
 
         // 2. Friends Consensus
-        when(friendshipRepository.findAllFriendIdsForUser(1L)).thenReturn(List.of(2L, 3L));
+        when(friendshipRepository.findAcceptedFriendIdsForUser(1L)).thenReturn(List.of(2L, 3L));
 
         FriendsConsensusProjection consensusMock = mock(FriendsConsensusProjection.class);
         when(consensusMock.getTmdbId()).thenReturn(300L);

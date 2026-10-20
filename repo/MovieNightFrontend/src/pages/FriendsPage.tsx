@@ -1,166 +1,227 @@
-import { useState } from "react";
-import { Link } from "../router";
-import { useStore } from "../store/MovieStore";
-import { friendsApi } from "../api/friends";
-import AppShell from "../components/AppShell";
-import AnimatedSearchInput from "../components/AnimatedSearchInput";
+import { useEffect, useRef, useState } from "react"
+import { Link } from "../router"
+import { useStore } from "../store/MovieStore"
+import AppShell from "../components/AppShell"
 
 export default function FriendsPage() {
-  const store = useStore();
-  const user = store.currentUser!;
-  const [query, setQuery] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  const friends = store.friendsOf(user.id);
-  const friendIds = new Set(friends.map((f) => f.id));
-
-  const handleAddFriend = async (identifierToAdd: string) => {
-    const target = identifierToAdd.trim();
-    if (!target) return;
-
-    setIsSubmitting(true);
-    setFeedback(null);
-
-    try {
-      const res = await friendsApi.addFriend(target);
-      if (res.ok && res.friend) {
-        store.addFriend(String(res.friend.id));
-        setFeedback({
-          type: "success",
-          message: `Added ${res.friend.displayName} (@${res.friend.username}) to your friends!`,
-        });
-        setQuery("");
-      } else {
-        // Check if matching in local store for seed friends
-        const localMatch = store.users.find(
-          (u) =>
-            u.id !== user.id &&
-            !friendIds.has(u.id) &&
-            (u.displayName.toLowerCase() === target.toLowerCase() ||
-              u.username.toLowerCase() === target.toLowerCase()),
-        );
-
-        if (localMatch) {
-          store.addFriend(localMatch.id);
-          setFeedback({
-            type: "success",
-            message: `Added ${localMatch.displayName} to your friends!`,
-          });
-          setQuery("");
-        } else {
-          setFeedback({
-            type: "error",
-            message: res.error || "User not found with that display name or username.",
-          });
-        }
-      }
-    } catch {
-      setFeedback({
-        type: "error",
-        message: "Network error while connecting with friend.",
-      });
-    } finally {
-      setIsSubmitting(false);
+  const store = useStore()
+  const userId = store.currentUser!.id
+  const [query, setQuery] = useState("")
+  const [feedback, setFeedback] = useState("")
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
     }
-  };
-
+  }, [])
+  useEffect(() => {
+    void store.refreshFriends()
+  }, [store.refreshFriends])
+  const act = async (
+    action: () => Promise<{
+      ok: boolean
+      error?: string
+      warning?: string
+    }>,
+    message: string,
+  ) => {
+    setFeedback("")
+    const result = await action()
+    if (!mounted.current) return
+    setFeedback(
+      result.ok ? result.warning || message : result.error || "Could not confirm. Retry.",
+    )
+    if (result.ok) setQuery("")
+  }
+  const incoming = store.invitations.filter(
+    (i) => String(i.recipientId) === userId,
+  )
+  const outgoing = store.invitations.filter(
+    (i) => String(i.senderId) === userId,
+  )
+  const button =
+    "rounded-md border border-white/15 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
   return (
     <AppShell>
       <div className="mx-auto max-w-[620px]">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Friends</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Connect with movie lovers to share reviews, ratings, and watchlists.
+        <h1 className="text-2xl font-bold text-white">Friends</h1>
+        <p className="mt-2 text-sm text-text-muted">
+          Share viewing status and ratings after an invitation is accepted. Your
+          notes and custom lists stay private.
         </p>
-
-        <div className="mt-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleAddFriend(query);
-            }}
-            className="flex gap-2.5 items-center"
+        <form
+          className="mt-6 flex flex-wrap gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (query.trim())
+              void act(
+                () => store.addFriend(query.trim()),
+                "Invitation saved. Access begins only after acceptance.",
+              )
+          }}
+        >
+          <label className="min-w-0 flex-1 text-sm text-text-primary">
+            Username, display name, or email
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={store.friendsSaving}
+              required
+              className="mt-2 block w-full rounded-md border border-white/15 bg-surface px-3 py-2 text-base text-white focus:outline-accent"
+            />
+          </label>
+          <button
+            className={`${button} self-end`}
+            disabled={store.friendsSaving || !query.trim()}
           >
-            <div className="flex-1">
-              <AnimatedSearchInput
-                label="Add a friend by display name or @username…"
-                value={query}
-                onChange={(v) => {
-                  setQuery(v);
-                  if (feedback) setFeedback(null);
-                }}
-              />
-            </div>
-            {query.trim().length > 0 && (
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="h-[46px] rounded-xl bg-accent px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95 disabled:opacity-50"
-              >
-                {isSubmitting ? "Adding..." : "+ Add"}
-              </button>
-            )}
-          </form>
-
-          {feedback && (
-            <div
-              className={`mt-3 rounded-xl border p-3.5 text-xs font-medium ${
-                feedback.type === "success"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-red-500/30 bg-red-500/10 text-red-300"
-              }`}
-            >
-              {feedback.type === "success" ? "✓ " : "✕ "}
-              {feedback.message}
-            </div>
-          )}
-
-          <div className="mt-8">
-            {friends.length === 0 ? (
-              <div className="rounded-xl border border-white/10 bg-black/25 p-8 text-center">
-                <p className="text-sm text-text-muted">
-                  No friends connected yet. Search a username or display name above to get started.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 bg-surface/60 backdrop-blur-md">
-                {friends.map((f) => {
-                  const watched = store.stats(f.id, "watched");
-                  const towatch = store.stats(f.id, "watchlist").count;
-                  return (
-                    <li key={f.id}>
-                      <Link
-                        to={`/friends/${f.id}`}
-                        className="group flex items-center justify-between px-5 py-4 transition-all hover:bg-white/[0.04]"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
-                            {f.displayName.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-text-primary transition-colors group-hover:text-accent">
-                              {f.displayName}
-                            </span>
-                            <span className="ml-2 text-xs text-text-muted">@{f.username}</span>
-                          </div>
-                        </div>
-                        <span className="nums text-xs font-medium text-text-muted">
-                          {watched.count} watched · {towatch} to watch
-                          {watched.avg != null && ` · avg ${watched.avg.toFixed(1)}`}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          <p className="mt-6 text-xs text-text-muted">
-            Tip: Try searching <span className="font-semibold text-white">marcus</span> or <span className="font-semibold text-white">priya</span>.
+            {store.friendsSaving ? "Saving…" : "Send invitation"}
+          </button>
+        </form>
+        {feedback && (
+          <p role="status" className="mt-4 text-sm text-text-primary">
+            {feedback}
           </p>
-        </div>
+        )}
+        <button
+          className={`${button} mt-5`}
+          disabled={store.friendsLoading || store.friendsSaving}
+          onClick={() => void store.refreshFriends()}
+        >
+          Reload friends
+        </button>
+        {store.friendsLoading && (
+          <p role="status" className="mt-4 text-sm text-text-muted">
+            Loading friends…
+          </p>
+        )}
+        {store.friendsError && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {store.friendsError} Use Reload friends to retry.
+          </p>
+        )}
+        <section className="mt-8" aria-label="Incoming invitations">
+          <h2 className="text-lg font-semibold text-white">
+            Incoming invitations
+          </h2>
+          {!store.friendsLoading && !store.friendsError && incoming.length === 0 && (
+            <p className="mt-3 text-sm text-text-muted">
+              No incoming invitations.
+            </p>
+          )}
+          <ul className="mt-3 divide-y divide-white/10">
+            {incoming.map((i) => (
+              <li
+                key={i.senderId}
+                className="flex flex-wrap items-center justify-between gap-3 py-4"
+              >
+                <span className="min-w-0 break-words text-text-primary">
+                  {i.senderDisplayName}{" "}
+                  <span className="text-sm text-text-muted">
+                    @{i.senderUsername}
+                  </span>
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className={button}
+                    disabled={store.friendsSaving}
+                    onClick={() =>
+                      void act(
+                        () => store.acceptFriend(String(i.senderId)),
+                        "Friendship accepted.",
+                      )
+                    }
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className={button}
+                    disabled={store.friendsSaving}
+                    onClick={() =>
+                      void act(
+                        () => store.removeFriend(String(i.senderId)),
+                        "Invitation declined.",
+                      )
+                    }
+                  >
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="mt-8" aria-label="Outgoing invitations">
+          <h2 className="text-lg font-semibold text-white">
+            Outgoing invitations
+          </h2>
+          {!store.friendsLoading && !store.friendsError && outgoing.length === 0 && (
+            <p className="mt-3 text-sm text-text-muted">
+              No outgoing invitations.
+            </p>
+          )}
+          <ul className="mt-3 divide-y divide-white/10">
+            {outgoing.map((i) => (
+              <li
+                key={i.recipientId}
+                className="flex flex-wrap items-center justify-between gap-3 py-4"
+              >
+                <span className="min-w-0 break-words text-text-primary">
+                  {i.recipientDisplayName}{" "}
+                  <span className="text-sm text-text-muted">
+                    Pending acceptance
+                  </span>
+                </span>
+                <button
+                  className={button}
+                  disabled={store.friendsSaving}
+                  onClick={() =>
+                    void act(
+                      () => store.removeFriend(String(i.recipientId)),
+                      "Invitation cancelled.",
+                    )
+                  }
+                >
+                  Cancel invitation
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="mt-8" aria-label="Accepted friends">
+          <h2 className="text-lg font-semibold text-white">Accepted friends</h2>
+          {!store.friendsLoading &&
+            !store.friendsError &&
+            store.friendProfiles.length === 0 && (
+              <p className="mt-3 text-sm text-text-muted">
+                No accepted friends yet. Send an invitation to get started.
+              </p>
+            )}
+          <ul className="mt-3 divide-y divide-white/10">
+            {store.friendProfiles.map((f) => (
+              <li key={f.id}>
+                <Link
+                  to={`/friends/${f.id}`}
+                  className="flex flex-wrap justify-between gap-2 py-4 text-text-primary hover:text-accent"
+                >
+                  <span className="break-all">
+                    {f.displayName}{" "}
+                    <span className="text-sm text-text-muted">
+                      @{f.username}
+                    </span>
+                  </span>
+                  <span className="text-sm text-text-muted">
+                    {f.watchedCount} watched · {f.watchlistCount} to watch
+                    {f.avgRating != null
+                      ? ` · avg ${f.avgRating.toFixed(1)}`
+                      : ""}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </AppShell>
-  );
+  )
 }

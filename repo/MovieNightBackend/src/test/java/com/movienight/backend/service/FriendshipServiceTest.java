@@ -89,7 +89,7 @@ class FriendshipServiceTest {
                 .build();
 
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(friendshipRepository.findByUserId(1L)).thenReturn(List.of(sampleFriendship));
+        when(friendshipRepository.findAcceptedByUserId(1L)).thenReturn(List.of(sampleFriendship));
         when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(2L)).thenReturn(List.of(watchedEntry, watchlistEntry));
 
         List<FriendProfileResponse> friends = friendshipService.getFriends("john@example.com");
@@ -104,21 +104,23 @@ class FriendshipServiceTest {
     @Test
     void addFriend_success() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(userRepository.findByUsername("sarah@example.com")).thenReturn(Optional.of(friendUser));
-        when(friendshipRepository.existsByUserIdAndFriendId(1L, 2L)).thenReturn(false);
-        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        when(userRepository.findByUsernameIgnoreCase("sarah@example.com")).thenReturn(Optional.of(friendUser));
+        when(friendshipRepository.existsAcceptedByUserIdAndFriendId(1L, 2L)).thenReturn(false);
+        when(userRepository.lockById(1L)).thenReturn(Optional.of(currentUser));
+        when(userRepository.lockById(2L)).thenReturn(Optional.of(friendUser));
+        when(friendshipRepository.save(any())).thenAnswer(call -> call.getArgument(0));
 
-        FriendProfileResponse response = friendshipService.addFriend("john@example.com", "sarah@example.com");
+        com.movienight.backend.dto.FriendInvitationResponse response = friendshipService.addFriend("john@example.com", "sarah@example.com");
 
         assertNotNull(response);
-        assertEquals("SarahConnor", response.getDisplayName());
-        verify(friendshipRepository).saveAll(any());
+        assertEquals("SarahConnor", response.recipientDisplayName());
+        verify(friendshipRepository).save(any());
     }
 
     @Test
     void addFriend_cannotAddSelf() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
+        when(userRepository.findByUsernameIgnoreCase("john@example.com")).thenReturn(Optional.of(currentUser));
 
         assertThrows(IllegalArgumentException.class, () ->
                 friendshipService.addFriend("john@example.com", "john@example.com")
@@ -129,8 +131,10 @@ class FriendshipServiceTest {
     @Test
     void addFriend_alreadyFriends_throwsException() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(userRepository.findByUsername("sarah@example.com")).thenReturn(Optional.of(friendUser));
-        when(friendshipRepository.existsByUserIdAndFriendId(1L, 2L)).thenReturn(true);
+        when(userRepository.findByUsernameIgnoreCase("sarah@example.com")).thenReturn(Optional.of(friendUser));
+        when(userRepository.lockById(1L)).thenReturn(Optional.of(currentUser));
+        when(userRepository.lockById(2L)).thenReturn(Optional.of(friendUser));
+        when(friendshipRepository.existsAcceptedByUserIdAndFriendId(1L, 2L)).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class, () ->
                 friendshipService.addFriend("john@example.com", "sarah@example.com")
@@ -142,6 +146,8 @@ class FriendshipServiceTest {
     void removeFriend_deletesBothDirections() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
 
+        when(userRepository.lockById(1L)).thenReturn(Optional.of(currentUser));
+        when(userRepository.lockById(2L)).thenReturn(Optional.of(friendUser));
         friendshipService.removeFriend("john@example.com", 2L);
 
         verify(friendshipRepository).deleteByUserIdAndFriendId(1L, 2L);
@@ -151,11 +157,11 @@ class FriendshipServiceTest {
     @Test
     void getFriendLibrary_whenFriends_returnsLibrary() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(friendshipRepository.existsByUserIdAndFriendId(1L, 2L)).thenReturn(true);
+        when(friendshipRepository.existsAcceptedByUserIdAndFriendId(1L, 2L)).thenReturn(true);
         when(userRepository.findById(2L)).thenReturn(Optional.of(friendUser));
-        when(userMovieService.getUserLibrary("sarah@example.com", MovieStatus.WATCHED)).thenReturn(List.of(new UserMovieEntryResponse()));
+        when(userMovieService.getUserLibrary("sarah@example.com", MovieStatus.WATCHED)).thenReturn(List.of(UserMovieEntryResponse.builder().status(MovieStatus.WATCHED).build()));
 
-        List<UserMovieEntryResponse> library = friendshipService.getFriendLibrary("john@example.com", 2L, MovieStatus.WATCHED);
+        List<com.movienight.backend.dto.FriendLibraryEntryResponse> library = friendshipService.getFriendLibrary("john@example.com", 2L, MovieStatus.WATCHED);
 
         assertNotNull(library);
         assertEquals(1, library.size());
@@ -164,9 +170,9 @@ class FriendshipServiceTest {
     @Test
     void getFriendLibrary_whenNotFriends_throwsException() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
-        when(friendshipRepository.existsByUserIdAndFriendId(1L, 2L)).thenReturn(false);
+        when(friendshipRepository.existsAcceptedByUserIdAndFriendId(1L, 2L)).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () ->
                 friendshipService.getFriendLibrary("john@example.com", 2L, null)
         );
     }

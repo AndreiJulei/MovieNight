@@ -1,56 +1,68 @@
-import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useEffect, useState } from "react";
-import { Link, matchPath, useRouter } from "../router";
-import { useStore } from "../store/MovieStore";
-import { friendsApi, type ApiFriendProfile } from "../api/friends";
-import type { ApiUserMovieEntryResponse } from "../api/movies";
-import type { Movie, Status } from "../store/data";
-import AppShell from "../components/AppShell";
-import MovieGrid from "../components/MovieGrid";
-import SegmentedRadio from "../components/SegmentedRadio";
-import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
-import { useToast } from "../components/Toast";
+import useWatchlistSave from "../hooks/useWatchlistSave"
+import { useEffect, useRef, useState } from "react"
+import { Link, matchPath, useRouter } from "../router"
+import { useStore } from "../store/MovieStore"
+import {
+  friendsApi,
+  type ApiFriendProfile,
+  type ApiFriendLibraryEntry,
+} from "../api/friends"
+import type { Movie, Status } from "../store/data"
+import AppShell from "../components/AppShell"
+import MovieGrid from "../components/MovieGrid"
+import SegmentedRadio from "../components/SegmentedRadio"
+import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay"
+import { useToast } from "../components/Toast"
 
 export default function FriendProfilePage() {
-  const store = useStore();
-  const { saveWatchlist } = useWatchlistSave();
-  const { toast } = useToast();
-  const { path, navigate } = useRouter();
-  const params = matchPath("/friends/:id", path);
-  const friendId = params?.id;
+  const store = useStore()
+  const { saveWatchlist } = useWatchlistSave()
+  const { toast } = useToast()
+  const { path, navigate } = useRouter()
+  const params = matchPath("/friends/:id", path)
+  const friendId = params?.id
+  const viewGeneration = useRef(0)
 
-  const localFriend = friendId ? store.users.find((u) => u.id === friendId) : undefined;
-  const [profile, setProfile] = useState<ApiFriendProfile | null>(null);
-  const [backendMovies, setBackendMovies] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<Status>("watched");
-  const [showConfirmRemove, setShowConfirmRemove] = useState(false);
+  const [profile, setProfile] = useState<ApiFriendProfile | null>(null)
+  const [backendMovies, setBackendMovies] = useState<Movie[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
+  const [libraryEntries, setLibraryEntries] = useState<ApiFriendLibraryEntry[]>(
+    [],
+  )
+  const [tab, setTab] = useState<Status>("watched")
+  const [showConfirmRemove, setShowConfirmRemove] = useState(false)
 
-  useEscapeKey(showConfirmRemove, () => setShowConfirmRemove(false));
-  useBodyScrollLock(showConfirmRemove);
+  useEscapeKey(showConfirmRemove, () => setShowConfirmRemove(false))
+  useBodyScrollLock(showConfirmRemove)
 
   // Fetch friend profile and their live library from backend
   useEffect(() => {
-    if (!friendId) return;
+    if (!friendId) return
 
-    let active = true;
-    setLoading(true);
+    let active = true
+    viewGeneration.current += 1
+    setLoading(true)
 
-    // 1. Fetch friend profile stats
-    friendsApi.getFriendProfile(friendId).then((res) => {
-      if (active && res) {
-        setProfile(res);
-      }
-    });
-
-    // 2. Fetch friend's library for current tab
-    friendsApi
-      .getFriendLibrary(friendId, tab === "watched" ? "WATCHED" : "WATCHLIST")
-      .then((entries: ApiUserMovieEntryResponse[]) => {
-        if (!active) return;
-        if (entries && entries.length > 0) {
+    setError(null)
+    setProfile(null)
+    setBackendMovies([])
+    setLibraryEntries([])
+    Promise.all([
+      friendsApi.getFriendProfile(friendId),
+      friendsApi.getFriendLibrary(
+        friendId,
+        tab === "watched" ? "WATCHED" : "WATCHLIST",
+      ),
+    ])
+      .then(([friendProfile, entries]) => {
+        if (!active) return
+        setProfile(friendProfile)
+        setLibraryEntries(entries)
+        if (entries.length > 0) {
           const mapped: Movie[] = entries.map((item) => {
-            const m = item.movie;
+            const m = item.movie
             return {
               id: String(m.id ?? m.tmdbId),
               tmdbId: m.tmdbId,
@@ -65,70 +77,95 @@ export default function FriendProfilePage() {
               director: m.director,
               trailerKey: m.trailerKey,
               mediaType: "MOVIE" as const,
-            };
-          });
-          setBackendMovies(mapped);
+            }
+          })
+          setBackendMovies(mapped)
         } else {
-          setBackendMovies([]);
+          setBackendMovies([])
         }
       })
-      .catch((err) => console.warn("Failed to fetch friend library:", err))
+      .catch((err) => {
+        if (active) {
+          setProfile(null)
+          setBackendMovies([])
+          setLibraryEntries([])
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not load friend. Retry.",
+          )
+        }
+      })
       .finally(() => {
-        if (active) setLoading(false);
-      });
+        if (active) setLoading(false)
+      })
 
     return () => {
-      active = false;
-    };
-  }, [friendId, tab]);
+      active = false
+      viewGeneration.current += 1
+    }
+  }, [friendId, tab, store.currentUser?.id, retry])
 
-  const displayName = profile?.displayName || localFriend?.displayName;
-  const username = profile?.username || localFriend?.username;
-
-  if (!localFriend && !profile && !loading) {
+  const displayName = profile?.displayName
+  const username = profile?.username
+  if (loading || error || !profile) {
     return (
       <AppShell>
-        <Link to="/friends" className="text-sm text-text-muted hover:text-text-primary">
+        <Link to="/friends" className="text-sm text-text-muted">
           ← Back to Friends
         </Link>
-        <p className="mt-8 text-text-muted">That friend couldn&apos;t be found.</p>
+        {loading ? (
+          <p role="status" className="mt-8 text-text-muted">
+            Loading friend library…
+          </p>
+        ) : (
+          <div className="mt-8">
+            <p role="alert" className="text-danger">
+              {error || "This friend is unavailable."}
+            </p>
+            <button
+              className="mt-4 rounded-md border border-white/15 px-4 py-2 text-white"
+              onClick={() => setRetry((r) => r + 1)}
+            >
+              Retry loading
+            </button>
+          </div>
+        )}
       </AppShell>
-    );
+    )
   }
-
-  const isFriend = store.currentUser && friendId
-    ? store.friendsOf(store.currentUser.id).some((f) => f.id === friendId)
-    : false;
-
-  // Compute stats from backend profile or local store
-  const watchedCount = profile?.watchedCount ?? (localFriend ? store.stats(localFriend.id, "watched").count : 0);
-  const watchlistCount = profile?.watchlistCount ?? (localFriend ? store.stats(localFriend.id, "watchlist").count : 0);
-  const avgRating = profile?.avgRating ?? (localFriend ? store.stats(localFriend.id, "watched").avg : null);
-
-  // Compute movies: use backend movies if available, else local store entries
-  const localFriendEntries = localFriend ? store.entriesFor(localFriend.id, tab) : [];
-  const localMovies: Movie[] = localFriendEntries
-    .map((e) => store.movieById(e.movieId)!)
-    .filter(Boolean);
-
-  const displayMovies = backendMovies.length > 0 ? backendMovies : localMovies;
+  const watchedCount = profile.watchedCount
+  const watchlistCount = profile.watchlistCount
+  const avgRating = profile.avgRating
+  const displayMovies = backendMovies
 
   // Check if current user already has a movie in any list
   const userHasMovie = (movieId: string) => {
-    if (!store.currentUser) return false;
-    return !!store.entryFor(store.currentUser.id, movieId);
-  };
+    if (!store.currentUser) return false
+    return !!store.entryFor(store.currentUser.id, movieId)
+  }
 
-  const handleRemoveFriend = () => {
-    if (friendId) {
-      store.removeFriend(friendId);
-      setShowConfirmRemove(false);
-      toast({ message: `Removed ${displayName ?? "friend"} from friends`, type: "info" });
-      navigate("/friends");
+  const handleRemoveFriend = async () => {
+    if (!friendId) return
+    const generation = viewGeneration.current
+    const result = await store.removeFriend(friendId)
+    if (viewGeneration.current !== generation) return
+    if (!result.ok) {
+      toast({
+        message: result.error || "Could not remove friend. Retry.",
+        type: "error",
+      })
+      return
     }
-  };
+    setShowConfirmRemove(false)
+    toast({
+      message: result.warning || `Removed ${displayName ?? "friend"} from friends`,
+      type: "info",
+    })
+    navigate("/friends")
+  }
 
-  const referrerPath = `/friends/${friendId}`;
+  const referrerPath = `/friends/${friendId}`
 
   return (
     <AppShell>
@@ -145,7 +182,7 @@ export default function FriendProfilePage() {
             {avgRating != null && ` · avg ${avgRating.toFixed(1)}`}
           </span>
 
-          {isFriend && (
+          {profile && (
             <button
               type="button"
               onClick={() => setShowConfirmRemove(true)}
@@ -163,7 +200,9 @@ export default function FriendProfilePage() {
           {displayName ? displayName.charAt(0).toUpperCase() : "?"}
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white">{displayName}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-white">
+            {displayName}
+          </h1>
           <p className="text-xs text-text-muted">@{username}</p>
         </div>
       </div>
@@ -181,11 +220,31 @@ export default function FriendProfilePage() {
         />
       </div>
 
+      <p className="mt-4 text-sm text-text-muted">
+        Viewing status and ratings are shared. Notes stay private.
+      </p>
+      {tab === "watched" && libraryEntries.length > 0 && (
+        <ul
+          aria-label="Personal ratings"
+          className="mt-4 space-y-2 text-sm text-text-primary"
+        >
+          {libraryEntries.map((entry) => (
+            <li key={entry.id}>
+              {entry.movie.title}:{" "}
+              {entry.personalRating == null
+                ? "Unrated"
+                : entry.personalRating.toFixed(1)}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="mt-8">
         {loading && displayMovies.length === 0 ? (
           <div className="flex min-h-[30vh] flex-col items-center justify-center text-center">
             <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-            <p className="mt-3 text-xs text-text-muted">Loading friend library...</p>
+            <p className="mt-3 text-xs text-text-muted">
+              Loading friend library...
+            </p>
           </div>
         ) : (
           <MovieGrid
@@ -212,7 +271,9 @@ export default function FriendProfilePage() {
               Remove {displayName}?
             </h3>
             <p className="mt-2 text-xs text-text-muted leading-relaxed">
-              Are you sure you want to remove {displayName} from your friends list? You can always add them back later.
+              Are you sure you want to remove {displayName} from your friends
+              list? You can send a new invitation later; they will need to
+              accept it.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -224,15 +285,16 @@ export default function FriendProfilePage() {
               </button>
               <button
                 type="button"
-                onClick={handleRemoveFriend}
+                disabled={store.friendsSaving}
+                onClick={() => void handleRemoveFriend()}
                 className="rounded-lg border border-danger/40 bg-danger/20 px-3.5 py-1.5 text-xs font-semibold text-danger transition-all hover:bg-danger/30 hover:shadow-[0_0_12px_rgba(239,68,68,0.4)]"
               >
-                Remove Friend
+                {store.friendsSaving ? "Removing…" : "Remove Friend"}
               </button>
             </div>
           </div>
         </div>
       )}
     </AppShell>
-  );
+  )
 }

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { authApi } from "../api/auth";
 import { moviesApi, type ApiMovieResponse, type ApiUserMovieEntryResponse } from "../api/movies";
-import { friendsApi, type ApiFriendProfile } from "../api/friends";
+import { friendsApi, type ApiFriendProfile, type ApiFriendInvitation } from "../api/friends";
 import { listsApi, type ApiCustomListResponse } from "../api/lists";
 import {
   freshId,
@@ -48,6 +48,7 @@ export type AddMovieInput = {
 };
 
 type SaveResult = { ok: boolean; error?: string; status?: Status };
+type FriendshipResult = SaveResult & { warning?: string };
 
 type StoreValue = {
   currentUser: User | null;
@@ -100,8 +101,15 @@ type StoreValue = {
   libraryLoading: boolean;
   libraryError: string | null;
   removeFromWatchlist: (movieId: string) => void;
-  addFriend: (userId: string) => void;
-  removeFriend: (friendId: string) => void;
+  friendProfiles: ApiFriendProfile[];
+  invitations: ApiFriendInvitation[];
+  friendsLoading: boolean;
+  friendsError: string | null;
+  friendsSaving: boolean;
+  refreshFriends: () => Promise<boolean>;
+  addFriend: (identifier: string) => Promise<FriendshipResult>;
+  acceptFriend: (senderId: string) => Promise<FriendshipResult>;
+  removeFriend: (friendId: string) => Promise<FriendshipResult>;
   changePassword: (oldPw: string, newPw: string) => Promise<{ ok: boolean; error?: string }>;
   changeDisplayName: (newName: string) => Promise<{ ok: boolean; error?: string }>;
 
@@ -113,9 +121,7 @@ type StoreValue = {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-function pairKey(a: string, b: string) {
-  return [a, b].sort().join("|");
-}
+
 
 // Keep provider identities distinct from catalog-only movies, even when IDs collide.
 function listMovieKey(movie: Movie) {
@@ -237,7 +243,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, [currentUser, movies, pendingWatchlist]);
 
   /**
-   * Sync library and friends data from Spring Boot backend.
+   * Sync library data from Spring Boot backend.
    */
   const refreshLibrary = useCallback(async () => {
     const token = authApi.getToken();
@@ -280,44 +286,6 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       }
     } finally {
       if (activeUser.current === userId && sequence === refreshSequence.current) setLibraryLoading(false);
-    }
-
-    if (activeUser.current !== userId || sequence !== refreshSequence.current) return;
-    try {
-      // 2. Fetch user's friends list
-      const backendFriends: ApiFriendProfile[] = await friendsApi.getFriends();
-      if (backendFriends && backendFriends.length > 0) {
-        const newFriends: User[] = backendFriends.map((f) => ({
-          id: String(f.id),
-          username: f.username,
-          displayName: f.displayName,
-          password: "",
-        }));
-
-        setUsers((prev) => {
-          const map = new Map(prev.map((u) => [u.id, u]));
-          for (const u of newFriends) {
-            map.set(u.id, u);
-          }
-          return Array.from(map.values());
-        });
-
-        const newFriendships: Friendship[] = backendFriends.map((f) => ({
-          a: String(currentUser.id),
-          b: String(f.id),
-        }));
-
-        setFriendships((prev) => {
-          const map = new Map(prev.map((f) => [pairKey(f.a, f.b), f]));
-          for (const f of newFriendships) {
-            map.set(pairKey(f.a, f.b), f);
-          }
-          return Array.from(map.values());
-        });
-      }
-
-    } catch (err) {
-      console.warn("Failed to sync library and friends with backend:", err);
     }
   }, [currentUser]);
 
@@ -399,6 +367,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     libraryRevision.current += 1;
     refreshSequence.current += 1;
     setEntries([]);
+    setFriendships([]);
     resetLists(false);
     localStorage.removeItem("movienight.customLists");
     setLibraryError(null);
@@ -729,48 +698,84 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     [currentUser, movies, refreshLibrary],
   );
 
-  const addFriend = useCallback<StoreValue["addFriend"]>(
-    (userIdOrIdentifier) => {
-      if (!currentUser || userIdOrIdentifier === currentUser.id) return;
-      
-      // Call backend
-      friendsApi.addFriend(userIdOrIdentifier).then((res) => {
-        if (res.ok && res.friend) {
-          const newFriend: User = {
-            id: String(res.friend.id),
-            username: res.friend.username,
-            displayName: res.friend.displayName,
-            password: "",
-          };
-          setUsers((prev) => [...prev.filter((u) => u.id !== newFriend.id), newFriend]);
-          setFriendships((prev) => [
-            ...prev.filter((f) => pairKey(f.a, f.b) !== pairKey(currentUser.id, newFriend.id)),
-            { a: currentUser.id, b: newFriend.id },
-          ]);
-        }
-      }).catch((err) => console.warn("Could not add friend on backend:", err));
+  const [friendProfiles, setFriendProfiles] = useState<ApiFriendProfile[]>([]);
+  const [invitations, setInvitations] = useState<ApiFriendInvitation[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+  const [friendsError, setFriendsError] = useState<string | null>(null);
+  const [friendsSaving, setFriendsSaving] = useState(false);
+  const friendReadSequence = useRef(0);
+  const friendWritePending = useRef(false);
 
-      const key = pairKey(currentUser.id, userIdOrIdentifier);
-      if (friendships.some((f) => pairKey(f.a, f.b) === key)) return;
-      setFriendships((prev) => [...prev, { a: currentUser.id, b: userIdOrIdentifier }]);
-    },
-    [currentUser, friendships],
-  );
+  const refreshFriends = useCallback(async () => {
+    const userId = currentUser?.id;
+    if (!userId) { setFriendsLoading(false); return false; }
+    const generation = authGeneration.current;
+    const sequence = ++friendReadSequence.current;
+    const active = () => activeUser.current === userId && authGeneration.current === generation && friendReadSequence.current === sequence;
+    setFriendsLoading(true);
+    setFriendsError(null);
+    try {
+      const [profiles, pending] = await Promise.all([friendsApi.getFriends(), friendsApi.getInvitations()]);
+      if (!Array.isArray(profiles) || !Array.isArray(pending)) throw new Error("Could not read friends. Retry loading.");
+      if (!active()) return false;
+      setFriendProfiles(profiles);
+      setInvitations(pending);
+      setUsers((prev) => [...prev.filter((u) => !profiles.some((f) => String(f.id) === u.id)),
+        ...profiles.map((f) => ({ id: String(f.id), username: f.username, displayName: f.displayName, password: "" }))]);
+      setFriendships(profiles.map((f) => ({ a: userId, b: String(f.id) })));
+      return true;
+    } catch (error) {
+      if (!active()) return false;
+      setFriendProfiles([]);
+      setInvitations([]);
+      setFriendships([]);
+      setFriendsError(error instanceof Error ? error.message : "Could not load friends. Retry.");
+      return false;
+    } finally {
+      if (active()) setFriendsLoading(false);
+    }
+  }, [currentUser?.id]);
 
-  const removeFriend = useCallback<StoreValue["removeFriend"]>(
-    (friendId) => {
-      if (!currentUser) return;
-      friendsApi.removeFriend(friendId).catch((err) => console.warn("Could not remove friend on backend:", err));
-      setFriendships((prev) =>
-        prev.filter((f) => {
-          const key = pairKey(f.a, f.b);
-          const targetKey = pairKey(currentUser.id, friendId);
-          return key !== targetKey;
-        }),
-      );
-    },
-    [currentUser],
-  );
+  useEffect(() => {
+    setFriendships([]);
+    setFriendProfiles([]);
+    setInvitations([]);
+    setFriendsError(null);
+    setFriendsSaving(false);
+    friendWritePending.current = false;
+    void refreshFriends();
+    return () => { friendReadSequence.current += 1; };
+  }, [refreshFriends]);
+
+  const writeFriendship = useCallback(async (write: () => Promise<unknown>): Promise<FriendshipResult> => {
+    const userId = currentUser?.id;
+    if (!userId) return { ok: false, error: "Sign in to manage friends." };
+    if (friendWritePending.current) return { ok: false, error: "Wait for the current change to finish." };
+    const generation = authGeneration.current;
+    const active = () => activeUser.current === userId && authGeneration.current === generation;
+    friendWritePending.current = true;
+    friendReadSequence.current += 1;
+    setFriendsSaving(true);
+    try {
+      await write();
+      if (!active()) return { ok: false, error: "Account changed. Reload friends." };
+      // Invalidate reads begun during the mutation, then recover confirmed server state.
+      const reloaded = await refreshFriends();
+      if (!active()) return { ok: false, error: "Account changed. Reload friends." };
+      return reloaded ? { ok: true } : { ok: true, warning: "Change saved, but friends could not reload. Use Reload friends before another action." };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Could not confirm the change. Retry." };
+    } finally {
+      if (active()) { friendWritePending.current = false; setFriendsSaving(false); }
+    }
+  }, [currentUser, refreshFriends]);
+
+  const addFriend = useCallback<StoreValue["addFriend"]>((identifier) =>
+    writeFriendship(() => friendsApi.addFriend(identifier)), [writeFriendship]);
+  const acceptFriend = useCallback<StoreValue["acceptFriend"]>((id) =>
+    writeFriendship(() => friendsApi.acceptFriend(id)), [writeFriendship]);
+  const removeFriend = useCallback<StoreValue["removeFriend"]>((id) =>
+    writeFriendship(() => friendsApi.removeFriend(id)), [writeFriendship]);
 
   const changePassword = useCallback<StoreValue["changePassword"]>(
     async (oldPw, newPw) => {
@@ -987,7 +992,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       libraryLoading,
       libraryError,
       removeFromWatchlist,
-      addFriend,
+      friendProfiles, invitations, friendsLoading, friendsError, friendsSaving, refreshFriends,
+      addFriend, acceptFriend,
       removeFriend,
       changePassword,
       changeDisplayName,
@@ -1032,7 +1038,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       libraryLoading,
       libraryError,
       removeFromWatchlist,
-      addFriend,
+      friendProfiles, invitations, friendsLoading, friendsError, friendsSaving, refreshFriends,
+      addFriend, acceptFriend,
       removeFriend,
       changePassword,
       changeDisplayName,
