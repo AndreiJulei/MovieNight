@@ -164,7 +164,7 @@ function sortCmp(
     case "title":
       return a.movie.title.localeCompare(b.movie.title);
     case "year":
-      return b.movie.year - a.movie.year;
+      return (b.movie.year ?? 0) - (a.movie.year ?? 0);
     case "rating":
       return (b.entry.rating ?? -1) - (a.entry.rating ?? -1);
     case "addedAt":

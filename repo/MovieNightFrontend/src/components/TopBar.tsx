@@ -4,7 +4,7 @@ import SegmentedRadio from "./SegmentedRadio";
 import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
 import type { MediaType } from "../store/data";
 
-export type SortBy = "addedAt" | "title" | "year" | "rating";
+export type SortBy = "recommendation" | "addedAt" | "title" | "year" | "rating";
 export type MinRating = 0 | 6;
 export type DateRange = "all" | "month" | "year";
 export type ViewMode = "grid" | "compact";
@@ -19,6 +19,7 @@ export type Filters = {
 export type MediaTypeFilter = "ALL" | MediaType;
 
 const SORT_LABELS: Record<SortBy, string> = {
+  recommendation: "Recommendation order",
   addedAt: "Date added",
   title: "Title",
   year: "Release year",
@@ -51,6 +52,7 @@ export default function TopBar({
   mediaTypeFilter,
   onMediaTypeChange,
   showAddButton = true,
+  recommendationOrder = false,
 }: {
   count: number;
   avg: number | null;
@@ -60,7 +62,9 @@ export default function TopBar({
   mediaTypeFilter?: MediaTypeFilter;
   onMediaTypeChange?: (mt: MediaTypeFilter) => void;
   showAddButton?: boolean;
+  recommendationOrder?: boolean;
 }) {
+  const sortLabels = Object.fromEntries(Object.entries(SORT_LABELS).filter(([key]) => recommendationOrder || key !== "recommendation"));
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const summary =
@@ -87,7 +91,7 @@ export default function TopBar({
             <Dropdown
               label="Sort"
               value={SORT_LABELS[filters.sortBy]}
-              options={Object.entries(SORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+              options={Object.entries(sortLabels).map(([v, l]) => ({ value: v, label: l }))}
               onSelect={(v) => onChange({ ...filters, sortBy: v as SortBy })}
             />
             <Dropdown
@@ -139,6 +143,7 @@ export default function TopBar({
 
         {sheetOpen && (
           <FilterSheet
+            sortLabels={sortLabels}
             filters={filters}
             onChange={onChange}
             showRating={showRating}
@@ -219,6 +224,7 @@ function Dropdown({
 }
 
 function FilterSheet({
+  sortLabels,
   filters,
   onChange,
   showRating,
@@ -232,6 +238,7 @@ function FilterSheet({
   mediaTypeFilter?: MediaTypeFilter;
   onMediaTypeChange?: (mt: MediaTypeFilter) => void;
   onClose: () => void;
+  sortLabels: Record<string, string>;
 }) {
   useEscapeKey(true, onClose);
   useBodyScrollLock(true);
@@ -265,7 +272,7 @@ function FilterSheet({
         <SheetGroup
           label="Sort"
           value={filters.sortBy}
-          options={SORT_LABELS}
+          options={sortLabels}
           onSelect={(v) => onChange({ ...filters, sortBy: v as SortBy })}
         />
         {showRating && (

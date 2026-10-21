@@ -144,7 +144,7 @@ function fromCatalogResponse(m: ApiMovieResponse): Movie {
     catalogMovieId: m.id,
     tmdbId: m.tmdbId,
     title: m.title,
-    year: m.releaseYear ?? new Date().getFullYear(),
+    year: m.releaseYear ?? null,
     posterSeed: null,
     posterUrl: m.posterUrl ?? null,
     imdb: m.imdbRating ?? null,
@@ -532,7 +532,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         const response = catalogMovieId != null
           ? await moviesApi.saveWatchedRating(catalogMovieId, rating, notes)
           : await moviesApi.addMovie({
-              tmdbId: target.tmdbId, title: target.title, releaseYear: target.year,
+              tmdbId: target.tmdbId, title: target.title, releaseYear: target.year ?? undefined,
               posterUrl: target.posterUrl ?? undefined, overview: target.overview,
               imdbRating: target.imdb ?? undefined, rottenTomatoesRating: target.rt ?? undefined,
               mediaType: target.mediaType, seasonsCount: target.seasonsCount,
@@ -562,7 +562,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     const movie: Movie = {
       id: input.existingMovieId ?? String(input.tmdbId ?? freshId("m")),
       tmdbId: input.tmdbId, title: input.title.trim(),
-      year: input.year ?? new Date().getFullYear(), posterSeed: input.posterSeed,
+      year: input.year ?? null, posterSeed: input.posterSeed,
       posterUrl: input.posterUrl ?? null, imdb: input.imdb, rt: input.rt,
       overview: input.overview, mediaType: input.mediaType ?? "MOVIE",
       seasonsCount: input.seasonsCount, episodesCount: input.episodesCount,
@@ -628,7 +628,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           const response = await moviesApi.saveWatchlist({
             tmdbId,
             title: targetMovie.title,
-            releaseYear: targetMovie.year,
+            releaseYear: targetMovie.year ?? undefined,
             posterUrl: targetMovie.posterUrl ?? undefined,
             overview: targetMovie.overview,
             imdbRating: targetMovie.imdb ?? undefined,

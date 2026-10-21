@@ -144,7 +144,7 @@ export default function MovieDetailPage() {
           id: String(movieIdParam),
           tmdbId: res.tmdbId ?? (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined),
           title: res.title || movie?.title || "Untitled",
-          year: res.releaseYear ?? (movie?.year || 2024),
+          year: res.releaseYear ?? movie?.year ?? null,
           posterSeed: movie?.posterSeed ?? null,
           posterUrl: res.posterUrl || movie?.posterUrl || null,
           imdb: res.imdbRating ?? movie?.imdb ?? null,
@@ -186,7 +186,7 @@ export default function MovieDetailPage() {
               id: !isNaN(Number(localFound.id)) ? Number(localFound.id) : undefined,
               tmdbId: localFound.tmdbId,
               title: localFound.title,
-              releaseYear: localFound.year,
+              releaseYear: localFound.year ?? undefined,
               posterUrl: localFound.posterUrl || undefined,
               overview: localFound.overview,
               mediaType: localFound.mediaType,
@@ -840,7 +840,7 @@ function ActionArea({ movie, onBack }: { movie: Movie; onBack: () => void }) {
       ? await store.markWatched(entry.id, rating, watched ? undefined : desc)
       : await store.addMovie({
           existingMovieId: movie.id, tmdbId: movie.tmdbId, title: movie.title,
-          year: movie.year, posterUrl: movie.posterUrl, overview: movie.overview,
+          year: movie.year ?? undefined, posterUrl: movie.posterUrl, overview: movie.overview,
           imdb: movie.imdb, rt: movie.rt, status: "watched", rating,
           description: desc, mediaType: movie.mediaType,
           seasonsCount: movie.seasonsCount, episodesCount: movie.episodesCount,

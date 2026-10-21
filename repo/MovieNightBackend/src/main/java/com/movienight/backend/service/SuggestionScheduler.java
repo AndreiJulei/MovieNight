@@ -304,7 +304,6 @@ public class SuggestionScheduler {
     /**
      * Recalculate recommendations only for users whose rating/movie library changed.
      */
-    @Transactional
     public void recalculateDirtyUserRecommendations() {
         List<User> dirtyUsers = userRepository.findByNeedsRecommendationRefreshTrue();
         if (dirtyUsers.isEmpty()) {

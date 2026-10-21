@@ -25,9 +25,7 @@ public class SuggestionService {
     private final UserMovieEntryRepository userMovieEntryRepository;
     private final FriendshipRepository friendshipRepository;
     private final CachedMovieListRepository cachedMovieListRepository;
-    private final PersonalizedRecommendationRepository personalizedRecommendationRepository;
     private final PersonalizedRecommendationService personalizedRecommendationService;
-    private final MovieRepository movieRepository;
     private final TmdbClient tmdbClient;
     private final SuggestionScheduler suggestionScheduler;
 
@@ -41,24 +39,8 @@ public class SuggestionService {
         Long userId = user.getId();
         Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findTmdbIdsByUserId(userId);
 
-        // 1. Personalized Recommendations ("for-you")
-        if (user.isNeedsRecommendationRefresh()) {
-            personalizedRecommendationService.recomputeRecommendationsForUser(user);
-        }
-
-        List<PersonalizedRecommendation> personalRecs = personalizedRecommendationRepository.findByUserIdOrderByRankOrderAsc(userId);
-        List<SuggestionMovieItem> forYouMovies = personalRecs.stream()
-                .filter(rec -> !userLibraryTmdbIds.contains(rec.getTmdbId()))
-                .map(rec -> SuggestionMovieItem.builder()
-                        .tmdbId(rec.getTmdbId())
-                        .title(rec.getTitle())
-                        .posterUrl(rec.getPosterPath())
-                        .voteAverage(rec.getVoteAverage())
-                        .score(rec.getScore())
-                        .mediaType(rec.getMediaType())
-                        .reason("Personalized for your taste")
-                        .build())
-                .collect(Collectors.toList());
+        SuggestionCategoryResponse personal = personalizedRecommendationService.movieCategory(user);
+        personal.setId("for-you");
 
         // 2. Use the same accepted-friend sources as the dedicated endpoint.
         List<SuggestionCategoryResponse> friendCategories = friendCategories(userId);
@@ -72,13 +54,8 @@ public class SuggestionService {
         // 5. Upcoming & Releases ("upcoming")
         List<SuggestionMovieItem> upcomingMovies = getCachedCategoryMovies("MOVIE", MovieListType.UPCOMING, userLibraryTmdbIds);
 
-        if (forYouMovies.isEmpty()) {
-            forYouMovies = popularMovies.stream().limit(10).collect(Collectors.toList());
-        }
-
         List<SuggestionCategoryResponse> categories = new ArrayList<>();
-        categories.add(SuggestionCategoryResponse.builder().id("for-you")
-                .title("Personal Recommendations").movies(forYouMovies).build());
+        categories.add(personal);
         categories.addAll(friendCategories);
         categories.add(SuggestionCategoryResponse.builder().id("popular")
                 .title("Most Popular").movies(popularMovies).build());
@@ -93,81 +70,14 @@ public class SuggestionService {
     }
 
     /**
-     * Strictly category-aware Personal Recommendations (max 3 rows: Movie, TV Series, Anime).
-     * Only categories where the user has watched >= 1 title are included.
+     * Movie-only personal recommendations, including explicit coverage diagnostics.
      */
     @Transactional
     public SuggestionsResponse getPersonalRecommendations(String username) {
         User user = findUser(username);
 
-        Long userId = user.getId();
-        Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findTmdbIdsByUserId(userId);
-
-        if (user.isNeedsRecommendationRefresh()) {
-            personalizedRecommendationService.recomputeRecommendationsForUser(user);
-        }
-
-        List<UserMovieEntry> userEntries = userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        List<UserMovieEntry> watchedEntries = userEntries.stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHED || e.getPersonalRating() != null)
-                .toList();
-
-        boolean hasWatchedMovie = watchedEntries.stream()
-                .anyMatch(e -> e.getMovie() != null && (e.getMovie().getMediaType() == null || "MOVIE".equalsIgnoreCase(e.getMovie().getMediaType())));
-        boolean hasWatchedTv = watchedEntries.stream()
-                .anyMatch(e -> e.getMovie() != null && "TV".equalsIgnoreCase(e.getMovie().getMediaType()));
-        boolean hasWatchedAnime = watchedEntries.stream()
-                .anyMatch(e -> e.getMovie() != null && "ANIME".equalsIgnoreCase(e.getMovie().getMediaType()));
-
-        List<PersonalizedRecommendation> allRecs = personalizedRecommendationRepository.findByUserIdOrderByRankOrderAsc(userId);
-        List<SuggestionCategoryResponse> categories = new ArrayList<>();
-
-        // 1. Movie Recommendations row (strictly only if user has watched >= 1 movie)
-        if (hasWatchedMovie) {
-            List<SuggestionMovieItem> movieItems = allRecs.stream()
-                    .filter(r -> "MOVIE".equalsIgnoreCase(r.getMediaType()) && !userLibraryTmdbIds.contains(r.getTmdbId()))
-                    .map(this::mapPersonalRecToItem)
-                    .toList();
-            if (!movieItems.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("movies")
-                        .title("Movie Recommendations")
-                        .movies(movieItems)
-                        .build());
-            }
-        }
-
-        // 2. TV Series Recommendations row (strictly only if user has watched >= 1 TV show)
-        if (hasWatchedTv) {
-            List<SuggestionMovieItem> tvItems = allRecs.stream()
-                    .filter(r -> "TV".equalsIgnoreCase(r.getMediaType()) && !userLibraryTmdbIds.contains(r.getTmdbId()))
-                    .map(this::mapPersonalRecToItem)
-                    .toList();
-            if (!tvItems.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("tv")
-                        .title("TV Series Recommendations")
-                        .movies(tvItems)
-                        .build());
-            }
-        }
-
-        // 3. Anime Recommendations row (strictly only if user has watched >= 1 anime)
-        if (hasWatchedAnime) {
-            List<SuggestionMovieItem> animeItems = allRecs.stream()
-                    .filter(r -> "ANIME".equalsIgnoreCase(r.getMediaType()) && !userLibraryTmdbIds.contains(r.getTmdbId()))
-                    .map(this::mapPersonalRecToItem)
-                    .toList();
-            if (!animeItems.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("anime")
-                        .title("Anime Recommendations")
-                        .movies(animeItems)
-                        .build());
-            }
-        }
-
-        return SuggestionsResponse.builder().categories(categories).build();
+        return SuggestionsResponse.builder()
+                .categories(List.of(personalizedRecommendationService.movieCategory(user))).build();
     }
 
     /**
@@ -399,18 +309,6 @@ public class SuggestionService {
                         .mediaType(mediaType)
                         .build())
                 .collect(Collectors.toList());
-    }
-
-    private SuggestionMovieItem mapPersonalRecToItem(PersonalizedRecommendation rec) {
-        return SuggestionMovieItem.builder()
-                .tmdbId(rec.getTmdbId())
-                .title(rec.getTitle())
-                .posterUrl(rec.getPosterPath())
-                .voteAverage(rec.getVoteAverage())
-                .score(rec.getScore())
-                .mediaType(rec.getMediaType())
-                .reason("Personalized for your taste")
-                .build();
     }
 
     private List<SuggestionMovieItem> getCachedCategoryMovies(String mediaType, MovieListType listType, Set<Long> userLibraryTmdbIds) {

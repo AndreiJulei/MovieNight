@@ -72,14 +72,10 @@ class SuggestionServiceTest {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
         when(userMovieEntryRepository.findTmdbIdsByUserId(1L)).thenReturn(Set.of(100L));
 
-        // 1. Personalized
-        PersonalizedRecommendation rec = PersonalizedRecommendation.builder()
-                .tmdbId(200L)
-                .title("Interstellar")
-                .score(8.5)
-                .build();
-        when(personalizedRecommendationRepository.findByUserIdOrderByRankOrderAsc(1L))
-                .thenReturn(List.of(rec));
+        when(personalizedRecommendationService.movieCategory(testUser)).thenReturn(
+                com.movienight.backend.dto.SuggestionCategoryResponse.builder().id("movies")
+                    .movies(List.of(com.movienight.backend.dto.SuggestionMovieItem.builder()
+                        .tmdbId(200L).title("Interstellar").mediaType("MOVIE").build())).build());
 
         // 2. Friends Consensus
         when(friendshipRepository.findAcceptedFriendIdsForUser(1L)).thenReturn(List.of(2L, 3L));
@@ -129,30 +125,11 @@ class SuggestionServiceTest {
     @DisplayName("getPersonalRecommendations should return only categories user has watched")
     void testGetPersonalRecommendationsCategoryAware() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
-        when(userMovieEntryRepository.findTmdbIdsByUserId(1L)).thenReturn(Collections.emptySet());
-
-        // User watched only 1 movie (no TV, no anime)
-        Movie watchedMovie = Movie.builder().id(100L).mediaType("MOVIE").build();
-        UserMovieEntry watchedEntry = UserMovieEntry.builder()
-                .status(MovieStatus.WATCHED)
-                .movie(watchedMovie)
-                .build();
-        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L))
-                .thenReturn(List.of(watchedEntry));
-
-        PersonalizedRecommendation movieRec = PersonalizedRecommendation.builder()
-                .tmdbId(200L)
-                .title("Inception")
-                .mediaType("MOVIE")
-                .build();
-        PersonalizedRecommendation tvRec = PersonalizedRecommendation.builder()
-                .tmdbId(300L)
-                .title("Breaking Bad")
-                .mediaType("TV")
-                .build();
-
-        when(personalizedRecommendationRepository.findByUserIdOrderByRankOrderAsc(1L))
-                .thenReturn(List.of(movieRec, tvRec));
+        when(personalizedRecommendationService.movieCategory(testUser)).thenReturn(
+                com.movienight.backend.dto.SuggestionCategoryResponse.builder().id("movies")
+                    .title("Personal movie recommendations")
+                    .movies(List.of(com.movienight.backend.dto.SuggestionMovieItem.builder()
+                        .tmdbId(200L).title("Inception").mediaType("MOVIE").build())).build());
 
         SuggestionsResponse response = suggestionService.getPersonalRecommendations("john@example.com");
 
@@ -160,7 +137,7 @@ class SuggestionServiceTest {
         // User only watched MOVIE, so only 1 row: Movie Recommendations!
         assertThat(response.getCategories()).hasSize(1);
         assertThat(response.getCategories().get(0).getId()).isEqualTo("movies");
-        assertThat(response.getCategories().get(0).getTitle()).isEqualTo("Movie Recommendations");
+        assertThat(response.getCategories().get(0).getTitle()).isEqualTo("Personal movie recommendations");
         assertThat(response.getCategories().get(0).getMovies()).hasSize(1);
         assertThat(response.getCategories().get(0).getMovies().get(0).getTitle()).isEqualTo("Inception");
     }

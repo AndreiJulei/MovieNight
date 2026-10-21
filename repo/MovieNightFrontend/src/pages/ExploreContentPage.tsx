@@ -118,7 +118,7 @@ export default function ExploreContentPage() {
       return (m.mediaType || "").toUpperCase() === targetType;
     });
 
-    const newest = [...allOfType].sort((a, b) => b.year - a.year || (b.imdb ?? 0) - (a.imdb ?? 0)).slice(0, 10);
+    const newest = [...allOfType].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || (b.imdb ?? 0) - (a.imdb ?? 0)).slice(0, 10);
     const newestIds = new Set(newest.map((m) => m.id));
 
     const topRated = [...allOfType].sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
@@ -153,7 +153,7 @@ export default function ExploreContentPage() {
           subtitle: "Acclaimed cinematic masterpieces",
         });
       }
-      const upcoming = [...allOfType].filter((m) => m.year >= 2025);
+      const upcoming = [...allOfType].filter((m) => (m.year ?? 0) >= 2025);
       if (upcoming.length > 0) {
         result.push({
           id: "upcoming",
@@ -230,7 +230,7 @@ export default function ExploreContentPage() {
 
     const sortedMovies = [...rawMovies].sort((a, b) => {
       if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "year") return b.year - a.year;
+      if (sortBy === "year") return (b.year ?? 0) - (a.year ?? 0);
       if (sortBy === "rating") return (b.imdb ?? 0) - (a.imdb ?? 0);
       return 0;
     });
