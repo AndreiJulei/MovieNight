@@ -130,6 +130,17 @@ public class UserMovieService {
             }
         }
 
+        // The catalog still has a globally unique numeric provider ID. Until typed
+        // catalog identity lands, never attach a movie save to an equal-ID TV title.
+        boolean requestedMovie = request.getMediaType() == null || request.getMediaType().isBlank()
+                || "MOVIE".equalsIgnoreCase(request.getMediaType());
+        boolean catalogMovie = movie.getMediaType() == null || "MOVIE".equalsIgnoreCase(movie.getMediaType());
+        if (request.getTmdbId() != null && requestedMovie != catalogMovie) {
+            throw new IllegalArgumentException("Provider ID " + request.getTmdbId()
+                    + " belongs to an existing " + movie.getMediaType()
+                    + " title. This save cannot be completed until movie and TV catalog identities are separate.");
+        }
+
         // Step 2: Create or update the personal journal entry
         Optional<UserMovieEntry> existingEntry = userMovieEntryRepository.findByUserIdAndMovieId(user.getId(), movie.getId());
         UserMovieEntry entry;

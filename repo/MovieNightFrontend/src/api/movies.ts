@@ -298,7 +298,7 @@ export const moviesApi = {
   },
 
   /**
-   * Fetch category-aware personal recommendations (Movie, TV, Anime).
+   * Fetch watched-history personal movie recommendations.
    */
   async getPersonalRecommendations(): Promise<ApiSuggestionsResponse> {
     try {
