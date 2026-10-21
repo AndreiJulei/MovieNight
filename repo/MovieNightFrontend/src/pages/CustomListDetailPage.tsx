@@ -86,7 +86,7 @@ export default function CustomListDetailPage() {
       case "title":
         return arr.sort((a, b) => a.title.localeCompare(b.title));
       case "year":
-        return arr.sort((a, b) => b.year - a.year);
+        return arr.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
       case "rating":
         return arr.sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
       case "addedAt":

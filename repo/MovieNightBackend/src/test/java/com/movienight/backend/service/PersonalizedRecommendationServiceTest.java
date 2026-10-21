@@ -97,11 +97,11 @@ class PersonalizedRecommendationServiceTest {
         when(movieSimilarityRepository.findByTmdbIdIn(anySet()))
                 .thenReturn(List.of(sim1, sim2));
 
-        // User already has Inception in library (not the neighbors)
-        when(userMovieEntryRepository.findTmdbIdsByUserId(1L))
-                .thenReturn(Set.of(27205L));
-
-        when(movieRepository.findAll()).thenReturn(Collections.emptyList());
+        when(movieRepository.findAll()).thenReturn(List.of(
+                Movie.builder().tmdbId(157336L).title("Interstellar").mediaType("MOVIE").build(),
+                Movie.builder().tmdbId(11324L).title("Shutter Island").mediaType("MOVIE").build()));
+        when(cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE"))
+                .thenReturn(Collections.emptyList());
 
         personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
 

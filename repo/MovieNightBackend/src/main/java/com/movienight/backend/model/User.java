@@ -49,6 +49,12 @@ public class User {
     @Column(nullable = false)
     private boolean needsRecommendationRefresh = true;
 
+    // Persist diagnostics alongside the disposable recommendation cache. Null invalidates legacy caches.
+    private String personalRecommendationState;
+
+    @Column(length = 1000)
+    private String personalRecommendationLimitations;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

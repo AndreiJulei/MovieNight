@@ -34,8 +34,7 @@ public class SuggestionController {
     }
 
     /**
-     * Get strictly category-aware personal recommendations (up to 3 rows: Movie, TV Series, Anime).
-     * Omitted if user has 0 watched titles in that category.
+     * Get personal movie recommendations and explicit history/coverage states.
      */
     @GetMapping("/personal")
     public ResponseEntity<SuggestionsResponse> getPersonalRecommendations(Authentication authentication) {
@@ -79,6 +78,8 @@ public class SuggestionController {
                 .or(() -> userRepository.findByEmailIgnoreCase(authName))
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + authName));
 
+        user.setNeedsRecommendationRefresh(true);
+        userRepository.saveAndFlush(user);
         personalizedRecommendationService.recomputeRecommendationsForUser(user);
         return ResponseEntity.ok(Map.of("message", "Personalized recommendations recalculated successfully"));
     }

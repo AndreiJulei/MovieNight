@@ -15,4 +15,6 @@ public class SuggestionCategoryResponse {
     private String id;
     private String title;
     private List<SuggestionMovieItem> movies;
+    private String state;
+    private List<String> limitations;
 }

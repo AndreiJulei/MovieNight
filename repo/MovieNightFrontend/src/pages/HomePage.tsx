@@ -1,13 +1,15 @@
+import usePersonalRecommendations, { mapPersonalMovie } from "../hooks/usePersonalRecommendations";
+import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus";
 import useFriendSuggestions from "../hooks/useFriendSuggestions";
 import { mapApiMovie } from "../hooks/useSuggestions";
 import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "../components/Toast";
 import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
-import type { Movie, User } from "../store/data";
+import type { Movie } from "../store/data";
 
 export default function HomePage() {
   const store = useStore();
@@ -19,73 +21,10 @@ export default function HomePage() {
   // Selected trailer modal state
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
 
-  // 1. Compute Personalized recommendations
-  const { personalizedMovies, topPersonalized, samplePersonalized } = useMemo(() => {
-    if (!currentUser) {
-      return {
-        personalizedMovies: [],
-        topPersonalized: null,
-        samplePersonalized: [],
-      };
-    }
-
-    const myMovieIds = new Set<string>();
-    for (const e of store.entriesFor(currentUser.id, "watched")) myMovieIds.add(e.movieId);
-    for (const e of store.entriesFor(currentUser.id, "watchlist")) myMovieIds.add(e.movieId);
-
-    const friends = store.friendsOf(currentUser.id);
-    const friendMap = new Map(friends.map((f) => [f.id, f]));
-    const allEntries = store.allEntries();
-
-    interface Candidate {
-      movie: Movie;
-      rating: number;
-      recommender: User;
-    }
-
-    const candidateMap = new Map<string, Candidate>();
-    for (const e of allEntries) {
-      if (
-        friendMap.has(e.userId) &&
-        e.status === "watched" &&
-        e.rating != null &&
-        e.rating >= 7 &&
-        !myMovieIds.has(e.movieId)
-      ) {
-        const m = store.movieById(e.movieId);
-        if (!m) continue;
-        const friend = friendMap.get(e.userId)!;
-        const current = candidateMap.get(e.movieId);
-        if (!current || e.rating > current.rating) {
-          candidateMap.set(e.movieId, {
-            movie: m,
-            rating: e.rating,
-            recommender: friend,
-          });
-        }
-      }
-    }
-
-    let list = [...candidateMap.values()]
-      .sort((a, b) => b.rating - a.rating || (b.movie.imdb ?? 0) - (a.movie.imdb ?? 0));
-
-    // Pad with other acclaimed unwatched titles across genres if list is short
-    const candidateMovies = list.map((c) => c.movie);
-    const seenIds = new Set(candidateMovies.map((m) => m.id));
-    const extras = store.movies
-      .filter((m) => !myMovieIds.has(m.id) && !seenIds.has(m.id))
-      .sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
-
-    const fullList = [...candidateMovies, ...extras];
-    const top = fullList[0] ?? store.movies[0];
-    const sample = fullList.filter((m) => m.id !== top.id).slice(0, 6);
-
-    return {
-      personalizedMovies: fullList,
-      topPersonalized: top ?? null,
-      samplePersonalized: sample,
-    };
-  }, [store, currentUser]);
+  const personalSuggestions = usePersonalRecommendations();
+  const personalizedMovies = personalSuggestions.category?.movies.map(mapPersonalMovie) ?? [];
+  const topPersonalized = personalizedMovies[0] ?? null;
+  const samplePersonalized = personalizedMovies.slice(1, 7);
 
   // Friend choices come only from the accepted-friend API, in its source order.
   const friendSuggestions = useFriendSuggestions();
@@ -168,6 +107,7 @@ export default function HomePage() {
         className="mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-12 pb-28 space-y-16 sm:space-y-24"
       >
         {/* ── Section 1: Personalized Recommendations ── */}
+        <PersonalRecommendationStatus suggestions={personalSuggestions} />
         {topPersonalized && (
           <section className="space-y-4">
             <div className="rounded-xl border border-white/[0.08] bg-[#0b1019] overflow-hidden shadow-2xl">
@@ -304,7 +244,7 @@ export default function HomePage() {
                     {/* Context info and View All text link above preview */}
                     <div className="flex items-baseline justify-between mb-3.5">
                       <span className="nums text-xs text-text-muted">
-                        {personalizedMovies.length} curated picks in your library
+                        {personalizedMovies.length} personal movie picks
                       </span>
                       <Link
                         to="/suggestions/for-you"

@@ -47,7 +47,10 @@ public class TmdbClient {
         this.imageBaseUrl = imageBaseUrl;
         this.isBearerToken = this.apiKey.startsWith("ey") || this.apiKey.length() > 40;
 
-        RestClient.Builder builder = RestClient.builder()
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        RestClient.Builder builder = RestClient.builder().requestFactory(factory)
                 .baseUrl(baseUrl)
                 .defaultHeader("Accept", "application/json");
 
@@ -337,24 +340,21 @@ public class TmdbClient {
         }
 
         try {
-            TmdbSearchResponse response = restClient.get()
-                    .uri(uriBuilder -> applyAuth(uriBuilder)
-                            .path("/movie/{id}/recommendations")
-                            .queryParam("language", "en-US")
-                            .queryParam("page", Math.max(1, page))
-                            .build(movieId))
-                    .retrieve()
-                    .body(TmdbSearchResponse.class);
-
-            if (response != null && response.getResults() != null) {
-                return response.getResults();
+            MovieRecommendationResponse response = restClient.get()
+                    .uri(uriBuilder -> applyAuth(uriBuilder).path("/movie/{id}/recommendations")
+                            .queryParam("language", "en-US").queryParam("page", Math.max(1, page)).build(movieId))
+                    .retrieve().body(MovieRecommendationResponse.class);
+            if (response == null || response.results() == null) {
+                throw new IllegalStateException("Invalid movie recommendation provider response");
             }
-        } catch (Exception e) {
-            log.debug("Failed to fetch movie recommendations for TMDB ID {}: {}", movieId, e.getMessage());
+            return response.results();
+        } catch (RuntimeException failure) {
+            // Do not expose provider URLs containing credentials through the API error response.
+            throw new IllegalStateException("Movie recommendation source unavailable. Retry the refresh.", failure);
         }
-
-        return Collections.emptyList();
     }
+
+    private record MovieRecommendationResponse(List<TmdbSearchResponse.TmdbMovieSummary> results) {}
 
     /**
      * Fetch recommendations for a specific TV show or anime.

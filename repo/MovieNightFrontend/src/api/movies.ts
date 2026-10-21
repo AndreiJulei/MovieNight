@@ -300,16 +300,32 @@ export const moviesApi = {
   /**
    * Fetch category-aware personal recommendations (Movie, TV, Anime).
    */
-  async getPersonalRecommendations(): Promise<ApiSuggestionsResponse | null> {
+  async getPersonalRecommendations(): Promise<ApiSuggestionsResponse> {
     try {
       const res = await fetch(`${API_BASE}/api/suggestions/personal`, {
-        headers: getAuthHeaders(),
+        headers: getAuthHeaders(), signal: AbortSignal.timeout(15000),
       });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn("Failed to fetch personal recommendations:", err);
-      return null;
+      if (!res.ok) throw new Error("Personal movie request failed.");
+      const data = await res.json() as ApiSuggestionsResponse;
+      const states = ["READY", "NO_HISTORY", "INSUFFICIENT_COVERAGE", "LIBRARY_EXHAUSTED", "MISSING_METADATA"];
+      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED"];
+      if (!Array.isArray(data?.categories) || data.categories.length !== 1 ||
+          data.categories.some((c) => c.id !== "movies" || !states.includes(c.state ?? "") ||
+            !Array.isArray(c.limitations) || c.limitations.some((l) => !limitations.includes(l)) ||
+            !Array.isArray(c.movies) || c.movies.length > 30 ||
+            (c.state === "READY") !== (c.movies.length > 0) ||
+            new Set(c.movies.map((m) => m.tmdbId)).size !== c.movies.length ||
+            c.movies.some((m) => !Number.isSafeInteger(m.tmdbId) || m.tmdbId <= 0 ||
+              typeof m.title !== "string" || !m.title.trim() || m.mediaType !== "MOVIE" ||
+              typeof m.score !== "number" || !Number.isFinite(m.score) || m.score <= 0 ||
+              (m.releaseYear != null && !Number.isInteger(m.releaseYear)) ||
+              (m.voteAverage != null && (typeof m.voteAverage !== "number" || !Number.isFinite(m.voteAverage))) ||
+              (m.posterUrl != null && typeof m.posterUrl !== "string")))) {
+        throw new Error("Invalid personal movie response.");
+      }
+      return data;
+    } catch {
+      throw new Error("Could not load personal movies. Retry to refresh your recommendations.");
     }
   },
 
@@ -357,17 +373,19 @@ export const moviesApi = {
   /**
    * Request immediate recalculation of personalized recommendations.
    */
-  async refreshPersonalizedRecommendations(): Promise<boolean> {
+  async refreshPersonalizedRecommendations(): Promise<void> {
     try {
       const res = await fetch(`${API_BASE}/api/suggestions/personalized/refresh`, {
-        method: "POST",
-        headers: getAuthHeaders(),
+        method: "POST", headers: getAuthHeaders(), signal: AbortSignal.timeout(15000),
       });
-      return res.ok;
+      if (!res.ok) throw new Error("Refresh failed.");
+      const data = await res.json();
+      if (typeof data?.message !== "string") throw new Error("Invalid refresh response.");
     } catch {
-      return false;
+      throw new Error("Could not refresh personal movies. Retry to try again.");
     }
   },
+
 };
 
 export interface ApiSuggestionMovieItem {
@@ -384,6 +402,8 @@ export interface ApiSuggestionMovieItem {
 }
 
 export interface ApiSuggestionCategory {
+  state?: string;
+  limitations?: string[];
   id: string;
   title: string;
   movies: ApiSuggestionMovieItem[];

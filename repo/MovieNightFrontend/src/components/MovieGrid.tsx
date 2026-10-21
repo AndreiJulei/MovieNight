@@ -83,7 +83,7 @@ export function MovieCard({
     <a
       href={targetUrl}
       onClick={handleClick}
-      title={`${movie.title} (${movie.year})`}
+      title={movie.year == null ? movie.title : `${movie.title} (${movie.year})`}
       className="group block cursor-pointer focus:outline-none"
       aria-label={movie.title}
     >

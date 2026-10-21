@@ -43,6 +43,8 @@ public class PersonalizedRecommendation {
 
     private Double voteAverage;
 
+    private Integer releaseYear;
+
     @Column(nullable = false)
     private Double score;
 

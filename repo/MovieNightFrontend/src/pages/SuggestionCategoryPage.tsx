@@ -3,35 +3,22 @@ import { useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
-import { usePersonalRecommendations, useSuggestionsByCategory } from "../hooks/useSuggestions";
+import usePersonalRecommendations, { mapPersonalMovie } from "../hooks/usePersonalRecommendations";
+import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus";
 import { useStore } from "../store/MovieStore";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 
 export default function SuggestionCategoryPage() {
   const store = useStore();
-  const { saveWatchlist } = useWatchlistSave();
+  const { saveWatchlist, error: saveError } = useWatchlistSave();
   const { path } = useRouter();
   const params = matchPath("/suggestions/:category", path);
   const category = (params?.category || "for-you");
 
-  const personalRows = usePersonalRecommendations();
-  const fallbackData = useSuggestionsByCategory(category);
-
-  const { title, subtitle, movies: rawMovies } = useMemo(() => {
-    const personalMatch = personalRows.find((r) => r.id === category);
-    if (personalMatch) {
-      return {
-        title: personalMatch.title,
-        subtitle: `Curated ${personalMatch.title.toLowerCase()} based on your viewing history and ratings.`,
-        movies: personalMatch.movies || [],
-      };
-    }
-    return {
-      title: fallbackData.title === "Suggestions" ? "Personal Recommendations" : fallbackData.title,
-      subtitle: "Explore all titles in this curated collection.",
-      movies: fallbackData.movies || [],
-    };
-  }, [category, fallbackData, personalRows]);
+  const suggestions = usePersonalRecommendations();
+  const title = "Personal movie recommendations";
+  const subtitle = "Movies in recommendation order, excluding your watchlist and watched history.";
+  const rawMovies = useMemo(() => suggestions.category?.movies.map(mapPersonalMovie) ?? [], [suggestions.category]);
 
   // Initialize view mode from localStorage or grid
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -41,7 +28,7 @@ export default function SuggestionCategoryPage() {
     return "grid";
   });
 
-  const [sortBy, setSortBy] = useState<SortBy>("rating");
+  const [sortBy, setSortBy] = useState<SortBy>("recommendation");
   const [minRating, setMinRating] = useState<MinRating>(0);
 
   const filters: Filters = {
@@ -113,7 +100,10 @@ export default function SuggestionCategoryPage() {
         </p>
       </div>
 
+      <PersonalRecommendationStatus suggestions={suggestions} />
+      {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
       <TopBar
+        recommendationOrder
         count={sortedMovies.length}
         avg={null}
         filters={filters}
@@ -124,7 +114,7 @@ export default function SuggestionCategoryPage() {
         showAddButton={false}
       />
 
-      <MovieGrid
+      {sortedMovies.length > 0 && <MovieGrid
         movies={sortedMovies}
         compact={viewMode === "compact"}
         empty="No titles found for this recommendation category."
@@ -132,7 +122,7 @@ export default function SuggestionCategoryPage() {
         showAddToWatchlist
         onAddToWatchlist={saveWatchlist}
         userHasMovie={userHasMovie}
-      />
+      />}
     </AppShell>
   );
 }

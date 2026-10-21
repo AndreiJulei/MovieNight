@@ -17,7 +17,7 @@ export type Movie = {
   catalogMovieId?: number;
   tmdbId?: number;
   title: string;
-  year: number;
+  year: number | null;
   posterSeed?: number | null;
   posterUrl: string | null;
   imdb?: number | null;
