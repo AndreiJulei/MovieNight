@@ -165,6 +165,25 @@ class PersonalRecommendationsPersistenceTest {
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(2)));
     }
 
+    @Test void savingRecommendedMovieCannotChangeEqualIdTvLibraryEntry() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        save(candidate, "TV with same ID", "TV", "WATCHLIST", "null");
+        metadata(candidate, "MOVIE", "Distinct movie"); neighbor(seed, candidate, 1);
+        read("/api/suggestions/personal").andExpect(status().isOk())
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+
+        mvc.perform(post("/api/movies/library").header("Authorization", token()).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"tmdbId\":" + candidate + ",\"title\":\"Distinct movie\",\"mediaType\":\"MOVIE\",\"status\":\"WATCHLIST\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message", containsString("TV")));
+
+        read("/api/movies/library").andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(2)))
+            .andExpect(jsonPath("$[?(@.movie.tmdbId == " + candidate + ")].movie.mediaType", hasItem("TV")));
+        read("/api/suggestions/personal").andExpect(status().isOk())
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+    }
+
     @Test void authenticatedOwnersAndScheduledRecomputationIgnoreLegacyMixedRows() throws Exception {
         mvc.perform(get("/api/suggestions/personal")).andExpect(status().isForbidden());
         mvc.perform(post("/api/suggestions/personalized/refresh")).andExpect(status().isForbidden());

@@ -1,7 +1,8 @@
 # Personal movie recommendations
 
-Status: agreed unpublished local contract, confirmed 2026-10-21; implemented
-in the local worktree, awaiting human review and commit approval. Roadmap: milestone 6. Product requirements:
+Status: implemented on `feat/006-personal-movie-recommendations` at `52976c0`;
+post-commit review fixes are in the current worktree awaiting human review and
+commit approval. The feature remains unpublished and unmerged. Roadmap: milestone 6. Product requirements:
 P09/P10, with P01/P12 applying to explicit saves and failure feedback.
 GitHub issue: not published.
 Base: `dbc560d743f2c2b289dc1ce3c3b68547c03fc820` on local `main`.
@@ -166,8 +167,10 @@ for this specification-only task.
 
 ## Validation — 2026-10-21
 
-Tested revision: uncommitted implementation worktree based on
-`dbc560d743f2c2b289dc1ce3c3b68547c03fc820`; no implementation commit exists.
+Historical pre-commit validation of the implementation worktree based on
+`dbc560d743f2c2b289dc1ce3c3b68547c03fc820`; subsequently committed as
+`52976c0a13c2b74c2eda5e7b717ca55a1794de57`. The checks and initial review
+below describe that earlier worktree; current follow-up evidence appears at the end.
 All acceptance rows below distinguish backend execution from frontend source
 inspection. Browser execution remains excluded by the agreed boundary.
 
@@ -362,5 +365,111 @@ cat repo/MovieNightFrontend/src/hooks/usePersonalRecommendations.ts
 cat repo/MovieNightFrontend/src/components/PersonalRecommendationStatus.tsx
 ```
 
-Wait for explicit approval of this reviewed change set before committing, per
+The initial change set above was subsequently committed as `52976c0`. The
+follow-up change set below has its own review checkpoint. Wait for explicit
+approval before committing it, per
 [the workflow checkpoint](../../movienight-workflow.md#human-review-checkpoint).
+
+## Post-commit review fixes — 2026-10-21
+
+Fixed base: committed feature 006 at `52976c0a13c2b74c2eda5e7b717ca55a1794de57`.
+The new feature 007 draft is an unrelated untracked file and is excluded from
+this change set. No tracker publication, merge or roadmap status update occurred.
+
+The required two-axis review of `git diff dbc560d...52976c0` found no hard
+documented-standards violation. Its Spec axis found two frontend gaps: Home and
+the category page used an untyped library lookup, so an equal-ID TV entry could
+appear to be the recommended movie; Home also claimed watched TV/anime influenced
+personal movie picks. A follow-up source inspection found the Home removal path
+could use an untyped ID and the backend could accept a movie save as an equal-ID
+TV catalog entry. The first two findings were fixed and independently rechecked.
+The final Home removal adjustment was made after that recheck; its source and
+type/build checks are recorded below. Existing nonblocking review judgements
+concern free-form protocol state strings and metadata resolution placement.
+
+The repair uses movie-typed membership checks on Home and the personal category
+page. Home recommendation bookmarks add only; a stale card already saved is
+disabled until refresh removes it. The backend rejects a save if the globally
+unique catalog provider ID belongs to the other resource type. This returns a
+clear failure and keeps both the TV library entry and the movie recommendation
+intact, pending the typed catalog migration in feature 007. It does not claim
+simultaneous equal-ID catalog records or successful collision saves.
+
+An authenticated API/H2 test at the agreed seam was red before the guard: it
+expected HTTP 400 but received 201. After the guard, it passed. The focused
+provider HTTP fixture initially could not bind a loopback port in the sandbox;
+it passed with local socket permission. An incremental focused run encountered
+the existing stale Java class-output problem; a clean focused run passed. These
+were setup failures, not passing feature behavior. The final isolated full
+backend suite passed **119 tests, 0 failures/errors/skipped**, including the
+new collision case and the loopback provider fixture. Strict TypeScript and the
+production frontend build passed after the page/copy fixes; the final add-only
+Home adjustment was followed by another typecheck/build. `git diff --check`
+passed. Browser execution remains excluded by the agreed contract, so rendered
+feedback, account races and accessibility remain unverified.
+
+| Acceptance ID | Follow-up result | Evidence / limit |
+| --- | --- | --- |
+| AC01 | Passed API; UI source only | Existing movie-only API cases passed in the full suite; Home copy now names watched movies and rating influence. |
+| AC03 | Passed API; UI source only | New authenticated collision case returns 400, leaves TV library status intact and keeps distinct movie eligible; Home/category membership source uses media type and ID. Collision save cannot succeed until feature 007. |
+| AC04 | Passed API; UI source only | New collision failure remains retryable without changing TV; existing repeated save/read API cases passed; add-only Home action avoids untyped removal. Browser interaction unverified. |
+| AC02, AC05–AC10 | Passed at previously agreed seams | Existing API cases passed in the full suite; frontend source, typecheck and build rechecked. No new browser evidence. |
+
+Commands actually run from the application directories:
+
+```sh
+# repo/MovieNightBackend: focused red, then clean green, then full suite
+./mvnw -Dapp.tmdb.api-key= -Dapp.omdb.api-key= -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar -Dtest=PersonalRecommendationsPersistenceTest#savingRecommendedMovieCannotChangeEqualIdTvLibraryEntry clean test
+./mvnw -Dapp.tmdb.api-key= -Dapp.omdb.api-key= -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar clean test
+# repo/MovieNightFrontend
+./node_modules/.bin/tsc --noEmit
+npm run build
+# repository root
+git diff --check
+```
+
+The loopback fixture required local socket permission. Installed runtime and
+Mockito-agent paths are machine-specific as described above. Tests used no
+real provider keys. Local H2/API checks do not prove production retention,
+deployed behavior or live-provider quality. Logs are untracked under
+`/tmp/movienight-006-current-*.log` and `/tmp/movienight-006-collision-*.log`.
+
+### Human review checkpoint for the follow-up change set
+
+Proposed commit scope: **seven modified files**, no additions or deletions:
+
+| File | Reason / acceptance |
+| --- | --- |
+| `docs/features/006-personal-movie-recommendations/spec.md` | Correct committed status and record current review, checks, limitation and commit scope (AC01/AC03/AC04). |
+| `repo/MovieNightBackend/src/main/java/com/movienight/backend/service/UserMovieService.java` | Reject equal-ID cross-type saves while catalog identity is untyped (AC03/AC04). |
+| `repo/MovieNightBackend/src/test/java/com/movienight/backend/controller/PersonalRecommendationsPersistenceTest.java` | New authenticated collision save/read regression (AC03/AC04). |
+| `repo/MovieNightBackend/src/test/java/com/movienight/backend/service/SuggestionServiceTest.java` | Correct obsolete movie-only test description (AC01). |
+| `repo/MovieNightFrontend/src/api/movies.ts` | Correct obsolete personal API description (AC01). |
+| `repo/MovieNightFrontend/src/pages/HomePage.tsx` | Typed membership, add-only bookmark and accurate watched-movie copy (AC01/AC03/AC04). |
+| `repo/MovieNightFrontend/src/pages/SuggestionCategoryPage.tsx` | Movie-typed membership keeps equal-ID TV from hiding the movie save control (AC03/AC04). |
+
+Before: equal-ID TV state could mask a recommended movie, and a movie save could
+silently target the TV catalog row; Home described the wrong seed history. After:
+movie cards use movie-only membership, collision saves fail visibly without
+altering the TV entry, and Home names the watched-movie source. A human can try
+marking a movie watched, inspect Home and Personal Recommendations, then save a
+different movie; it should disappear after confirmation. With an equal-ID TV
+library row, the movie recommendation remains visible and its save reports a
+failure until feature 007 establishes typed catalog coexistence. This human
+scenario was not executed in a browser.
+
+Inspect before approving a commit:
+
+```sh
+git status --short --untracked-files=all
+git diff --stat
+git diff -- docs/features/006-personal-movie-recommendations/spec.md
+git diff -- repo/MovieNightBackend/src/main/java/com/movienight/backend/service/UserMovieService.java repo/MovieNightBackend/src/test/java/com/movienight/backend/controller/PersonalRecommendationsPersistenceTest.java repo/MovieNightBackend/src/test/java/com/movienight/backend/service/SuggestionServiceTest.java
+git diff -- repo/MovieNightFrontend/src/api/movies.ts repo/MovieNightFrontend/src/pages/HomePage.tsx repo/MovieNightFrontend/src/pages/SuggestionCategoryPage.tsx
+cat docs/features/007-tv-anime-tv/spec.md
+```
+
+The last command exposes the unrelated untracked draft so it cannot be mistaken
+for part of the proposed commit. Nothing is staged, committed, pushed or merged
+for this follow-up. Wait for explicit approval of this exact change set before
+committing under the project human-review rule.

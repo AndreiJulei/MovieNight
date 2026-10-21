@@ -122,7 +122,7 @@ class SuggestionServiceTest {
     }
 
     @Test
-    @DisplayName("getPersonalRecommendations should return only categories user has watched")
+    @DisplayName("getPersonalRecommendations should return watched-history movie candidates")
     void testGetPersonalRecommendationsCategoryAware() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
         when(personalizedRecommendationService.movieCategory(testUser)).thenReturn(

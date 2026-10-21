@@ -74,8 +74,10 @@ export default function SuggestionCategoryPage() {
 
   // Check if current user already has a movie
   const userHasMovie = (movieId: string) => {
-    if (!store.currentUser) return false;
-    return !!store.entryFor(store.currentUser.id, movieId);
+    const userId = store.currentUser?.id;
+    if (!userId) return false;
+    return store.allEntries().some((entry) => entry.userId === userId
+      && entry.mediaType === "MOVIE" && entry.movieId === movieId);
   };
 
   const referrerPath = `/suggestions/${category}`;

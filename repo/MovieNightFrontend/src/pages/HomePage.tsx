@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import { useStore } from "../store/MovieStore";
-import { useToast } from "../components/Toast";
 import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
 import type { Movie } from "../store/data";
 
@@ -15,7 +14,6 @@ export default function HomePage() {
   const store = useStore();
   const { saveWatchlist } = useWatchlistSave();
   const { navigate } = useRouter();
-  const { toast } = useToast();
   const currentUser = store.currentUser;
 
   // Selected trailer modal state
@@ -34,22 +32,15 @@ export default function HomePage() {
   const sampleFriends = friendsMovies.slice(1, 7);
 
   const handleWatchlistToggle = (movie: Movie) => {
-    if (!currentUser) return;
-    const inWatchlist = store.entryFor(currentUser.id, movie.id)?.status === "watchlist";
-    if (inWatchlist) {
-      store.removeFromWatchlist(movie.id);
-      toast({
-        message: `Removed "${movie.title}" from Watchlist`,
-        type: "info",
-      });
-    } else {
-      void saveWatchlist(movie.id, movie);
-    }
+    if (!currentUser || isMovieInWatchlist(movie)) return;
+    void saveWatchlist(movie.id, movie);
   };
 
-  const isMovieInWatchlist = (movieId: string) => {
+  const isMovieInWatchlist = (movie: Movie) => {
     if (!currentUser) return false;
-    return store.entryFor(currentUser.id, movieId)?.status === "watchlist";
+    return store.allEntries().some((entry) => entry.userId === currentUser.id
+      && entry.mediaType === movie.mediaType && entry.movieId === movie.id
+      && entry.status === "watchlist");
   };
 
   if (!currentUser) return null;
@@ -144,17 +135,17 @@ export default function HomePage() {
                         e.stopPropagation();
                         handleWatchlistToggle(topPersonalized);
                       }}
-                      disabled={store.isWatchlistSaving(topPersonalized.id)}
+                      disabled={store.isWatchlistSaving(topPersonalized.id) || isMovieInWatchlist(topPersonalized)}
                       aria-busy={store.isWatchlistSaving(topPersonalized.id)}
-                      title={isMovieInWatchlist(topPersonalized.id) ? "In Watchlist" : "Add to Watchlist"}
-                      aria-label={store.isWatchlistSaving(topPersonalized.id) ? "Saving to Watchlist" : isMovieInWatchlist(topPersonalized.id) ? "In Watchlist" : "Add to Watchlist"}
+                      title={isMovieInWatchlist(topPersonalized) ? "In Watchlist" : "Add to Watchlist"}
+                      aria-label={store.isWatchlistSaving(topPersonalized.id) ? "Saving to Watchlist" : isMovieInWatchlist(topPersonalized) ? "In Watchlist" : "Add to Watchlist"}
                       className={`absolute top-1.5 left-1.5 flex h-7 w-7 items-center justify-center rounded-sm text-xs font-bold shadow-md transition-colors ${
-                        isMovieInWatchlist(topPersonalized.id)
+                        isMovieInWatchlist(topPersonalized)
                           ? "bg-accent text-white"
                           : "bg-black/80 text-white hover:bg-accent"
                       }`}
                     >
-                      {isMovieInWatchlist(topPersonalized.id) ? "✓" : "+"}
+                      {isMovieInWatchlist(topPersonalized) ? "✓" : "+"}
                     </button>
                   </div>
 
@@ -235,7 +226,7 @@ export default function HomePage() {
 
                     {/* Richer descriptive text */}
                     <p className="mt-3 text-sm text-text-muted leading-relaxed">
-                      Here are some recommended movies based on what you liked, curated from all genres and types of content you've watched across cinema, television, and animation.
+                      These movie picks come from your watched movies. Your ratings influence their order, and unrated watched movies also contribute.
                     </p>
 
                     {/* Thin hairline divider separating description from preview */}
@@ -348,17 +339,17 @@ export default function HomePage() {
                         e.stopPropagation();
                         handleWatchlistToggle(topFriendMovie);
                       }}
-                      disabled={store.isWatchlistSaving(topFriendMovie.id)}
+                      disabled={store.isWatchlistSaving(topFriendMovie.id) || isMovieInWatchlist(topFriendMovie)}
                       aria-busy={store.isWatchlistSaving(topFriendMovie.id)}
-                      title={isMovieInWatchlist(topFriendMovie.id) ? "In Watchlist" : "Add to Watchlist"}
-                      aria-label={store.isWatchlistSaving(topFriendMovie.id) ? "Saving to Watchlist" : isMovieInWatchlist(topFriendMovie.id) ? "In Watchlist" : "Add to Watchlist"}
+                      title={isMovieInWatchlist(topFriendMovie) ? "In Watchlist" : "Add to Watchlist"}
+                      aria-label={store.isWatchlistSaving(topFriendMovie.id) ? "Saving to Watchlist" : isMovieInWatchlist(topFriendMovie) ? "In Watchlist" : "Add to Watchlist"}
                       className={`absolute top-1.5 left-1.5 flex h-7 w-7 items-center justify-center rounded-sm text-xs font-bold shadow-md transition-colors ${
-                        isMovieInWatchlist(topFriendMovie.id)
+                        isMovieInWatchlist(topFriendMovie)
                           ? "bg-accent text-white"
                           : "bg-black/80 text-white hover:bg-accent"
                       }`}
                     >
-                      {isMovieInWatchlist(topFriendMovie.id) ? "✓" : "+"}
+                      {isMovieInWatchlist(topFriendMovie) ? "✓" : "+"}
                     </button>
                   </div>
 
