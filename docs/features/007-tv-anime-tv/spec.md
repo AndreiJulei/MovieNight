@@ -1,7 +1,7 @@
 # TV and anime TV discovery and tracking
 
-Status: agreed unpublished local contract, confirmed 2026-10-21; specification
-only, not implemented or validated. Roadmap: milestone 7, first TV slice.
+Status: agreed unpublished local contract, confirmed 2026-10-21; implementation
+in the local worktree on 2026-10-22, verification and human review in progress. Roadmap: milestone 7, first TV slice.
 Product requirements: P01–P06, P09, P11/P12; existing friendship privacy applies.
 GitHub issue: not published.
 Fixed specification base: `52976c0a13c2b74c2eda5e7b717ca55a1794de57` on
@@ -160,8 +160,9 @@ this specification-only task.
 
 ## Out of scope
 
-- Implementation, commit, push, merge, tracker publication, roadmap integration
-  updates or claims that milestone 7 is complete.
+- Commit, push, merge, tracker publication, roadmap integration updates or claims
+  that the entire milestone 7 is complete. The user authorized this implementation
+  on 2026-10-22 after reviewing the recorded gaps.
 - TV/anime personal recommendations or friend-ranking expansion; changes to movie
   recommendation scoring, new ML methods or quality/latency guarantees.
 - Episode/season tracking, anime-film discovery expansion, public custom lists,
@@ -172,7 +173,7 @@ this specification-only task.
   restart/release retention, backup/restore, onboarding/recovery or deployment.
 - Destructive data reset, guessed legacy type conversion or silent user-data loss.
 
-## Validation
+## Historical specification validation
 
 Specification recorded 2026-10-21 against the fixed base above. Git inventory and
 read-only document/source inspection were performed; no application, browser,
@@ -201,7 +202,7 @@ showed only this new record; tracked diff was empty.
 | TV11 | Not run | Ambiguous legacy migration stops unchanged; verified mapping enables safe retry. |
 | TV12 | Not run | Independent API reload reads plus frontend identity/account/response source audit; browser timing unverified. |
 
-## Documentation review checkpoint
+## Historical documentation review checkpoint
 
 One new file: `docs/features/007-tv-anime-tv/spec.md`, containing the confirmed
 outcome, TV01–TV12, decisions, exclusions and implementation test boundary.
@@ -223,3 +224,69 @@ The final command returns 1 when it displays the new-file diff. No commit,
 publication or implementation is authorized by this documentation checkpoint.
 Wait for explicit approval before committing under
 [the human-review rule](../../movienight-workflow.md#human-review-checkpoint).
+
+
+## Implementation decisions — 2026-10-22
+
+Fixed implementation base: `76a9eaf` on `feat/007-tv-anime-tv`. The user committed
+feature 006 follow-ups and the 007 specification before implementation; the starting
+worktree was clean. This work supersedes the earlier specification-only boundary.
+The original specification base and historical checks above are retained as history.
+
+Provider resource identity is represented by `ResourceType.MOVIE` or `TV`, separate
+from the `MOVIE`/`TV`/`ANIME` app classification. Catalog and personal-cache unique
+keys include resource type. API category hints `TV` and `ANIME` both explicitly
+identify the TV resource; missing/unknown hints fail. Saves may instead supply an
+exact `catalogMovieId`, with conflicting provider identity rejected. Catalog-only
+manual titles retain their server-allocated catalog identity. Requests no longer
+match titles by display text or reinterpret a catalog key as a provider number.
+
+Frontend title IDs are `movie:<provider-id>`, `tv:<provider-id>`, or
+`catalog:<catalog-id>`. All API mapping, navigation, library/list membership,
+pending writes and details use those IDs. Anime shares the `tv:` identity; separate
+TV Series and Anime TV pages and filters remain. Provider discovery uses the same
+Animation plus Japanese language/origin classification as search/details. Broad
+TV results are filtered; anime discovery requests Animation without a language-only
+restriction, then applies the agreed rule. Result sets are bounded by existing
+provider pages, so filtering can produce sparse shelves. No coverage guarantee is
+added. Cached discovery also excludes titles already recognized as anime in catalog.
+
+Configured provider failures remain errors; valid empty results remain empty. On
+startup/background refresh, provider failure rolls back discovery cache changes
+without preventing access to saved libraries. Explicit discovery reads can retry.
+Frontend discovery no longer invents local filler after an empty/failed API read.
+Details use the requested endpoint only. Notes and removals now apply confirmed
+writes with pending/failure feedback instead of showing unconfirmed success.
+
+### Local H2 versioned migration
+
+`IdentityMigrationConfiguration` makes `LocalH2IdentityMigration` run before the
+entity manager/Hibernate schema initialization. V1 uses JDBC and a migration ledger,
+with no new dependency or production database choice. Fresh databases are created
+with the new entity schema. Legacy catalog rows require an explicitly reviewed
+properties file keyed by **catalog primary key**, including legacy MOVIE/TV rows
+whose old cross-endpoint lookup did not establish reliable provenance. Example
+syntax only (these IDs are illustrative, not mappings for actual user data):
+
+```properties
+1=MOVIE
+2=TV
+3=ANIME
+```
+
+Configure `app.catalog-migration.mapping-file=/absolute/path/reviewed.properties`
+when starting the backend. Values describe verified app classification; ANIME
+maps to provider TV identity, while a legacy anime film must be mapped MOVIE.
+Never generate these assignments from numeric provider IDs or legacy type alone.
+The migrator reports unmapped catalog IDs and stops before any schema/data change.
+It preserves catalog keys, ratings, notes and all foreign-key relationships,
+removes both legacy unique constraints and standalone untyped indexes, establishes
+typed uniqueness, and invalidates disposable caches. H2 DDL auto-commits, so an
+interrupted non-ambiguity failure blocks startup and can resume with the identical
+mapping fingerprint. The ledger is completed only after invariant checks; completed
+reruns verify the schema and retain rebuilt caches. Fixture tests cover successful
+conversion, ambiguity with no writes, completed rerun and interrupted resume.
+
+No actual user database was migrated in this task. Production migration operations,
+backup/restore and restart/release retention remain deferred. H2 fixture persistence
+proves only the local schema/transaction and migration boundaries agreed above.

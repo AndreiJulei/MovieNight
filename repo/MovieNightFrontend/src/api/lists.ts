@@ -112,9 +112,9 @@ export const listsApi = {
   async removeMovieFromList(listId: string, movieId: number): Promise<ApiCustomListResponse> {
     return confirmedList(await listRequest(`/api/lists/${listId}/movies/${movieId}`, { method: "DELETE" }));
   },
-  async resolveCatalogMovie(tmdbId: number): Promise<number> {
-    const movie = await listRequest<ApiMovieResponse>(`/api/movies/tmdb/${tmdbId}?mediaType=MOVIE`);
-    if (!movie?.id || movie.tmdbId !== tmdbId || movie.mediaType !== "MOVIE") throw new Error("Could not find this movie in the catalog. Please try again.");
+  async resolveCatalogMovie(tmdbId: number, resourceType: "MOVIE" | "TV"): Promise<number> {
+    const movie = await listRequest<ApiMovieResponse>(`/api/movies/tmdb/${tmdbId}?mediaType=${resourceType}`);
+    if (!movie?.id || movie.tmdbId !== tmdbId || (movie.mediaType === "MOVIE" ? "MOVIE" : "TV") !== resourceType) throw new Error("Could not find this movie in the catalog. Please try again.");
     return movie.id;
   },
 };

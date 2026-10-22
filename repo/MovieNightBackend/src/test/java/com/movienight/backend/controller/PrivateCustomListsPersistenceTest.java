@@ -113,7 +113,7 @@ class PrivateCustomListsPersistenceTest {
         mvc.perform(get("/api/movies/library").header("Authorization", authorization))
                 .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
         // Explicit watched save is independent of either list's membership.
-        write("POST", "/api/movies/library", "{\"tmdbId\":" + catalogId +
+        write("POST", "/api/movies/library", "{\"mediaType\":\"MOVIE\",\"tmdbId\":" + catalogId +
                 ",\"title\":\"Collision movie\",\"status\":\"WATCHED\",\"personalRating\":7.5,\"notes\":\"Private note\"}")
                 .andExpect(status().isCreated());
         write("DELETE", "/api/lists/" + first + "/movies/" + collisionId, "").andExpect(status().isOk());
@@ -181,19 +181,19 @@ class PrivateCustomListsPersistenceTest {
     }
 
     @Test
-    void movieLookupCannotReclassifyTvAndMovieListsRejectTvCatalogKeys() throws Exception {
+    void movieLookupCannotReclassifyTvAndListsAcceptTvCatalogKeys() throws Exception {
         long tvId = movies.save(Movie.builder().title("Existing TV series").tmdbId(99000003L).mediaType("TV").build()).getId();
-        long listId = id(create("{\"title\":\"Movies only\"}").andExpect(status().isCreated()));
+        long listId = id(create("{\"title\":\"TV titles\"}").andExpect(status().isCreated()));
         mvc.perform(get("/api/movies/tmdb/99000003").param("mediaType", "MOVIE").header("Authorization", authorization))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
         mvc.perform(get("/api/movies/" + tvId).header("Authorization", authorization))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.mediaType").value("TV"))
                 .andExpect(jsonPath("$.title").value("Existing TV series"));
         write("POST", "/api/lists/" + listId + "/movies", "{\"movieId\":" + tvId + "}")
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
         create("{\"title\":\"Wrong type\",\"initialMovieIds\":[" + tvId + "]}")
-                .andExpect(status().isBadRequest());
-        read(listId).andExpect(jsonPath("$.entries", hasSize(0)));
+                .andExpect(status().isCreated());
+        read(listId).andExpect(jsonPath("$.entries", hasSize(1)));
     }
 
     private User newUser() {

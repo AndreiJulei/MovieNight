@@ -75,7 +75,7 @@ public class TmdbMovieDetailsResponse {
         if (name != null && !name.isBlank()) {
             return name;
         }
-        return "Untitled";
+        return null;
     }
 
     public String getEffectiveReleaseDate() {
@@ -118,19 +118,13 @@ public class TmdbMovieDetailsResponse {
     }
 
     public String getResolvedMediaType() {
+        return getResolvedMediaType(numberOfSeasons != null || numberOfEpisodes != null || (title == null && name != null)
+                ? com.movienight.backend.model.ResourceType.TV : com.movienight.backend.model.ResourceType.MOVIE);
+    }
+
+    public String getResolvedMediaType(com.movienight.backend.model.ResourceType resourceType) {
         boolean isAnimation = genres != null && genres.stream().anyMatch(g -> "Animation".equalsIgnoreCase(g.getName()) || (g.getId() != null && g.getId() == 16));
-        boolean isJapanese = "ja".equalsIgnoreCase(originalLanguage) ||
-                (originCountry != null && originCountry.contains("JP"));
-
-        if (isAnimation && isJapanese) {
-            return "ANIME";
-        }
-
-        if (numberOfSeasons != null || numberOfEpisodes != null || (title == null && name != null)) {
-            return "TV";
-        }
-
-        return "MOVIE";
+        return resourceType.classify(isAnimation, originalLanguage, originCountry);
     }
 
     @Data

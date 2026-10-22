@@ -62,30 +62,21 @@ public class UserMovieService {
      */
     @Transactional
     public UserMovieEntryResponse addMovieToLibrary(String username, AddMovieRequest request) {
-        User user = findUserByUsername(username);
-
-        // Step 1: Check shared catalog before creating a new Movie row
-        Movie movie = null;
-        if (request.getTmdbId() != null) {
-            movie = movieRepository.findByTmdbId(request.getTmdbId()).orElse(null);
+        User user = userRepository.findLockedByUsername(username).orElseThrow(() -> new com.movienight.backend.exception.ResourceNotFoundException("User not found"));
+        Movie movie = request.getCatalogMovieId() == null ? null : movieRepository.findById(request.getCatalogMovieId())
+                .orElseThrow(() -> new com.movienight.backend.exception.ResourceNotFoundException("Catalog title not found"));
+        var resourceType = com.movienight.backend.model.ResourceType.fromCategory(movie != null ? movie.getMediaType() : request.getMediaType());
+        if (movie != null && (request.getMediaType() != null && resourceType != com.movienight.backend.model.ResourceType.fromCategory(request.getMediaType())
+                || request.getTmdbId() != null && !request.getTmdbId().equals(movie.getTmdbId()))) {
+            throw new IllegalArgumentException("Conflicting catalog and provider title identities");
         }
-        if (movie == null && request.getImdbId() != null && !request.getImdbId().isBlank()) {
-            movie = movieRepository.findByImdbId(request.getImdbId()).orElse(null);
+        // Step 1: Resolve only the supplied catalog key or typed provider identity.
+        if (movie == null && request.getTmdbId() != null) {
+            movie = movieRepository.findByResourceTypeAndTmdbId(resourceType, request.getTmdbId()).orElse(null);
         }
-        // A provider identity takes precedence over matching display metadata.
-        if (movie == null && request.getTmdbId() == null
-                && (request.getImdbId() == null || request.getImdbId().isBlank())
-                && request.getTitle() != null && !request.getTitle().isBlank()) {
-            List<Movie> byTitle = movieRepository.findByTitleContainingIgnoreCase(request.getTitle().trim());
-            for (Movie m : byTitle) {
-                if (m.getTitle().equalsIgnoreCase(request.getTitle().trim())
-                        && (request.getReleaseYear() == null || request.getReleaseYear().equals(m.getReleaseYear()))) {
-                    movie = m;
-                    break;
-                }
-            }
+        if (movie == null && request.getTmdbId() == null && request.getImdbId() != null && !request.getImdbId().isBlank()) {
+            movie = movieRepository.findByImdbId(request.getImdbId()).filter(m -> resourceType == com.movienight.backend.model.ResourceType.fromCategory(m.getMediaType())).orElse(null);
         }
-
         // If not found in catalog, persist the movie details
         if (movie == null) {
             log.info("Persisting new movie into shared catalog: {} ({})", request.getTitle(), request.getReleaseYear());
@@ -123,22 +114,11 @@ public class UserMovieService {
                 movie = movieRepository.save(movie);
             } catch (org.springframework.dao.DataIntegrityViolationException dive) {
                 if (request.getTmdbId() != null) {
-                    movie = movieRepository.findByTmdbId(request.getTmdbId()).orElseThrow(() -> dive);
+                    movie = movieRepository.findByResourceTypeAndTmdbId(resourceType, request.getTmdbId()).orElseThrow(() -> dive);
                 } else {
                     throw dive;
                 }
             }
-        }
-
-        // The catalog still has a globally unique numeric provider ID. Until typed
-        // catalog identity lands, never attach a movie save to an equal-ID TV title.
-        boolean requestedMovie = request.getMediaType() == null || request.getMediaType().isBlank()
-                || "MOVIE".equalsIgnoreCase(request.getMediaType());
-        boolean catalogMovie = movie.getMediaType() == null || "MOVIE".equalsIgnoreCase(movie.getMediaType());
-        if (request.getTmdbId() != null && requestedMovie != catalogMovie) {
-            throw new IllegalArgumentException("Provider ID " + request.getTmdbId()
-                    + " belongs to an existing " + movie.getMediaType()
-                    + " title. This save cannot be completed until movie and TV catalog identities are separate.");
         }
 
         // Step 2: Create or update the personal journal entry
@@ -246,7 +226,6 @@ public class UserMovieService {
     public void removeMovieFromLibrary(String username, Long movieId) {
         User user = findUserByUsername(username);
         userMovieEntryRepository.deleteByUserIdAndMovieId(user.getId(), movieId);
-        userMovieEntryRepository.deleteByUserIdAndMovieIdOrTmdbId(user.getId(), movieId);
         user.setNeedsRecommendationRefresh(true);
         userRepository.save(user);
 
@@ -274,9 +253,6 @@ public class UserMovieService {
         if (friendUserIds.isEmpty()) return Collections.emptyList();
 
         List<UserMovieEntry> friendEntries = userMovieEntryRepository.findByMovieIdAndUserIdIn(movieId, friendUserIds);
-        if (friendEntries.isEmpty()) {
-            friendEntries = userMovieEntryRepository.findByMovieIdOrTmdbIdAndUserIdIn(movieId, friendUserIds);
-        }
         return friendEntries.stream()
                 .filter(entry -> entry.getStatus() == MovieStatus.WATCHED || entry.getStatus() == MovieStatus.WATCHLIST)
                 .map(entry -> FriendRatingResponse.builder()

@@ -100,7 +100,7 @@ class WatchedHistoryPersistenceTest {
     void directWatchedAddCanStayUnratedAndAllHalfPointValuesSurviveReload() throws Exception {
         String response = mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Unrated fixture\",\"status\":\"WATCHED\"}"))
+                        .content("{\"mediaType\":\"MOVIE\",\"title\":\"Unrated fixture\",\"status\":\"WATCHED\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         expectRating(null);
         long id = movieId(response);
@@ -132,7 +132,7 @@ class WatchedHistoryPersistenceTest {
     @Test
     void repeatedDirectAddKeepsOneEntryAndWatchlistRetryPreservesDecimalRating() throws Exception {
         String body = """
-                {"tmdbId":90000001,"title":"Repeat fixture","status":"WATCHED","personalRating":7.5}
+                {"mediaType":"MOVIE","tmdbId":90000001,"title":"Repeat fixture","status":"WATCHED","personalRating":7.5}
                 """;
         for (int repeat = 0; repeat < 2; repeat++) {
             mvc.perform(post("/api/movies/library").header("Authorization", authorization)
@@ -155,7 +155,7 @@ class WatchedHistoryPersistenceTest {
                 .andReturn().getResponse().getContentAsString());
         String response = mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                         .contentType(MediaType.APPLICATION_JSON).content("""
-                                {"tmdbId":%d,"title":"Collision fixture","status":"WATCHLIST"}
+                                {"mediaType":"MOVIE","tmdbId":%d,"title":"Collision fixture","status":"WATCHLIST"}
                                 """.formatted(firstId)))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         long secondId = movieId(response);
@@ -170,7 +170,7 @@ class WatchedHistoryPersistenceTest {
     void unknownCatalogKeyDoesNotFallBackToAnUnrelatedProviderIdentity() throws Exception {
         mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                         .contentType(MediaType.APPLICATION_JSON).content("""
-                                {"tmdbId":90000002,"title":"Exact identity fixture","status":"WATCHED","personalRating":7.5}
+                                {"mediaType":"MOVIE","tmdbId":90000002,"title":"Exact identity fixture","status":"WATCHED","personalRating":7.5}
                                 """))
                 .andExpect(status().isCreated());
         update(90000002L, "{\"personalRating\":0}").andExpect(status().isBadRequest());
@@ -180,7 +180,7 @@ class WatchedHistoryPersistenceTest {
     private ResultActions add(String state, String rating) throws Exception {
         return mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                 .contentType(MediaType.APPLICATION_JSON).content("""
-                        {"title":"Watched fixture %s","status":"%s","personalRating":%s,"notes":"Keep my note"}
+                        {"mediaType":"MOVIE","title":"Watched fixture %s","status":"%s","personalRating":%s,"notes":"Keep my note"}
                         """.formatted(UUID.randomUUID(), state, rating)));
     }
 

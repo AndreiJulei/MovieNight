@@ -1,3 +1,4 @@
+import { titleId, parseTitleId, resourceType } from "../store/titleIdentity";
 import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,186 +29,62 @@ export default function MovieDetailPage() {
   const params = matchPath("/movies/:id", path);
   const user = store.currentUser!;
 
-  const initialMovie = useMemo(() => {
-    if (!params?.id) return undefined;
-    const fromStore = store.movieById(params.id);
-    if (fromStore) return fromStore;
-
-    if (
-      transitionData?.movie &&
-      (transitionData.movie.id === params.id ||
-        String(transitionData.movie.tmdbId) === params.id)
-    ) {
-      return transitionData.movie;
+  const requestedId = useMemo(() => {
+    const id = params?.id ?? "";
+    if (/^\d+$/.test(id) && typeParam) {
+      try { return titleId(Number(id), typeParam.toUpperCase()); } catch { return id; }
     }
-
-    try {
-      const stored = sessionStorage.getItem("last_selected_movie");
-      if (stored) {
-        const parsed = JSON.parse(stored) as Movie;
-        if (
-          parsed &&
-          (parsed.id === params.id ||
-            String(parsed.tmdbId) === params.id ||
-            (!isNaN(Number(params.id)) && parsed.tmdbId === Number(params.id)))
-        ) {
-          return parsed;
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    return undefined;
-  }, [params?.id, store.movieById, transitionData]);
-
-  const [movie, setMovie] = useState<Movie | undefined>(initialMovie);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(!initialMovie);
+    return id;
+  }, [params?.id, typeParam]);
+  const initialMovie = store.movieById(requestedId);
+  const [resolvedMovie, setMovie] = useState<{ key: string; movie: Movie } | null>(null);
+  const movie = resolvedMovie?.key === requestedId ? resolvedMovie.movie : initialMovie;
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsRetry, setDetailsRetry] = useState(0);
   const [friendReviews, setFriendReviews] = useState<FriendReview[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [friendError, setFriendError] = useState<string | null>(null);
   const [friendRetry, setFriendRetry] = useState(0);
-
   const destPosterRef = useRef<HTMLDivElement>(null);
-
-  // Content tab toggle: "overview" vs "cast"
   const [activeTab, setActiveTab] = useState<"overview" | "cast">("overview");
-  // Trailer active playback state
   const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
 
-  // Synchronize when initialMovie is resolved
   useEffect(() => {
-    if (initialMovie) {
-      setMovie((prev) => (prev ? { ...initialMovie, ...prev } : initialMovie));
-      setIsLoadingDetails(false);
-      store.upsertMovie(initialMovie);
-    }
-  }, [initialMovie, store.upsertMovie]);
-
-  // Synchronize when store movies or params change
-  useEffect(() => {
-    if (params?.id) {
-      const found = store.movieById(params.id);
-      if (found) {
-        setMovie((prev) => {
-          if (prev && (prev.id === found.id || (found.tmdbId && prev.tmdbId === found.tmdbId))) {
-            return {
-              ...found,
-              ...prev,
-              mediaType: ((typeParam || prev.mediaType || found.mediaType || "MOVIE").toUpperCase()) as MediaType,
-            };
-          }
-          return {
-            ...found,
-            mediaType: ((typeParam || found.mediaType || "MOVIE").toUpperCase()) as MediaType,
-          };
-        });
-        setIsLoadingDetails(false);
-      } else if (!movie && !initialMovie) {
-        setIsLoadingDetails(true);
-      }
-    }
-  }, [params?.id, store.movieById, typeParam, initialMovie]);
-
-  // Fetch or enrich movie details and friend ratings from backend
-  useEffect(() => {
-    const movieIdParam = params?.id;
-    if (!movieIdParam) return;
-
     let active = true;
-
-    // 1. Fetch movie details from TMDB / local backend if needed
-    const localFound = store.movieById(movieIdParam) || initialMovie;
-    const tmdbIdToFetch =
-      localFound?.tmdbId ||
-      movie?.tmdbId ||
-      (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined);
-    const mediaTypeToQuery = typeParam || localFound?.mediaType || movie?.mediaType;
-
-    const needsEnrichment =
-      !movie || !movie.trailerKey || !movie.genres || movie.genres.length === 0;
-
-    if (tmdbIdToFetch && needsEnrichment) {
-      setIsLoadingDetails(true);
-
-      const handleMovieResponse = (res: ApiMovieResponse) => {
-        let parsedCast: CastMember[] | undefined = undefined;
-        if (res.castMembers) {
-          parsedCast = res.castMembers.split(",").map((name) => ({
-            name: name.trim(),
-            role: "Cast",
-          }));
+    setDetailsError(null);
+    setIsLoadingDetails(true);
+    void (async () => {
+      try {
+        const identity = parseTitleId(requestedId);
+        if (typeParam && identity.category && resourceType(typeParam.toUpperCase()) !== identity.category) {
+          throw new Error("Title link has conflicting resource types. Reopen the title from discovery.");
         }
-
-        const enrichedMediaType = ((res.mediaType || typeParam || localFound?.mediaType || movie?.mediaType || "MOVIE").toUpperCase()) as MediaType;
-
+        const res = identity.providerId != null
+          ? await moviesApi.getByTmdbId(identity.providerId, identity.category!)
+          : await moviesApi.getById(identity.catalogId!);
+        if (!active) return;
+        if (!res || !res.title || !res.mediaType) throw new Error("Could not confirm title details. Retry.");
         const enriched: Movie = {
-          id: String(movieIdParam),
-          tmdbId: res.tmdbId ?? (!isNaN(Number(movieIdParam)) ? Number(movieIdParam) : undefined),
-          title: res.title || movie?.title || "Untitled",
-          year: res.releaseYear ?? movie?.year ?? null,
-          posterSeed: movie?.posterSeed ?? null,
-          posterUrl: res.posterUrl || movie?.posterUrl || null,
-          imdb: res.imdbRating ?? movie?.imdb ?? null,
-          rt: res.rottenTomatoesRating ?? movie?.rt ?? null,
-          overview: res.overview || movie?.overview || "",
-          genres: res.genres ? res.genres.split(",").map((g) => g.trim()) : movie?.genres,
-          director: res.director || movie?.director,
-          trailerKey: res.trailerKey || movie?.trailerKey,
-          cast: movie?.cast && movie.cast.length > 0 ? movie.cast : parsedCast,
-          mediaType: enrichedMediaType,
-          seasonsCount: res.seasonsCount ?? movie?.seasonsCount,
-          episodesCount: res.episodesCount ?? movie?.episodesCount,
+          id: titleId(res.tmdbId, res.mediaType, res.id), catalogMovieId: res.id,
+          tmdbId: res.tmdbId, title: res.title, mediaType: res.mediaType as MediaType,
+          year: res.releaseYear ?? null, posterUrl: res.posterUrl ?? null, posterSeed: null,
+          imdb: res.imdbRating ?? res.tmdbVoteAverage ?? null, rt: res.rottenTomatoesRating ?? null,
+          overview: res.overview ?? "", genres: res.genres?.split(",").map(g => g.trim()) ?? [],
+          director: res.director, trailerKey: res.trailerKey,
+          cast: res.castMembers?.split(",").map(name => ({ name: name.trim(), role: "Cast" })),
+          seasonsCount: res.seasonsCount, episodesCount: res.episodesCount,
         };
-
-        setMovie((prev) => (prev ? { ...prev, ...enriched } : enriched));
-        store.upsertMovie(enriched);
-      };
-
-      moviesApi
-        .getByTmdbId(tmdbIdToFetch, mediaTypeToQuery)
-        .then(async (res: ApiMovieResponse | null) => {
-          if (!active) return;
-          if (res) {
-            handleMovieResponse(res);
-            return;
-          }
-          // Fallback: If not found via TMDB endpoint, or if ID is a database primary key
-          if (!isNaN(Number(movieIdParam))) {
-            const localDbRes = await moviesApi.getById(Number(movieIdParam));
-            if (!active) return;
-            if (localDbRes) {
-              handleMovieResponse(localDbRes);
-              return;
-            }
-          }
-
-          if (localFound) {
-            handleMovieResponse({
-              id: !isNaN(Number(localFound.id)) ? Number(localFound.id) : undefined,
-              tmdbId: localFound.tmdbId,
-              title: localFound.title,
-              releaseYear: localFound.year ?? undefined,
-              posterUrl: localFound.posterUrl || undefined,
-              overview: localFound.overview,
-              mediaType: localFound.mediaType,
-              genres: localFound.genres?.join(", "),
-              director: localFound.director,
-              trailerKey: localFound.trailerKey,
-            });
-          }
-        })
-        .finally(() => {
-          if (active) setIsLoadingDetails(false);
-        });
-    } else {
-      setIsLoadingDetails(false);
-    }
-
-    return () => {
-      active = false;
-    };
-    // Catalog enrichment follows title navigation, not personal-library changes.
-  }, [params?.id, typeParam, store.upsertMovie]);
+        if (identity.providerId != null ? enriched.id !== requestedId : res.id !== identity.catalogId) {
+          throw new Error("Provider returned a different title identity. Retry.");
+        }
+        setMovie({ key: requestedId, movie: enriched }); store.upsertMovie(enriched);
+      } catch (error) {
+        if (active) setDetailsError(error instanceof Error ? error.message : "Could not load details. Retry.");
+      } finally { if (active) setIsLoadingDetails(false); }
+    })();
+    return () => { active = false; };
+  }, [requestedId, typeParam, user?.id, detailsRetry, store.upsertMovie]);
 
   useEffect(() => {
     const movieIdParam = params?.id;
@@ -222,10 +99,10 @@ export default function MovieDetailPage() {
       const friends = store.friendsOf(user.id);
       const friendIds = friends.map((f) => f.id);
 
-      const currentMovieId = movie?.id || movieIdParam;
+      const currentMovieId = movie?.catalogMovieId;
       setFriendReviews([]);
       // Query live backend for friends' ratings
-      if (friendIds.length > 0) {
+      if (friendIds.length > 0 && currentMovieId != null) {
         setIsLoadingFriends(true);
         moviesApi
           .getFriendsRatings(currentMovieId, friendIds)
@@ -252,16 +129,9 @@ export default function MovieDetailPage() {
     return () => {
       active = false;
     };
-  }, [params?.id, movie?.id, user, store.friendsOf, friendRetry]);
+  }, [requestedId, movie?.catalogMovieId, user, store.friendsOf, friendRetry]);
 
-  const hasTransition = Boolean(
-    transitionData &&
-    params?.id &&
-    (String(transitionData.movieId) === String(params.id) ||
-      (transitionData.movie &&
-        (String(transitionData.movie.id) === String(params.id) ||
-          String(transitionData.movie.tmdbId) === String(params.id))))
-  );
+  const hasTransition = Boolean(transitionData && transitionData.movieId === requestedId);
 
   // Synchronously initialize hero position
   const [animating, setAnimating] = useState(() => hasTransition);
@@ -432,7 +302,9 @@ export default function MovieDetailPage() {
               <p className="mt-4 text-sm text-text-muted">Loading movie details...</p>
             </div>
           ) : (
-            <p className="mt-8 text-text-muted">That movie couldn&apos;t be found.</p>
+            <div role="alert" className="mt-8 text-text-muted">{detailsError ?? "That title could not be found."}
+              <button className="ml-3 underline" onClick={() => setDetailsRetry(r => r + 1)}>Retry details</button>
+            </div>
           )}
         </div>
       </AppShell>
@@ -445,6 +317,8 @@ export default function MovieDetailPage() {
 
   return (
     <AppShell>
+      {detailsError && <div role="alert" className="mb-4 text-danger">{detailsError}
+        <button className="ml-3 underline" onClick={() => setDetailsRetry(r => r + 1)}>Retry details</button></div>}
       {/* Centered Movie Detail Container */}
       <div className="mx-auto max-w-[1240px]">
         {/* Floating Hero Poster Clone */}
@@ -839,7 +713,7 @@ function ActionArea({ movie, onBack }: { movie: Movie; onBack: () => void }) {
     const result = entry
       ? await store.markWatched(entry.id, rating, watched ? undefined : desc)
       : await store.addMovie({
-          existingMovieId: movie.id, tmdbId: movie.tmdbId, title: movie.title,
+          catalogMovieId: movie.catalogMovieId, existingMovieId: movie.id, tmdbId: movie.tmdbId, title: movie.title,
           year: movie.year ?? undefined, posterUrl: movie.posterUrl, overview: movie.overview,
           imdb: movie.imdb, rt: movie.rt, status: "watched", rating,
           description: desc, mediaType: movie.mediaType,
@@ -872,6 +746,7 @@ function ActionArea({ movie, onBack }: { movie: Movie; onBack: () => void }) {
         )}
         <AddToListPopover movie={movie} />
       </div>
+      {!panelOpen && error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {watchlistError && <p role="alert" className="text-sm text-danger">{watchlistError}</p>}
       {panelOpen && (
         <div className="w-full max-w-xl rounded-xl border border-white/15 bg-surface-popover p-5">
@@ -896,8 +771,11 @@ function ActionArea({ movie, onBack }: { movie: Movie; onBack: () => void }) {
       )}
       {entry && !saving && (
         <RemoveLink confirm={confirmRemove} setConfirm={setConfirmRemove} title={movie.title}
-          onRemove={() => {
-            store.removeEntry(entry.id);
+          onRemove={async () => {
+            setSubmitting(true);
+            const result = await store.removeEntry(entry.id);
+            setSubmitting(false);
+            if (!result.ok) { setError(result.error ?? "Could not remove title. Retry."); return; }
             toast({ message: `"${movie.title}" removed from library`, type: "info" });
             onBack();
           }} />
@@ -954,10 +832,19 @@ function DescriptionBox({
   onSave,
 }: {
   initial: string;
-  onSave: (v: string) => void;
+  onSave: (v: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [value, setValue] = useState(initial);
   const [saved, setSaved] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const saveNotes = async () => {
+    if (pending || value === initial) return;
+    setPending(true); setError(null);
+    const result = await onSave(value);
+    setPending(false); setSaved(result.ok);
+    if (!result.ok) setError(result.error ?? "Could not save notes. Retry.");
+  };
 
   return (
     <div>
@@ -973,16 +860,14 @@ function DescriptionBox({
           setValue(e.target.value);
           setSaved(false);
         }}
-        onBlur={() => {
-          if (value !== initial) {
-            onSave(value);
-            setSaved(true);
-          }
-        }}
+        disabled={pending}
+        onBlur={saveNotes}
         rows={3}
-        placeholder="What did you think of this movie? Write your thoughts..."
+        placeholder="What did you think of this title? Write your thoughts..."
         className="w-full resize-none rounded-xl border border-white/10 bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none transition-all"
       />
+      {pending && <p role="status" className="text-xs text-text-muted">Saving notes…</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error} <button onClick={saveNotes} disabled={pending} className="underline">Retry notes</button></p>}
     </div>
   );
 }

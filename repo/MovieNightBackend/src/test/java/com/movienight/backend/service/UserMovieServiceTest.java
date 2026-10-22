@@ -102,15 +102,15 @@ class UserMovieServiceTest {
 
     @Test
     void addMovieToLibrary_whenMovieNotInCatalog_persistsMovieAndEntry() {
-        AddMovieRequest request = AddMovieRequest.builder()
+        AddMovieRequest request = AddMovieRequest.builder().mediaType("MOVIE")
                 .tmdbId(27205L)
                 .title("Inception")
                 .releaseYear(2010)
                 .status(MovieStatus.WATCHLIST)
                 .build();
 
-        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
-        when(movieRepository.findByTmdbId(27205L)).thenReturn(Optional.empty());
+        when(userRepository.findLockedByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 27205L)).thenReturn(Optional.empty());
         when(movieRepository.save(any(Movie.class))).thenReturn(sampleMovie);
         when(userMovieEntryRepository.findByUserIdAndMovieId(1L, 100L)).thenReturn(Optional.empty());
         when(userMovieEntryRepository.save(any(UserMovieEntry.class))).thenReturn(sampleEntry);
@@ -125,15 +125,15 @@ class UserMovieServiceTest {
 
     @Test
     void addMovieToLibrary_whenMovieAlreadyInCatalog_reusesMovie() {
-        AddMovieRequest request = AddMovieRequest.builder()
+        AddMovieRequest request = AddMovieRequest.builder().mediaType("MOVIE")
                 .tmdbId(27205L)
                 .title("Inception")
                 .releaseYear(2010)
                 .status(MovieStatus.WATCHLIST)
                 .build();
 
-        when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
-        when(movieRepository.findByTmdbId(27205L)).thenReturn(Optional.of(sampleMovie));
+        when(userRepository.findLockedByUsername("john@example.com")).thenReturn(Optional.of(sampleUser));
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 27205L)).thenReturn(Optional.of(sampleMovie));
         when(userMovieEntryRepository.findByUserIdAndMovieId(1L, 100L)).thenReturn(Optional.empty());
         when(userMovieEntryRepository.save(any(UserMovieEntry.class))).thenReturn(sampleEntry);
 

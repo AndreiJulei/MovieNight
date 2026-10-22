@@ -109,7 +109,7 @@ class WatchlistPersistenceTest {
         long otherTmdbId = movie.getTmdbId() - 1;
         mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                         .contentType(MediaType.APPLICATION_JSON).content("""
-                                {"tmdbId":%d,"title":"%s","releaseYear":2026,"status":"WATCHLIST"}
+                                {"mediaType":"MOVIE","tmdbId":%d,"title":"%s","releaseYear":2026,"status":"WATCHLIST"}
                                 """.formatted(otherTmdbId, movie.getTitle())))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.movie.tmdbId").value(otherTmdbId));
         mvc.perform(get("/api/movies/library").header("Authorization", authorization))
@@ -138,7 +138,7 @@ class WatchlistPersistenceTest {
 
     private String body(Movie target) {
         return """
-                {"tmdbId":%d,"title":"%s","releaseYear":2026,"status":"WATCHLIST"}
+                {"mediaType":"MOVIE","tmdbId":%d,"title":"%s","releaseYear":2026,"status":"WATCHLIST"}
                 """.formatted(target.getTmdbId(), target.getTitle());
     }
 

@@ -37,6 +37,7 @@ export interface ApiUserMovieEntryResponse {
 }
 
 export interface ApiAddMovieRequest {
+  catalogMovieId?: number;
   tmdbId?: number;
   imdbId?: string;
   title: string;
@@ -129,52 +130,24 @@ export const moviesApi = {
    */
   async search(query: string): Promise<ApiMovieResponse[]> {
     if (!query.trim()) return [];
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/movies/search?query=${encodeURIComponent(query.trim())}`,
-        { headers: getAuthHeaders() },
-      );
-      if (!res.ok) return [];
-      return await res.json();
-    } catch (err) {
-      console.warn("Failed to search movies from backend:", err);
-      return [];
-    }
+    const response = await libraryRequest<ApiMovieResponse[]>(`${API_BASE}/api/movies/search?query=${encodeURIComponent(query.trim())}`);
+    if (!Array.isArray(response)) throw new Error("Invalid search response. Retry.");
+    return response;
   },
 
   /**
    * Get or fetch full media details by TMDB ID (enriched with OMDb ratings).
    */
   async getByTmdbId(tmdbId: number, mediaType?: string): Promise<ApiMovieResponse | null> {
-    try {
-      const url = mediaType
-        ? `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`
-        : `${API_BASE}/api/movies/tmdb/${tmdbId}`;
-      const res = await fetch(url, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn(`Failed to fetch TMDB media ${tmdbId}:`, err);
-      return null;
-    }
+    if (!mediaType) throw new Error("Explicit title resource type is required.");
+    return libraryRequest<ApiMovieResponse>(`${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`);
   },
 
   /**
    * Get movie details by database primary key ID.
    */
   async getById(id: number): Promise<ApiMovieResponse | null> {
-    try {
-      const res = await fetch(`${API_BASE}/api/movies/${id}`, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn(`Failed to fetch movie by database ID ${id}:`, err);
-      return null;
-    }
+    return libraryRequest<ApiMovieResponse>(`${API_BASE}/api/movies/${id}`);
   },
 
   /**
@@ -227,38 +200,17 @@ export const moviesApi = {
     movieId: number | string,
     req: ApiUpdateMovieEntryRequest,
   ): Promise<ApiUserMovieEntryResponse | null> {
-    try {
-      const res = await fetch(`${API_BASE}/api/movies/library/${movieId}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(req),
-      });
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => "");
-        console.error(`Failed to update movie ${movieId} (${res.status}):`, errorText);
-        return null;
-      }
-      return await res.json();
-    } catch (err) {
-      console.error(`Failed to update movie ${movieId}:`, err);
-      return null;
-    }
+    return libraryRequest<ApiUserMovieEntryResponse>(`${API_BASE}/api/movies/library/${movieId}`, {
+      method: "PUT", body: JSON.stringify(req),
+    });
   },
 
   /**
    * Remove a movie from the user's library.
    */
   async removeMovie(movieId: number | string): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_BASE}/api/movies/library/${movieId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-      return res.ok;
-    } catch (err) {
-      console.error(`Failed to remove movie ${movieId}:`, err);
-      return false;
-    }
+    await libraryRequest(`${API_BASE}/api/movies/library/${movieId}`, { method: "DELETE" });
+    return true;
   },
 
   /**
@@ -358,16 +310,9 @@ export const moviesApi = {
    * Fetch discover catalog shelves for a specific media type (movies, tv, anime).
    */
   async getExploreMedia(mediaType: string): Promise<ApiSuggestionsResponse | null> {
-    try {
-      const res = await fetch(`${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn(`Failed to fetch explore media for ${mediaType}:`, err);
-      return null;
-    }
+    const response = await libraryRequest<ApiSuggestionsResponse>(`${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`);
+    if (!Array.isArray(response?.categories)) throw new Error("Invalid discovery response. Retry.");
+    return response;
   },
 
   /**

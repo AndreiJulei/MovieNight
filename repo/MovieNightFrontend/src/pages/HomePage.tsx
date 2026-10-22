@@ -38,9 +38,7 @@ export default function HomePage() {
 
   const isMovieInWatchlist = (movie: Movie) => {
     if (!currentUser) return false;
-    return store.allEntries().some((entry) => entry.userId === currentUser.id
-      && entry.mediaType === movie.mediaType && entry.movieId === movie.id
-      && entry.status === "watchlist");
+    return store.entryFor(currentUser.id, movie.id)?.status === "watchlist";
   };
 
   if (!currentUser) return null;

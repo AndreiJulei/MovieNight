@@ -23,7 +23,11 @@ public class AddMovieRequest {
 
     // --- Shared Movie Metadata ---
 
+    @jakarta.validation.constraints.Positive(message = "Provider ID must be positive")
     private Long tmdbId;
+
+    @jakarta.validation.constraints.Positive
+    private Long catalogMovieId;
 
     private String imdbId;
 

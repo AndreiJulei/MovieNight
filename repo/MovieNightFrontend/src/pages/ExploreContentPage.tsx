@@ -52,9 +52,10 @@ export default function ExploreContentPage() {
   const rowId = matchDetailed?.rowId;
   const config = CONFIG[type] ?? CONFIG.movies;
   const store = useStore();
-  const { saveWatchlist } = useWatchlistSave();
+  const { saveWatchlist, error: saveError } = useWatchlistSave();
 
-  const backendRows = useExploreMedia(type);
+  const explore = useExploreMedia(type);
+  const backendRows = explore.rows;
 
   // Filters for /explore/:type/:rowId grid view
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -111,112 +112,7 @@ export default function ExploreContentPage() {
       });
     }
 
-    // Local fallback computation
-    const targetType = config.mediaType;
-    const allOfType = store.movies.filter((m) => {
-      if (targetType === "MOVIE") return (m.mediaType || "MOVIE").toUpperCase() === "MOVIE" || m.id === "anime-demon-slayer-movie";
-      return (m.mediaType || "").toUpperCase() === targetType;
-    });
-
-    const newest = [...allOfType].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || (b.imdb ?? 0) - (a.imdb ?? 0)).slice(0, 10);
-    const newestIds = new Set(newest.map((m) => m.id));
-
-    const topRated = [...allOfType].sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
-    const popular = [...allOfType]
-      .filter((m) => !newestIds.has(m.id))
-      .sort((a, b) => (b.imdb ?? 0) + (b.rt ? b.rt / 10 : 0) - ((a.imdb ?? 0) + (a.rt ? a.rt / 10 : 0)));
-
-    const result: SuggestionRow[] = [];
-
-    if (type === "movies") {
-      if (newest.length > 0) {
-        result.push({
-          id: "newest",
-          title: "Newest Releases",
-          movies: newest,
-          subtitle: "Released in the last 90 days",
-        });
-      }
-      if (popular.length > 0) {
-        result.push({
-          id: "popular",
-          title: "Most Popular",
-          movies: popular,
-          subtitle: "Trending global blockbusters",
-        });
-      }
-      if (topRated.length > 0) {
-        result.push({
-          id: "top-rated",
-          title: "Top Rated",
-          movies: topRated,
-          subtitle: "Acclaimed cinematic masterpieces",
-        });
-      }
-      const upcoming = [...allOfType].filter((m) => (m.year ?? 0) >= 2025);
-      if (upcoming.length > 0) {
-        result.push({
-          id: "upcoming",
-          title: "Upcoming & Most Anticipated",
-          movies: upcoming,
-          subtitle: "Anticipated releases of the year",
-        });
-      }
-    } else if (type === "tv") {
-      const airing = allOfType.filter((m) => m.isAiring);
-      if (airing.length > 0) {
-        result.push({
-          id: "airing",
-          title: "Currently Airing",
-          movies: airing,
-          subtitle: "Episodes broadcasting now",
-        });
-      }
-      if (popular.length > 0) {
-        result.push({
-          id: "popular",
-          title: "Most Popular",
-          movies: popular,
-          subtitle: "Trending television favorites",
-        });
-      }
-      if (topRated.length > 0) {
-        result.push({
-          id: "top-rated",
-          title: "Top Rated",
-          movies: topRated,
-          subtitle: "Critically acclaimed television",
-        });
-      }
-    } else if (type === "anime") {
-      const airing = allOfType.filter((m) => m.isAiring);
-      if (airing.length > 0) {
-        result.push({
-          id: "current-season",
-          title: "Current Season Hits",
-          movies: airing,
-          subtitle: "Seasonal broadcast favorites",
-        });
-      }
-      if (popular.length > 0) {
-        result.push({
-          id: "popular",
-          title: "Most Popular",
-          movies: popular,
-          subtitle: "Fan favorites worldwide",
-        });
-      }
-      if (topRated.length > 0) {
-        result.push({
-          id: "top-rated",
-          title: "All-Time Acclaimed",
-          movies: topRated,
-          subtitle: "Timeless anime masterworks",
-        });
-      }
-    }
-
-    return result;
+    return [];
   }, [backendRows, config.mediaType, store.movies, type]);
 
   // If a rowId was requested, render full grid view for that row
@@ -242,6 +138,10 @@ export default function ExploreContentPage() {
 
     return (
       <AppShell>
+        {explore.loading && <p role="status" className="mb-4 text-text-muted">Loading discovery…</p>}
+        {explore.error && <p role="alert" className="mb-4 text-danger">{explore.error}</p>}
+        {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
+        <button type="button" disabled={explore.loading} onClick={explore.reload} className="mb-4 text-sm text-accent underline disabled:opacity-50">{explore.error ? "Retry discovery" : "Reload discovery"}</button>
         <div className="mb-4">
           <Link
             to={`/explore/${type}`}
@@ -285,6 +185,10 @@ export default function ExploreContentPage() {
   // Shelf rows view
   return (
     <AppShell>
+        {explore.loading && <p role="status" className="mb-4 text-text-muted">Loading discovery…</p>}
+        {explore.error && <p role="alert" className="mb-4 text-danger">{explore.error}</p>}
+        {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
+        <button type="button" disabled={explore.loading} onClick={explore.reload} className="mb-4 text-sm text-accent underline disabled:opacity-50">{explore.error ? "Retry discovery" : "Reload discovery"}</button>
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {config.title}

@@ -73,10 +73,10 @@ class MovieCatalogControllerTest {
 
     @Test
     void getMovieDetails_returnsOk() throws Exception {
-        when(lookupService.getOrFetchMovie(283995L)).thenReturn(sampleMovie);
+        when(lookupService.getOrFetchMovie(283995L, "MOVIE")).thenReturn(sampleMovie);
         when(lookupService.mapToResponse(sampleMovie)).thenReturn(sampleMovieResponse);
 
-        mockMvc.perform(get("/api/movies/tmdb/283995"))
+        mockMvc.perform(get("/api/movies/tmdb/283995").param("mediaType", "MOVIE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Guardians of the Galaxy Vol. 2"))
                 .andExpect(jsonPath("$.director").value("James Gunn"));
