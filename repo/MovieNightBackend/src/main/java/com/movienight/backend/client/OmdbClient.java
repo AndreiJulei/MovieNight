@@ -64,7 +64,7 @@ public class OmdbClient {
                 return Optional.of(response);
             }
         } catch (Exception e) {
-            log.error("Failed to fetch OMDb ratings for IMDb ID '{}': {}", imdbId, e.getMessage());
+            log.warn("OMDb enrichment failed for IMDb ID '{}'", imdbId);
         }
 
         return Optional.empty();
