@@ -4,7 +4,7 @@ server.port=8080
 # Database Configuration (H2 In-Memory for development & testing)
 spring.datasource.url=jdbc:h2:mem:movienightdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
 spring.datasource.driverClassName=org.h2.Driver
-spring.datasource.username=sa
+spring.datasource.username=
 spring.datasource.password=
 
 # H2 Web Console (accessible at http://localhost:8080/h2-console)
@@ -18,14 +18,14 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 
 # JWT Secret (Base64 encoded 256-bit key for HMAC-SHA256)
-app.jwt.secret=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+app.jwt.secret=
 app.jwt.expiration-ms=86400000
 
 # ==========================================
 # External Movie API Keys (Paste your keys here or set TMDB_API_KEY / OMDB_API_KEY env vars)
 # ==========================================
-app.tmdb.api-key=${TMDB_API_KEY:eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMGRjMzgyNzZlNzJjZTQ0MDg3NThiNzQ2NThmNGE5MCIsIm5iZiI6MTc4ODU0MTQwMS4zNTEsInN1YiI6IjZhOWFmOWQ5ZTY0Y2FiNmYzNjYwOGQxNiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.vin_Wq2oCfGNNnLlhfK71piOaSOrSMPFBYUCQJj4FRY}
-app.omdb.api-key=${OMDB_API_KEY:e6463578}
+app.tmdb.api-key=
+app.omdb.api-key=
 
 # Base URLs
 app.tmdb.base-url=https://api.themoviedb.org/3

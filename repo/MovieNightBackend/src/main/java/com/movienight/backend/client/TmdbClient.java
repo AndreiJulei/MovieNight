@@ -374,7 +374,7 @@ public class TmdbClient {
                 return response.getResults();
             }
         } catch (Exception e) {
-            log.debug("Failed to fetch TV recommendations for TMDB ID {}: {}", tvId, e.getMessage());
+            log.debug("Failed to fetch TV recommendations for TMDB ID {}", tvId);
         }
 
         return Collections.emptyList();

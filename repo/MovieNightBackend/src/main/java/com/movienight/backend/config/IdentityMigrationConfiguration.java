@@ -4,9 +4,11 @@ import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.boot.jpa.autoconfigure.EntityManagerFactoryDependsOnPostProcessor;
 
 @Configuration
+@Profile("!postgres")
 public class IdentityMigrationConfiguration {
     @Bean(initMethod = "migrate")
     LocalH2IdentityMigration localH2IdentityMigration(DataSource dataSource,

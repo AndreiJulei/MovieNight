@@ -112,7 +112,7 @@ class FriendSuggestionsPersistenceTest {
     }
     private void save(User user, long id, String title, String status, String rating) throws Exception {
         write(user, "POST", "/api/movies/library", "{\"title\":\"" + title + "\",\"tmdbId\":" + id
-            + ",\"status\":\"" + status + "\",\"personalRating\":" + rating + ",\"notes\":\"private\"}")
+            + ",\"mediaType\":\"MOVIE\",\"status\":\"" + status + "\",\"personalRating\":" + rating + ",\"notes\":\"private\"}")
             .andExpect(status().isCreated());
     }
 
