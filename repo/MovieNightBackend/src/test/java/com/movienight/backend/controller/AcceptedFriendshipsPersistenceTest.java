@@ -62,7 +62,7 @@ class AcceptedFriendshipsPersistenceTest {
 
     @Test
     void friendResponsesOmitNotesAndForgedRatingIdsCannotBypassConsent() throws Exception {
-        String body = "{\"title\":\"Private opinion\",\"tmdbId\":99000401,\"status\":\"WATCHED\",\"personalRating\":0,\"notes\":\"owner secret\"}";
+        String body = "{\"mediaType\":\"MOVIE\",\"title\":\"Private opinion\",\"tmdbId\":99000401,\"status\":\"WATCHED\",\"personalRating\":0,\"notes\":\"owner secret\"}";
         var saved = write(bob, "POST", "/api/movies/library", body).andExpect(status().isCreated());
         long movieId = com.jayway.jsonpath.JsonPath.<Number>read(saved.andReturn().getResponse().getContentAsString(), "$.movie.id").longValue();
         String ratings = "/api/movies/" + movieId + "/friends-ratings?friendIds=" + bob.getId();
@@ -111,14 +111,14 @@ class AcceptedFriendshipsPersistenceTest {
         write(bob, "POST", "/api/friends/" + alice.getId() + "/accept", "{}").andExpect(status().isOk());
         long movieId = 0;
         for (String rating : new String[]{"null", "0", "7.5"}) {
-            var saved = write(bob, "POST", "/api/movies/library", "{\"title\":\"Rating fixture\",\"tmdbId\":99000402,\"status\":\"WATCHED\",\"personalRating\":" + rating + ",\"notes\":\"Still private\"}")
+            var saved = write(bob, "POST", "/api/movies/library", "{\"mediaType\":\"MOVIE\",\"title\":\"Rating fixture\",\"tmdbId\":99000402,\"status\":\"WATCHED\",\"personalRating\":" + rating + ",\"notes\":\"Still private\"}")
                     .andExpect(status().isCreated());
             movieId = com.jayway.jsonpath.JsonPath.<Number>read(saved.andReturn().getResponse().getContentAsString(), "$.movie.id").longValue();
             var library = read(alice, "/api/friends/" + bob.getId() + "/library?status=WATCHED").andExpect(status().isOk());
             if (rating.equals("null")) library.andExpect(jsonPath("$[0].personalRating").isEmpty());
             else library.andExpect(jsonPath("$[0].personalRating").value(Double.valueOf(rating)));
         }
-        write(bob, "POST", "/api/movies/library", "{\"title\":\"Plans\",\"tmdbId\":99000403,\"status\":\"WATCHLIST\"}")
+        write(bob, "POST", "/api/movies/library", "{\"mediaType\":\"MOVIE\",\"title\":\"Plans\",\"tmdbId\":99000403,\"status\":\"WATCHLIST\"}")
             .andExpect(status().isCreated());
         read(alice, "/api/friends/" + bob.getId() + "/library?status=WATCHLIST")
             .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].status").value("WATCHLIST"));

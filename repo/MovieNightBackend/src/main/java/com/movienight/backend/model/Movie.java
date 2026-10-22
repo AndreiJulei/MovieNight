@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "movies", indexes = {
     // Fast lookup by TMDB ID so we never re-fetch a movie from TMDB if we already have it
-    @Index(name = "idx_movie_tmdb_id", columnList = "tmdbId", unique = true),
+    @Index(name = "idx_movie_tmdb_id", columnList = "resourceType, tmdbId", unique = true),
     // Fast search by title
     @Index(name = "idx_movie_title", columnList = "title")
 })
@@ -37,7 +37,6 @@ public class Movie {
      * Unique identifier from The Movie Database (TMDB).
      * Used to de-duplicate and prevent redundant external API calls.
      */
-    @Column(unique = true)
     private Long tmdbId;
 
     /**
@@ -111,6 +110,13 @@ public class Movie {
     @Builder.Default
     @Column(length = 20, nullable = false)
     private String mediaType = "MOVIE";
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ResourceType resourceType;
+
+    @PrePersist @PreUpdate
+    void setProviderIdentity() { resourceType = ResourceType.fromCategory(mediaType); }
 
     /**
      * Total seasons count for TV series / Anime (nullable for Movies).

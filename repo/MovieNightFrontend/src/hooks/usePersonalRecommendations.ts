@@ -1,3 +1,4 @@
+import { titleId } from "../store/titleIdentity";
 import { useEffect, useRef, useState } from "react";
 import { moviesApi, type ApiSuggestionMovieItem, type ApiSuggestionCategory } from "../api/movies";
 import { useStore } from "../store/MovieStore";
@@ -5,7 +6,7 @@ import type { Movie } from "../store/data";
 
 /** Use only movie response metadata; the local catalog may hold TV at the same ID. */
 export function mapPersonalMovie(item: ApiSuggestionMovieItem): Movie {
-  return { id: String(item.tmdbId), tmdbId: item.tmdbId, title: item.title,
+  return { id: titleId(item.tmdbId, "MOVIE"), tmdbId: item.tmdbId, title: item.title,
     mediaType: "MOVIE", year: item.releaseYear ?? null, imdb: item.voteAverage ?? null,
     posterSeed: null, posterUrl: item.posterUrl ?? null, rt: null, overview: "", genres: [] };
 }

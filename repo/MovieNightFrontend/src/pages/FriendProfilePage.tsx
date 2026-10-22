@@ -1,3 +1,4 @@
+import { titleId } from "../store/titleIdentity";
 import useWatchlistSave from "../hooks/useWatchlistSave"
 import { useEffect, useRef, useState } from "react"
 import { Link, matchPath, useRouter } from "../router"
@@ -64,10 +65,11 @@ export default function FriendProfilePage() {
           const mapped: Movie[] = entries.map((item) => {
             const m = item.movie
             return {
-              id: String(m.id ?? m.tmdbId),
+              id: titleId(m.tmdbId, m.mediaType ?? "", m.id),
+            catalogMovieId: m.id,
               tmdbId: m.tmdbId,
               title: m.title,
-              year: m.releaseYear ?? 2020,
+              year: m.releaseYear ?? null,
               posterSeed: null,
               posterUrl: m.posterUrl ?? null,
               imdb: m.imdbRating ?? null,
@@ -76,7 +78,7 @@ export default function FriendProfilePage() {
               genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
               director: m.director,
               trailerKey: m.trailerKey,
-              mediaType: "MOVIE" as const,
+              mediaType: (m.mediaType ?? "MOVIE") as Movie["mediaType"],
             }
           })
           setBackendMovies(mapped)

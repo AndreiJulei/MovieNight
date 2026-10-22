@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "personalized_recommendations", indexes = {
     @Index(name = "idx_rec_user_rank", columnList = "user_id, rankOrder"),
-    @Index(name = "idx_rec_user_tmdb", columnList = "user_id, tmdbId", unique = true)
+    @Index(name = "idx_rec_user_tmdb", columnList = "user_id, resourceType, tmdbId", unique = true)
 })
 @Getter
 @Setter
@@ -35,6 +35,13 @@ public class PersonalizedRecommendation {
     @Builder.Default
     @Column(nullable = false, length = 20)
     private String mediaType = "MOVIE";
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ResourceType resourceType;
+
+    @PrePersist @PreUpdate
+    void setProviderIdentity() { resourceType = ResourceType.fromCategory(mediaType); }
 
     @Column(nullable = false)
     private String title;

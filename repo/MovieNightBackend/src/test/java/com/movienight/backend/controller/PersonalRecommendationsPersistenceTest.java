@@ -165,7 +165,7 @@ class PersonalRecommendationsPersistenceTest {
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(2)));
     }
 
-    @Test void savingRecommendedMovieCannotChangeEqualIdTvLibraryEntry() throws Exception {
+    @Test void savingRecommendedMovieCoexistsWithEqualIdTvLibraryEntry() throws Exception {
         save(seed, "Watched", "MOVIE", "WATCHED", "null");
         save(candidate, "TV with same ID", "TV", "WATCHLIST", "null");
         metadata(candidate, "MOVIE", "Distinct movie"); neighbor(seed, candidate, 1);
@@ -174,14 +174,14 @@ class PersonalRecommendationsPersistenceTest {
 
         mvc.perform(post("/api/movies/library").header("Authorization", token()).contentType(MediaType.APPLICATION_JSON)
             .content("{\"tmdbId\":" + candidate + ",\"title\":\"Distinct movie\",\"mediaType\":\"MOVIE\",\"status\":\"WATCHLIST\"}"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.message", containsString("TV")));
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.movie.mediaType").value("MOVIE"));
 
         read("/api/movies/library").andExpect(status().isOk())
-            .andExpect(jsonPath("$", hasSize(2)))
+            .andExpect(jsonPath("$", hasSize(3)))
             .andExpect(jsonPath("$[?(@.movie.tmdbId == " + candidate + ")].movie.mediaType", hasItem("TV")));
         read("/api/suggestions/personal").andExpect(status().isOk())
-            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+            .andExpect(jsonPath("$.categories[0].movies", hasSize(0)));
     }
 
     @Test void authenticatedOwnersAndScheduledRecomputationIgnoreLegacyMixedRows() throws Exception {

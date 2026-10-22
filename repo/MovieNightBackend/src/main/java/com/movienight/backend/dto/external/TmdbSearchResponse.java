@@ -65,7 +65,7 @@ public class TmdbSearchResponse {
             if (name != null && !name.isBlank()) {
                 return name;
             }
-            return "Untitled";
+            return null;
         }
 
         /**
@@ -85,19 +85,9 @@ public class TmdbSearchResponse {
          * Classifies media into "MOVIE", "TV", or "ANIME".
          */
         public String getResolvedMediaType() {
-            boolean isAnimation = genreIds != null && genreIds.contains(16);
-            boolean isJapanese = "ja".equalsIgnoreCase(originalLanguage) ||
-                    (originCountry != null && originCountry.contains("JP"));
-
-            if (isAnimation && isJapanese) {
-                return "ANIME";
-            }
-
-            if ("tv".equalsIgnoreCase(mediaType) || (title == null && name != null)) {
-                return "TV";
-            }
-
-            return "MOVIE";
+            boolean tv = "tv".equalsIgnoreCase(mediaType) || (mediaType == null && title == null && name != null);
+            return (tv ? com.movienight.backend.model.ResourceType.TV : com.movienight.backend.model.ResourceType.MOVIE)
+                    .classify(genreIds != null && genreIds.contains(16), originalLanguage, originCountry);
         }
     }
 }

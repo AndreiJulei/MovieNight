@@ -28,6 +28,7 @@ public class SuggestionService {
     private final PersonalizedRecommendationService personalizedRecommendationService;
     private final TmdbClient tmdbClient;
     private final SuggestionScheduler suggestionScheduler;
+    private final MovieRepository movieRepository;
 
     /**
      * Get legacy aggregated discovery rows for the authenticated user.
@@ -37,7 +38,9 @@ public class SuggestionService {
         User user = findUser(username);
 
         Long userId = user.getId();
-        Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findTmdbIdsByUserId(userId);
+        Set<Long> userLibraryTmdbIds = userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(e -> "MOVIE".equals(e.getMovie().getMediaType()))
+                .map(e -> e.getMovie().getTmdbId()).filter(Objects::nonNull).collect(Collectors.toSet());
 
         SuggestionCategoryResponse personal = personalizedRecommendationService.movieCategory(user);
         personal.setId("for-you");
@@ -131,6 +134,13 @@ public class SuggestionService {
             allCached = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc(normalizedType);
         }
 
+        // Old overlapping rows cannot leak a recognized anime title into TV Series.
+        if ("TV".equals(normalizedType)) {
+            Set<Long> animeIds = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("ANIME").stream()
+                    .map(CachedMovieList::getTmdbId).collect(Collectors.toSet());
+            movieRepository.findByMediaType("ANIME").stream().map(Movie::getTmdbId).filter(Objects::nonNull).forEach(animeIds::add);
+            allCached = allCached.stream().filter(c -> !animeIds.contains(c.getTmdbId())).toList();
+        }
         List<SuggestionCategoryResponse> categories = new ArrayList<>();
         Set<Long> newestOrAiringTmdbIds = new HashSet<>();
 
@@ -299,7 +309,8 @@ public class SuggestionService {
     }
 
     private List<SuggestionMovieItem> mapCachedItems(List<CachedMovieList> list, String mediaType) {
-        return list.stream()
+        Set<Long> seen = new HashSet<>();
+        return list.stream().filter(item -> seen.add(item.getTmdbId()))
                 .map(item -> SuggestionMovieItem.builder()
                         .tmdbId(item.getTmdbId())
                         .title(item.getTitle())
@@ -313,9 +324,6 @@ public class SuggestionService {
 
     private List<SuggestionMovieItem> getCachedCategoryMovies(String mediaType, MovieListType listType, Set<Long> userLibraryTmdbIds) {
         List<CachedMovieList> cached = cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc(mediaType, listType);
-        if (cached.isEmpty()) {
-            cached = cachedMovieListRepository.findByListTypeOrderByRankOrderAsc(listType);
-        }
         return cached.stream()
                 .filter(item -> !userLibraryTmdbIds.contains(item.getTmdbId()))
                 .map(item -> SuggestionMovieItem.builder()

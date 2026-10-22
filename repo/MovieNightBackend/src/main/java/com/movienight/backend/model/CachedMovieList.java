@@ -31,6 +31,13 @@ public class CachedMovieList {
     private String mediaType = "MOVIE";
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ResourceType resourceType;
+
+    @PrePersist @PreUpdate
+    void setProviderIdentity() { resourceType = ResourceType.fromCategory(mediaType); }
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private MovieListType listType;
 

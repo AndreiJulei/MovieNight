@@ -1,6 +1,7 @@
+import { titleId } from "../store/titleIdentity";
 import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { freshId, type Movie, type Status } from "../store/data";
@@ -14,6 +15,7 @@ type Mode = "search" | "manual";
 type PosterMode = "upload" | "url";
 
 export default function AddMoviePage() {
+  const [searchError, setSearchError] = useState<string | null>(null);
   const store = useStore();
   const { saveWatchlist, error: saveError } = useWatchlistSave();
   const [saving, setSaving] = useState(false);
@@ -41,6 +43,8 @@ export default function AddMoviePage() {
 
   // Debounced live search against backend & TMDB
   useEffect(() => {
+    let active = true;
+    setSearchError(null);
     if (!query.trim() || mode !== "search") {
       setSearchResults([]);
       setIsSearching(false);
@@ -51,12 +55,14 @@ export default function AddMoviePage() {
     const timer = setTimeout(async () => {
       try {
         const apiResults = await moviesApi.search(query.trim());
+        if (!active) return;
         if (apiResults && apiResults.length > 0) {
           const mapped: Movie[] = apiResults.map((m) => ({
-            id: String(m.tmdbId ?? m.id ?? freshId("m")),
+            id: titleId(m.tmdbId, m.mediaType ?? "", m.id),
+            catalogMovieId: m.id,
             tmdbId: m.tmdbId,
             title: m.title,
-            year: m.releaseYear ?? 2020,
+            year: m.releaseYear ?? null,
             posterSeed: null,
             posterUrl: m.posterUrl ?? null,
             imdb: m.imdbRating ?? null,
@@ -72,31 +78,37 @@ export default function AddMoviePage() {
         } else {
           setSearchResults([]);
         }
-      } catch {
+      } catch (error) {
+        if (!active) return;
+        setSearchError(error instanceof Error ? error.message : "Could not search. Retry.");
         setSearchResults([]);
       } finally {
-        setIsSearching(false);
+        if (active) setIsSearching(false);
       }
     }, 250);
 
-    return () => clearTimeout(timer);
+    return () => { active = false; clearTimeout(timer); };
   }, [query, mode, store]);
 
+  const selectionGeneration = useRef(0);
+  useEffect(() => { selectionGeneration.current += 1; setSelected(null); }, [store.currentUser?.id, mode]);
   const pick = async (m: Movie) => {
+    const generation = ++selectionGeneration.current;
     setSelected(m);
     setTitle(m.title);
-    setYear(String(m.year));
+    setYear(m.year == null ? "" : String(m.year));
     setOverview(m.overview ?? "");
 
     // If it has a TMDB ID, enrich full details in background
     if (m.tmdbId) {
       try {
         const details = await moviesApi.getByTmdbId(m.tmdbId, m.mediaType);
+        if (generation !== selectionGeneration.current) return;
         if (details) {
           if (details.overview) setOverview(details.overview);
           if (details.releaseYear) setYear(String(details.releaseYear));
           setSelected((prev) =>
-            prev
+            prev?.id === m.id
               ? {
                   ...prev,
                   overview: details.overview ?? prev.overview,
@@ -138,6 +150,7 @@ export default function AddMoviePage() {
     setSaving(true);
     setWatchedError(null);
     const result = await store.addMovie({
+      catalogMovieId: selected?.catalogMovieId,
       tmdbId: selected?.tmdbId,
       title: title.trim(),
       year: parsedYear,
@@ -276,7 +289,8 @@ export default function AddMoviePage() {
             )}
 
             <Field label="Title">
-              <input
+              {searchError && <p role="alert" className="text-xs text-danger">{searchError} Change the search to retry.</p>}
+          <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className={inputCls}

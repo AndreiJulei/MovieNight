@@ -1,3 +1,4 @@
+import { titleId, resourceType } from "./titleIdentity";
 import {
   createContext,
   useCallback,
@@ -30,6 +31,7 @@ export type FriendRating = { user: User; rating: number };
 export type Stats = { count: number; avg: number | null };
 
 export type AddMovieInput = {
+  catalogMovieId?: number;
   tmdbId?: number;
   title: string;
   year?: number;
@@ -94,8 +96,8 @@ type StoreValue = {
   // mutations
   addMovie: (input: AddMovieInput) => Promise<SaveResult>;
   markWatched: (entryId: string, rating: number | null, description?: string) => Promise<SaveResult>;
-  updateDescription: (entryId: string, description: string) => void;
-  removeEntry: (entryId: string) => void;
+  updateDescription: (entryId: string, description: string) => Promise<SaveResult>;
+  removeEntry: (entryId: string) => Promise<SaveResult>;
   addToWatchlist: (movieId: string, movieObj?: Movie, notes?: string) => Promise<{ ok: boolean; error?: string; status?: Status }>;
   isWatchlistSaving: (movieId: string) => boolean;
   libraryLoading: boolean;
@@ -126,18 +128,17 @@ const StoreContext = createContext<StoreValue | null>(null);
 // Keep provider identities distinct from catalog-only movies, even when IDs collide.
 function listMovieKey(movie: Movie) {
   const resource = movie.tmdbId != null ? `tmdb:${movie.tmdbId}` : `catalog:${movie.catalogMovieId ?? movie.id}`;
-  return `${movie.mediaType}:${resource}`;
+  return `${resourceType(movie.mediaType)}:${resource}`;
 }
 
 async function resolveListMovie(movie: Movie) {
-  if (movie.mediaType !== "MOVIE") throw new Error("Custom lists currently support movies. TV and anime support follows later.");
-  if (movie.tmdbId != null) return listsApi.resolveCatalogMovie(movie.tmdbId);
+  if (movie.tmdbId != null) return listsApi.resolveCatalogMovie(movie.tmdbId, resourceType(movie.mediaType));
   if (movie.catalogMovieId) return movie.catalogMovieId;
   throw new Error("Could not resolve this movie's catalog identity. Reload the movie and try again.");
 }
 
 function fromCatalogResponse(m: ApiMovieResponse): Movie {
-  const movieId = m.tmdbId != null ? String(m.tmdbId) : `catalog-${m.id}`;
+  const movieId = titleId(m.tmdbId, m.mediaType ?? "", m.id);
   const mediaType = (m.mediaType as MediaType) ?? "MOVIE";
   const movie: Movie = {
     id: movieId,
@@ -238,9 +239,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   activeUser.current = currentUser?.id;
 
   const isWatchlistSaving = useCallback((movieId: string) => {
-    const movie = movies.find((m) => m.id === movieId || String(m.tmdbId) === movieId);
-    return pendingWatchlist.has(`${authGeneration.current}:${currentUser?.id}:${movie?.tmdbId ?? movieId}`);
-  }, [currentUser, movies, pendingWatchlist]);
+    return pendingWatchlist.has(`${authGeneration.current}:${currentUser?.id}:${movieId}`);
+  }, [currentUser, pendingWatchlist]);
 
   /**
    * Sync library data from Spring Boot backend.
@@ -387,12 +387,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const upsertMovie = useCallback((movie: Movie) => {
     if (!movie || !movie.id) return;
     setMovies((prev) => {
-      const idx = prev.findIndex(
-        (m) =>
-          m.id === movie.id ||
-          (movie.tmdbId != null && m.tmdbId === movie.tmdbId) ||
-          (m.title.toLowerCase() === movie.title.toLowerCase() && m.year === movie.year),
-      );
+      const idx = prev.findIndex((m) => m.id === movie.id);
       if (idx >= 0) {
         if (prev[idx] === movie) return prev;
         const next = [...prev];
@@ -404,7 +399,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const movieById = useCallback(
-    (id: string) => movies.find((m) => m.id === id || String(m.tmdbId) === id || (m.id && String(m.id) === id)),
+    (id: string) => movies.find((m) => m.id === id),
     [movies],
   );
 
@@ -415,24 +410,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const entryFor = useCallback(
-    (userId: string, movieId: string) => {
-      const targetMovie = movies.find(
-        (m) =>
-          m.id === movieId ||
-          (m.tmdbId != null && String(m.tmdbId) === movieId) ||
-          (m.tmdbId != null && !isNaN(Number(movieId)) && m.tmdbId === Number(movieId)),
-      );
-      return entries.find((e) => {
-        if (String(e.userId) !== String(userId)) return false;
-        if (e.movieId === movieId) return true;
-        if (targetMovie) {
-          if (e.movieId === targetMovie.id) return true;
-          if (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId)) return true;
-        }
-        return false;
-      });
-    },
-    [entries, movies],
+    (userId: string, movieId: string) => entries.find((e) => String(e.userId) === String(userId) && e.movieId === movieId),
+    [entries],
   );
 
   const entriesFor = useCallback(
@@ -459,18 +438,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const friendRatings = useCallback<StoreValue["friendRatings"]>(
     (movieId) => {
       if (!currentUser) return [];
-      const targetMovie = movies.find(
-        (m) =>
-          m.id === movieId ||
-          (m.tmdbId != null && String(m.tmdbId) === movieId) ||
-          (m.tmdbId != null && !isNaN(Number(movieId)) && m.tmdbId === Number(movieId)),
-      );
-      const friendIds = new Set(friendsOf(currentUser.id).map((u) => String(u.id)));
+      const friendIds = new Set(friendsOf(currentUser.id).map(friend => String(friend.id)));
       return entries
         .filter(
           (e) =>
-            (e.movieId === movieId ||
-              (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId))))) &&
+            e.movieId === movieId &&
             friendIds.has(String(e.userId)) &&
             e.status === "watched" &&
             e.rating != null,
@@ -518,7 +490,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     }
     const userId = String(currentUser.id);
     const generation = authGeneration.current;
-    const key = `${generation}:${userId}:${target.tmdbId ?? target.id}`;
+    const key = `${generation}:${userId}:${target.id}`;
     const signature = JSON.stringify([rating, notes, catalogMovieId]);
     const pending = watchedRequests.current.get(key);
     if (pending) return pending.signature === signature ? pending.promise
@@ -532,7 +504,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         const response = catalogMovieId != null
           ? await moviesApi.saveWatchedRating(catalogMovieId, rating, notes)
           : await moviesApi.addMovie({
-              tmdbId: target.tmdbId, title: target.title, releaseYear: target.year ?? undefined,
+              catalogMovieId: target.catalogMovieId, tmdbId: target.tmdbId, title: target.title, releaseYear: target.year ?? undefined,
               posterUrl: target.posterUrl ?? undefined, overview: target.overview,
               imdbRating: target.imdb ?? undefined, rottenTomatoesRating: target.rt ?? undefined,
               mediaType: target.mediaType, seasonsCount: target.seasonsCount,
@@ -560,7 +532,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
   const addMovie = useCallback<StoreValue["addMovie"]>((input) => {
     const movie: Movie = {
-      id: input.existingMovieId ?? String(input.tmdbId ?? freshId("m")),
+      id: input.existingMovieId ?? (input.tmdbId != null ? titleId(input.tmdbId, input.mediaType ?? "MOVIE") : freshId("m")),
+      catalogMovieId: input.catalogMovieId,
       tmdbId: input.tmdbId, title: input.title.trim(),
       year: input.year ?? null, posterSeed: input.posterSeed,
       posterUrl: input.posterUrl ?? null, imdb: input.imdb, rt: input.rt,
@@ -579,30 +552,38 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     return saveWatched(movie, rating, description, entry.catalogMovieId);
   }, [currentUser, entries, movies, saveWatched]);
 
-  const updateDescription = useCallback<StoreValue["updateDescription"]>(
-    (entryId, description) => {
-      setEntries((prev) => {
-        const entry = prev.find((e) => e.id === entryId);
-        if (entry) {
-          moviesApi.updateEntry(entry.catalogMovieId ?? entry.movieId, {
-            notes: description,
-          }).then(() => refreshLibrary()).catch((err) => console.warn("Update note error:", err));
-        }
-        return prev.map((e) => (e.id === entryId ? { ...e, description } : e));
-      });
-    },
-    [refreshLibrary],
-  );
+  const entryMutations = useRef(new Set<string>());
+  const updateDescription = useCallback<StoreValue["updateDescription"]>(async (entryId, description) => {
+    const entry = entries.find(e => e.id === entryId && e.userId === currentUser?.id);
+    if (!entry?.catalogMovieId) return { ok: false, error: "Reload the entry before saving notes." };
+    if (entryMutations.current.has(entryId)) return { ok: false, error: "An entry save is pending. Retry afterward." };
+    entryMutations.current.add(entryId);
+    const generation = authGeneration.current;
+    try {
+      const response = await moviesApi.updateEntry(entry.catalogMovieId, { notes: description });
+      if (generation !== authGeneration.current) return { ok: false, error: "Your account changed. Reload your library." };
+      if (!response || response.notes !== description) throw new Error("Could not confirm notes. Retry.");
+      setEntries(prev => prev.map(e => e.id === entryId ? { ...e, description } : e));
+      return { ok: true };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not save notes. Retry." }; }
+    finally { entryMutations.current.delete(entryId); }
+  }, [entries, currentUser]);
 
-  const removeEntry = useCallback<StoreValue["removeEntry"]>((entryId) => {
-    setEntries((prev) => {
-      const entry = prev.find((e) => e.id === entryId);
-      if (entry) {
-        moviesApi.removeMovie(entry.catalogMovieId ?? entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove movie error:", err));
-      }
-      return prev.filter((e) => e.id !== entryId);
-    });
-  }, [refreshLibrary]);
+  const removeEntry = useCallback<StoreValue["removeEntry"]>(async entryId => {
+    const entry = entries.find(e => e.id === entryId && e.userId === currentUser?.id);
+    if (!entry?.catalogMovieId) return { ok: false, error: "Reload the entry before removing it." };
+    if (entryMutations.current.has(entryId)) return { ok: false, error: "An entry save is pending. Retry afterward." };
+    entryMutations.current.add(entryId);
+    const generation = authGeneration.current;
+    try {
+      await moviesApi.removeMovie(entry.catalogMovieId);
+      if (generation !== authGeneration.current) return { ok: false, error: "Your account changed. Reload your library." };
+      libraryRevision.current += 1;
+      setEntries(prev => prev.filter(e => e.id !== entryId));
+      return { ok: true };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not remove title. Retry." }; }
+    finally { entryMutations.current.delete(entryId); }
+  }, [entries, currentUser]);
 
   const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(
     (movieId, movieObj, notes) => {
@@ -610,13 +591,13 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         return Promise.resolve({ ok: false, error: "Sign in to save to your watchlist." });
       }
       const userId = String(currentUser.id);
-      const targetMovie = movieObj || movies.find((m) => m.id === movieId || String(m.tmdbId) === movieId);
+      const targetMovie = movieObj || movies.find((m) => m.id === movieId);
       if (!targetMovie) {
         return Promise.resolve({ ok: false, error: "Could not find this title. Reopen its details and try again." });
       }
       const tmdbId = targetMovie.tmdbId;
       const generation = authGeneration.current;
-      const key = `${generation}:${userId}:${tmdbId ?? movieId}`;
+      const key = `${generation}:${userId}:${targetMovie.id}`;
       if (watchedRequests.current.has(key)) {
         return Promise.resolve({ ok: false, error: "A watched save is pending. Wait and try again." });
       }
@@ -626,6 +607,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       const request = (async () => {
         try {
           const response = await moviesApi.saveWatchlist({
+            catalogMovieId: targetMovie.catalogMovieId,
             tmdbId,
             title: targetMovie.title,
             releaseYear: targetMovie.year ?? undefined,
@@ -668,34 +650,10 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const removeFromWatchlist = useCallback<StoreValue["removeFromWatchlist"]>(
     (movieId) => {
       if (!currentUser) return;
-      const targetMovie = movies.find(
-        (m) =>
-          m.id === movieId ||
-          (m.tmdbId != null && String(m.tmdbId) === movieId),
-      );
-      setEntries((prev) => {
-        const entry = prev.find(
-          (e) =>
-            e.userId === currentUser.id &&
-            e.status === "watchlist" &&
-            (e.movieId === movieId ||
-              (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId))))),
-        );
-        if (entry) {
-          moviesApi.removeMovie(entry.catalogMovieId ?? entry.movieId).then(() => refreshLibrary()).catch((err) => console.warn("Remove error:", err));
-        }
-        return prev.filter(
-          (e) =>
-            !(
-              e.userId === currentUser.id &&
-              e.status === "watchlist" &&
-              (e.movieId === movieId ||
-                (targetMovie && (e.movieId === targetMovie.id || (targetMovie.tmdbId != null && e.movieId === String(targetMovie.tmdbId)))))
-            ),
-        );
-      });
+      const entry = entries.find((e) => e.userId === currentUser.id && e.movieId === movieId && e.status === "watchlist");
+      if (entry) removeEntry(entry.id);
     },
-    [currentUser, movies, refreshLibrary],
+    [currentUser, entries, removeEntry],
   );
 
   const [friendProfiles, setFriendProfiles] = useState<ApiFriendProfile[]>([]);

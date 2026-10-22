@@ -103,10 +103,9 @@ public class TmdbClient {
                         .toList();
             }
         } catch (Exception e) {
-            log.error("Failed to search TMDB (multi) for query '{}': {}", query, e.getMessage());
+            throw new IllegalStateException("Provider discovery request failed. Retry.");
         }
-
-        return Collections.emptyList();
+        throw new IllegalStateException("Provider returned invalid discovery data. Retry.");
     }
 
     /**
@@ -133,10 +132,15 @@ public class TmdbClient {
                     .retrieve()
                     .body(TmdbMovieDetailsResponse.class);
 
-            return Optional.ofNullable(response);
+            if (response == null || !tmdbId.equals(response.getId()) || response.getTitle() == null || response.getTitle().isBlank()) {
+                throw new IllegalStateException("Provider returned invalid title details");
+            }
+            return Optional.of(response);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            if (e.getStatusCode().value() == 404) return Optional.empty();
+            throw new IllegalStateException("Provider details request failed. Retry.");
         } catch (Exception e) {
-            log.warn("TMDB movie lookup failed for ID {}: {}", tmdbId, e.getMessage());
-            return Optional.empty();
+            throw new IllegalStateException("Provider details request failed. Retry.");
         }
     }
 
@@ -157,10 +161,15 @@ public class TmdbClient {
                     .retrieve()
                     .body(TmdbMovieDetailsResponse.class);
 
-            return Optional.ofNullable(response);
+            if (response == null || !tmdbId.equals(response.getId()) || response.getName() == null || response.getName().isBlank()) {
+                throw new IllegalStateException("Provider returned invalid title details");
+            }
+            return Optional.of(response);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            if (e.getStatusCode().value() == 404) return Optional.empty();
+            throw new IllegalStateException("Provider details request failed. Retry.");
         } catch (Exception e) {
-            log.warn("TMDB TV lookup failed for ID {}: {}", tmdbId, e.getMessage());
-            return Optional.empty();
+            throw new IllegalStateException("Provider details request failed. Retry.");
         }
     }
 
@@ -168,20 +177,8 @@ public class TmdbClient {
      * Fetch media details intelligently across movie or TV endpoints with fallback.
      */
     public Optional<TmdbMovieDetailsResponse> getMediaDetails(Long tmdbId, String mediaTypeHint) {
-        if (mediaTypeHint != null) {
-            String normalized = mediaTypeHint.trim().toUpperCase();
-            if (normalized.contains("TV") || normalized.contains("ANIME")) {
-                Optional<TmdbMovieDetailsResponse> tv = getTvDetails(tmdbId);
-                if (tv.isPresent()) return tv;
-                return getMovieDetails(tmdbId);
-            }
-        }
-
-        Optional<TmdbMovieDetailsResponse> movie = getMovieDetails(tmdbId);
-        if (movie.isPresent()) {
-            return movie;
-        }
-        return getTvDetails(tmdbId);
+        return com.movienight.backend.model.ResourceType.fromCategory(mediaTypeHint) == com.movienight.backend.model.ResourceType.TV
+                ? getTvDetails(tmdbId) : getMovieDetails(tmdbId);
     }
 
     /**
@@ -230,10 +227,9 @@ public class TmdbClient {
                 return response.getResults();
             }
         } catch (Exception e) {
-            log.error("Failed to discover movies on TMDB (sortBy: {}, page: {}): {}", sortBy, page, e.getMessage());
+            throw new IllegalStateException("Provider discovery request failed. Retry.");
         }
-
-        return Collections.emptyList();
+        throw new IllegalStateException("Provider returned invalid discovery data. Retry.");
     }
 
     /**
@@ -294,13 +290,13 @@ public class TmdbClient {
                     .body(TmdbSearchResponse.class);
 
             if (response != null && response.getResults() != null) {
+                response.getResults().forEach(item -> item.setMediaType("tv"));
                 return response.getResults();
             }
         } catch (Exception e) {
-            log.error("Failed to discover TV on TMDB: {}", e.getMessage());
+            throw new IllegalStateException("Provider discovery request failed. Retry.");
         }
-
-        return Collections.emptyList();
+        throw new IllegalStateException("Provider returned invalid discovery data. Retry.");
     }
 
     /**
@@ -322,13 +318,13 @@ public class TmdbClient {
                     .body(TmdbSearchResponse.class);
 
             if (response != null && response.getResults() != null) {
+                response.getResults().forEach(item -> item.setMediaType("tv"));
                 return response.getResults();
             }
         } catch (Exception e) {
-            log.error("Failed to fetch on-the-air TV series on TMDB: {}", e.getMessage());
+            throw new IllegalStateException("Provider discovery request failed. Retry.");
         }
-
-        return Collections.emptyList();
+        throw new IllegalStateException("Provider returned invalid discovery data. Retry.");
     }
 
     /**

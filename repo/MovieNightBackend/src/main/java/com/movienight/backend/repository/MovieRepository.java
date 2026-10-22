@@ -14,7 +14,7 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
      * Golden Rule Query:
      * Check if a movie from TMDB already exists in our database before making an external API call.
      */
-    Optional<Movie> findByTmdbId(Long tmdbId);
+    Optional<Movie> findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType resourceType, Long tmdbId);
 
     /**
      * Look up a movie by its IMDb identifier (e.g. "tt0133093").
@@ -26,8 +26,6 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
      */
     List<Movie> findByTitleContainingIgnoreCase(String query);
 
-    /**
-     * Check if a TMDB movie is already stored.
-     */
-    boolean existsByTmdbId(Long tmdbId);
+    List<Movie> findByMediaType(String mediaType);
+
 }

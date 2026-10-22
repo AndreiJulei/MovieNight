@@ -1,3 +1,4 @@
+import { titleId } from "../store/titleIdentity";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store/MovieStore";
 import { moviesApi, type ApiSuggestionsResponse } from "../api/movies";
@@ -22,42 +23,35 @@ export interface SuggestionRow {
 /**
  * Explore catalog hook for /explore/:type pages.
  */
-export function useExploreMedia(mediaType: "movies" | "tv" | "anime"): SuggestionRow[] {
+export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
   const store = useStore();
-  const [backendExplore, setBackendExplore] = useState<ApiSuggestionsResponse | null>(null);
-
+  const [revision, setRevision] = useState(0);
+  const key = JSON.stringify([mediaType, store.currentUser?.id, revision]);
+  const [state, setState] = useState<{ key: string; data: ApiSuggestionsResponse | null; error: string | null } | null>(null);
   useEffect(() => {
     let active = true;
-    moviesApi.getExploreMedia(mediaType).then((res) => {
-      if (active && res) {
-        setBackendExplore(res);
-      }
+    void moviesApi.getExploreMedia(mediaType).then(data => {
+      if (active) setState({ key, data, error: null });
+    }).catch(error => {
+      if (active) setState({ key, data: null, error: error instanceof Error ? error.message : "Could not load discovery. Retry." });
     });
-    return () => {
-      active = false;
-    };
-  }, [mediaType]);
-
-  return useMemo(() => {
-    if (backendExplore && backendExplore.categories && backendExplore.categories.length > 0) {
-      return backendExplore.categories.map((cat) => ({
-        id: cat.id,
-        title: cat.title,
-        movies: cat.movies.map((m) => mapApiMovie(m, store)),
-      }));
-    }
-
-    return [];
-  }, [backendExplore, store]);
+    return () => { active = false; };
+  }, [key, mediaType]);
+  const current = state?.key === key ? state : null;
+  return { rows: useMemo(() => current?.data?.categories.map(category => ({ ...category,
+      movies: category.movies.map(item => mapApiMovie(item, store)) })) ?? [], [current, store]),
+    error: current?.error ?? null, loading: !current,
+    reload: () => { if (current) setRevision(value => value + 1); } };
 }
 
 export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
-  const existing = store.movieById(String(m.tmdbId));
+  const id = titleId(m.tmdbId, m.mediaType ?? "");
+  const existing = store.movieById(id);
   return {
-    id: String(m.tmdbId),
+    id,
     tmdbId: m.tmdbId,
     title: m.title,
-    year: m.releaseYear ?? existing?.year ?? 2024,
+    year: m.releaseYear ?? existing?.year ?? null,
     posterSeed: null,
     posterUrl: m.posterUrl ?? existing?.posterUrl ?? null,
     imdb: m.imdbRating ?? m.voteAverage ?? existing?.imdb ?? null,

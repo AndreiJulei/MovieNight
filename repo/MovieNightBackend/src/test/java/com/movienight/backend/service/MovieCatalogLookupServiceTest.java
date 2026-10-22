@@ -80,9 +80,9 @@ class MovieCatalogLookupServiceTest {
 
     @Test
     void getOrFetchMovie_whenAlreadyCached_returnsFromDbWithoutApiCalls() {
-        when(movieRepository.findByTmdbId(283995L)).thenReturn(Optional.of(localMovie));
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L)).thenReturn(Optional.of(localMovie));
 
-        Movie result = lookupService.getOrFetchMovie(283995L);
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
 
         assertNotNull(result);
         assertEquals(283995L, result.getTmdbId());
@@ -124,7 +124,7 @@ class MovieCatalogLookupServiceTest {
         OmdbResponse omdbResponse = new OmdbResponse();
         omdbResponse.setResponse("True");
 
-        when(movieRepository.findByTmdbId(283995L)).thenReturn(Optional.empty());
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L)).thenReturn(Optional.empty());
         when(tmdbClient.getMovieDetails(283995L)).thenReturn(Optional.of(tmdbResponse));
         when(omdbClient.isConfigured()).thenReturn(true);
         when(omdbClient.getMovieRatings("tt3896198")).thenReturn(Optional.of(omdbResponse));
@@ -132,7 +132,7 @@ class MovieCatalogLookupServiceTest {
         when(omdbClient.extractRottenTomatoesScore(omdbResponse)).thenReturn(85);
         when(movieRepository.save(any(Movie.class))).thenReturn(localMovie);
 
-        Movie result = lookupService.getOrFetchMovie(283995L);
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
 
         assertNotNull(result);
         assertEquals("Guardians of the Galaxy Vol. 2", result.getTitle());
@@ -180,7 +180,7 @@ class MovieCatalogLookupServiceTest {
         tvDetails.setNumberOfSeasons(5);
         tvDetails.setNumberOfEpisodes(62);
 
-        when(movieRepository.findByTmdbId(1396L)).thenReturn(Optional.empty());
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.TV, 1396L)).thenReturn(Optional.empty());
         when(tmdbClient.getTvDetails(1396L)).thenReturn(Optional.of(tvDetails));
         when(movieRepository.save(any(Movie.class))).thenAnswer(invocation -> invocation.getArgument(0));
 

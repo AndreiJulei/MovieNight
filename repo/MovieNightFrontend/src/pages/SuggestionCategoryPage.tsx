@@ -76,8 +76,7 @@ export default function SuggestionCategoryPage() {
   const userHasMovie = (movieId: string) => {
     const userId = store.currentUser?.id;
     if (!userId) return false;
-    return store.allEntries().some((entry) => entry.userId === userId
-      && entry.mediaType === "MOVIE" && entry.movieId === movieId);
+    return !!store.entryFor(userId, movieId);
   };
 
   const referrerPath = `/suggestions/${category}`;

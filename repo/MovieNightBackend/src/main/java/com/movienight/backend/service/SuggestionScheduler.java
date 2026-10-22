@@ -29,6 +29,7 @@ public class SuggestionScheduler {
     private final CachedMovieListRepository cachedMovieListRepository;
     private final UserRepository userRepository;
     private final PersonalizedRecommendationService personalizedRecommendationService;
+    private final org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     /**
      * Populate cache on application startup if currently empty.
@@ -37,7 +38,7 @@ public class SuggestionScheduler {
     public void onApplicationReady() {
         if (cachedMovieListRepository.count() == 0 && tmdbClient.isConfigured()) {
             log.info("Initializing TMDB Discover caches on application startup...");
-            refreshAllCachedLists();
+            refreshDiscoverySafely();
         }
     }
 
@@ -47,8 +48,18 @@ public class SuggestionScheduler {
     @Scheduled(cron = "0 0 3 * * ?")
     public void scheduledDailyRefresh() {
         log.info("Starting scheduled daily refresh of TMDB Discover lists and dirty user recommendations...");
-        refreshAllCachedLists();
+        refreshDiscoverySafely();
         recalculateDirtyUserRecommendations();
+    }
+
+    private void refreshDiscoverySafely() {
+        try {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> refreshAllCachedLists());
+        } catch (RuntimeException error) {
+            // Startup/background discovery must not prevent access to saved libraries.
+            log.warn("Discovery refresh unavailable; cached data is unchanged and on-demand reads can retry.");
+        }
     }
 
     /**
@@ -92,13 +103,13 @@ public class SuggestionScheduler {
         SeasonRange nextSeason = getNextSeasonRange(today);
 
         // Current Season Hits (Japanese animation airing within current quarter)
-        refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", "ja", 3);
+        refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", null, 3);
         // Most Popular Anime
-        refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", "ja", 3);
+        refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", null, 3);
         // All-Time Acclaimed (>= 200 votes)
-        refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", "ja", 3);
+        refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", null, 3);
         // Upcoming Next Season
-        refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", "ja", 3);
+        refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", null, 3);
 
         log.info("TMDB Discover list cache refreshed successfully across Movies, TV Series, and Anime.");
     }
@@ -132,10 +143,10 @@ public class SuggestionScheduler {
         } else if ("ANIME".equals(normalized)) {
             SeasonRange currentSeason = getCurrentSeasonRange(today);
             SeasonRange nextSeason = getNextSeasonRange(today);
-            refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", "ja", 1);
-            refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", "ja", 1);
-            refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", "ja", 1);
-            refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", "ja", 1);
+            refreshTvCategory("ANIME", MovieListType.CURRENTLY_AIRING, "popularity.desc", 5, null, null, currentSeason.start, currentSeason.end, "16", null, 1);
+            refreshTvCategory("ANIME", MovieListType.POPULAR, "popularity.desc", 50, null, null, null, null, "16", null, 1);
+            refreshTvCategory("ANIME", MovieListType.TOP_RATED, "vote_average.desc", 200, null, null, null, null, "16", null, 1);
+            refreshTvCategory("ANIME", MovieListType.UPCOMING, "popularity.desc", 0, nextSeason.start, nextSeason.end, null, null, "16", null, 1);
         }
     }
 
@@ -161,7 +172,7 @@ public class SuggestionScheduler {
             }
 
             for (TmdbSearchResponse.TmdbMovieSummary movie : pageResults) {
-                if (movie.getId() != null) {
+                if (movie.getId() != null && movie.getEffectiveTitle() != null && entries.stream().noneMatch(e -> e.getTmdbId().equals(movie.getId()))) {
                     entries.add(CachedMovieList.builder()
                             .mediaType(mediaType)
                             .listType(listType)
@@ -176,7 +187,7 @@ public class SuggestionScheduler {
             }
         }
 
-        if (!entries.isEmpty()) {
+        {
             cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
             cachedMovieListRepository.saveAll(entries);
             log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
@@ -209,7 +220,9 @@ public class SuggestionScheduler {
             }
 
             for (TmdbSearchResponse.TmdbMovieSummary show : pageResults) {
-                if (show.getId() != null) {
+                show.setMediaType("tv"); // The queried endpoint establishes provider identity.
+                if (!mediaType.equals(show.getResolvedMediaType())) continue;
+                if (show.getId() != null && show.getEffectiveTitle() != null && entries.stream().noneMatch(e -> e.getTmdbId().equals(show.getId()))) {
                     entries.add(CachedMovieList.builder()
                             .mediaType(mediaType)
                             .listType(listType)
@@ -224,7 +237,7 @@ public class SuggestionScheduler {
             }
         }
 
-        if (!entries.isEmpty()) {
+        {
             cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
             cachedMovieListRepository.saveAll(entries);
             log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
@@ -242,7 +255,9 @@ public class SuggestionScheduler {
             }
 
             for (TmdbSearchResponse.TmdbMovieSummary show : pageResults) {
-                if (show.getId() != null) {
+                show.setMediaType("tv"); // The queried endpoint establishes provider identity.
+                if (!mediaType.equals(show.getResolvedMediaType())) continue;
+                if (show.getId() != null && show.getEffectiveTitle() != null && entries.stream().noneMatch(e -> e.getTmdbId().equals(show.getId()))) {
                     entries.add(CachedMovieList.builder()
                             .mediaType(mediaType)
                             .listType(listType)
@@ -257,7 +272,7 @@ public class SuggestionScheduler {
             }
         }
 
-        if (!entries.isEmpty()) {
+        {
             cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
             cachedMovieListRepository.saveAll(entries);
             log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);

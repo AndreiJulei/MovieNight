@@ -70,7 +70,7 @@ class SuggestionServiceTest {
     @DisplayName("getSuggestions should return 6 discovery rows and exclude user's own movies")
     void testGetSuggestions() {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(testUser));
-        when(userMovieEntryRepository.findTmdbIdsByUserId(1L)).thenReturn(Set.of(100L));
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(Collections.emptyList());
 
         when(personalizedRecommendationService.movieCategory(testUser)).thenReturn(
                 com.movienight.backend.dto.SuggestionCategoryResponse.builder().id("movies")
@@ -98,11 +98,11 @@ class SuggestionServiceTest {
                 .title("Dune")
                 .rankOrder(1)
                 .build();
-        when(cachedMovieListRepository.findByListTypeOrderByRankOrderAsc(MovieListType.POPULAR))
+        when(cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.POPULAR))
                 .thenReturn(List.of(popularItem));
-        when(cachedMovieListRepository.findByListTypeOrderByRankOrderAsc(MovieListType.RECENT))
+        when(cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.RECENT))
                 .thenReturn(Collections.emptyList());
-        when(cachedMovieListRepository.findByListTypeOrderByRankOrderAsc(MovieListType.UPCOMING))
+        when(cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.UPCOMING))
                 .thenReturn(Collections.emptyList());
 
         SuggestionsResponse response = suggestionService.getSuggestions("john@example.com");

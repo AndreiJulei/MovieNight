@@ -1,3 +1,4 @@
+import { titleId } from "../store/titleIdentity";
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -12,6 +13,7 @@ interface NavSearchProps {
 }
 
 export default function NavSearch({ className = "", onNavigate }: NavSearchProps) {
+  const [searchError, setSearchError] = useState<string | null>(null);
   const { navigate } = useRouter();
   const store = useStore();
   const [query, setQuery] = useState("");
@@ -59,6 +61,9 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
 
   // Debounced live backend search to complement local store results
   useEffect(() => {
+    let active = true;
+    setBackendResults([]);
+    setSearchError(null);
     const trimmed = query.trim();
     if (!trimmed) {
       setBackendResults([]);
@@ -70,12 +75,14 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
       setIsSearching(true);
       try {
         const apiMovies = await moviesApi.search(trimmed);
+        if (!active) return;
         if (apiMovies && apiMovies.length > 0) {
           const mapped: Movie[] = apiMovies.map((m) => ({
-            id: String(m.id || m.tmdbId),
+            id: titleId(m.tmdbId, m.mediaType ?? "", m.id),
+            catalogMovieId: m.id,
             tmdbId: m.tmdbId,
             title: m.title,
-            year: m.releaseYear || new Date().getFullYear(),
+            year: m.releaseYear ?? null,
             director: m.director || "Unknown",
             overview: m.overview || "",
             posterUrl: m.posterUrl || null,
@@ -89,15 +96,17 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
         } else {
           setBackendResults([]);
         }
-      } catch {
+      } catch (error) {
+        if (!active) return;
+        setSearchError(error instanceof Error ? error.message : "Could not search. Retry.");
         setBackendResults([]);
       } finally {
-        setIsSearching(false);
+        if (active) setIsSearching(false);
       }
     }, 280);
 
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => { active = false; clearTimeout(timer); };
+  }, [query, store.currentUser?.id]);
 
   // Display backend results directly from live TMDB search
   const displayedResults = backendResults.slice(0, 8);
@@ -164,7 +173,8 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
       >
         <SearchIcon className="h-4 w-4 shrink-0 text-text-muted transition-colors group-focus-within:text-[#4a9dec]" />
         
-        <input
+        {searchError && <p role="alert" className="text-xs text-danger">{searchError} Change the search to retry.</p>}
+          <input
           ref={inputRef}
           type="text"
           value={query}

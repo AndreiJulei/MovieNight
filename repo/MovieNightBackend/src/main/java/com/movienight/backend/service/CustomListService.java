@@ -56,7 +56,7 @@ public class CustomListService {
                 if (movieId == null) throw new IllegalArgumentException("Initial movie IDs cannot be null");
                 Movie movie = movieRepository.findById(movieId)
                         .orElseThrow(() -> new ResourceNotFoundException("Movie not found with ID: " + movieId));
-                requireMovie(movie);
+                requireSupportedTitle(movie);
                 CustomListEntry entry = CustomListEntry.builder()
                         .customList(customList)
                         .movie(movie)
@@ -183,7 +183,7 @@ public class CustomListService {
         Movie movie = movieRepository.findById(req.getMovieId())
                 .orElseThrow(() -> new ResourceNotFoundException("Movie not found with ID: " + req.getMovieId()));
 
-        requireMovie(movie);
+        requireSupportedTitle(movie);
 
         Optional<CustomListEntry> existing = customListEntryRepository.findByCustomListIdAndMovieId(listId, movie.getId());
         if (existing.isPresent()) {
@@ -277,10 +277,8 @@ public class CustomListService {
 
     // --- Helper Methods ---
 
-    private void requireMovie(Movie movie) {
-        if (!"MOVIE".equalsIgnoreCase(movie.getMediaType())) {
-            throw new IllegalArgumentException("Custom lists currently support movies; TV and anime support follows later.");
-        }
+    private void requireSupportedTitle(Movie movie) {
+        com.movienight.backend.model.ResourceType.fromCategory(movie.getMediaType());
     }
 
     private User findUserByUsername(String username) {

@@ -43,14 +43,14 @@ public class MovieCatalogLookupService {
 
         String cleanQuery = query.trim();
         List<MovieResponse> results = new ArrayList<>();
-        Set<Long> seenTmdbIds = new HashSet<>();
+        Set<String> seenTmdbIds = new HashSet<>();
 
         // Tier 1: Check Local DB first
         List<Movie> localMatches = movieRepository.findByTitleContainingIgnoreCase(cleanQuery);
         for (Movie movie : localMatches) {
             results.add(mapToResponse(movie));
             if (movie.getTmdbId() != null) {
-                seenTmdbIds.add(movie.getTmdbId());
+                seenTmdbIds.add(movie.getResourceType() + ":" + movie.getTmdbId());
             }
         }
 
@@ -58,7 +58,7 @@ public class MovieCatalogLookupService {
         if (tmdbClient.isConfigured()) {
             List<TmdbSearchResponse.TmdbMovieSummary> tmdbResults = tmdbClient.searchMovies(cleanQuery);
             for (TmdbSearchResponse.TmdbMovieSummary item : tmdbResults) {
-                if (item.getId() != null && !seenTmdbIds.contains(item.getId())) {
+                if (item.getId() != null && !seenTmdbIds.contains(com.movienight.backend.model.ResourceType.fromCategory(item.getResolvedMediaType()) + ":" + item.getId())) {
                     results.add(MovieResponse.builder()
                             .tmdbId(item.getId())
                             .title(item.getEffectiveTitle())
@@ -70,7 +70,7 @@ public class MovieCatalogLookupService {
                             .tmdbVoteAverage(item.getVoteAverage())
                             .tmdbVoteCount(item.getVoteCount())
                             .build());
-                    seenTmdbIds.add(item.getId());
+                    seenTmdbIds.add(com.movienight.backend.model.ResourceType.fromCategory(item.getResolvedMediaType()) + ":" + item.getId());
                 }
             }
         }
@@ -91,73 +91,37 @@ public class MovieCatalogLookupService {
      */
     @Transactional
     public Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint) {
-        if (tmdbId == null) {
-            throw new IllegalArgumentException("TMDB ID cannot be null");
+        if (tmdbId == null || tmdbId <= 0) {
+            throw new IllegalArgumentException("Provider ID must be positive");
         }
 
-        // If mediaTypeHint is not provided, infer from cached explore/suggestions list
-        String resolvedHint = mediaTypeHint;
-        if (resolvedHint == null || resolvedHint.isBlank()) {
-            List<com.movienight.backend.model.CachedMovieList> cached = cachedMovieListRepository.findByTmdbId(tmdbId);
-            if (!cached.isEmpty()) {
-                resolvedHint = cached.get(0).getMediaType();
-            }
-        }
-
-        // Tier 1: Return from local database if already cached
-        Optional<Movie> existingMovie = movieRepository.findByTmdbId(tmdbId);
-        if (existingMovie.isPresent()) {
-            Movie existing = existingMovie.get();
-            // A provider ID alone cannot turn an existing series into a movie.
-            // TV and ANIME describe the same provider resource; MOVIE is distinct.
-            if (resolvedHint != null && !resolvedHint.isBlank()
-                    && "MOVIE".equalsIgnoreCase(resolvedHint) != "MOVIE".equalsIgnoreCase(existing.getMediaType())) {
-                throw new IllegalArgumentException("This provider ID belongs to another media type. Separate movie/TV catalog identities are not available yet.");
-            }
-            return existing;
-        }
-
-        // Tier 2: Fetch full details from TMDB (supporting Movies, TV series, Anime)
-        Optional<TmdbMovieDetailsResponse> detailsOpt;
-        if (resolvedHint != null && (resolvedHint.equalsIgnoreCase("TV") || resolvedHint.equalsIgnoreCase("ANIME"))) {
-            detailsOpt = tmdbClient.getTvDetails(tmdbId);
-            if (detailsOpt.isEmpty()) {
-                detailsOpt = tmdbClient.getMovieDetails(tmdbId);
-            }
-        } else {
-            detailsOpt = tmdbClient.getMovieDetails(tmdbId);
-            if (detailsOpt.isEmpty()) {
-                detailsOpt = tmdbClient.getTvDetails(tmdbId);
-            }
-        }
-
+        var resourceType = com.movienight.backend.model.ResourceType.fromCategory(mediaTypeHint);
+        Optional<Movie> existingMovie = movieRepository.findByResourceTypeAndTmdbId(resourceType, tmdbId);
+        if (existingMovie.isPresent()) return existingMovie.get();
+        Optional<TmdbMovieDetailsResponse> detailsOpt = resourceType == com.movienight.backend.model.ResourceType.TV
+                ? tmdbClient.getTvDetails(tmdbId) : tmdbClient.getMovieDetails(tmdbId);
         if (detailsOpt.isEmpty()) {
-            if (existingMovie.isPresent()) {
-                return existingMovie.get();
+            // An unconfigured provider can still serve an explicitly typed cached summary.
+            if (!tmdbClient.isConfigured()) {
+                var cached = cachedMovieListRepository.findByTmdbId(tmdbId).stream()
+                        .filter(c -> resourceType == com.movienight.backend.model.ResourceType.fromCategory(c.getMediaType()))
+                        .filter(c -> c.getTitle() != null && !c.getTitle().isBlank()).findFirst();
+                if (cached.isPresent()) {
+                    var c = cached.get();
+                    return movieRepository.save(Movie.builder().tmdbId(tmdbId).title(c.getTitle())
+                            .mediaType(c.getMediaType()).posterUrl(tmdbClient.buildPosterUrl(c.getPosterPath()))
+                            .releaseYear(parseYear(c.getReleaseDate())).tmdbVoteAverage(c.getVoteAverage()).build());
+                }
             }
-            Optional<Movie> byId = movieRepository.findById(tmdbId);
-            if (byId.isPresent()) {
-                return byId.get();
-            }
-            List<com.movienight.backend.model.CachedMovieList> cachedList = cachedMovieListRepository.findByTmdbId(tmdbId);
-            if (!cachedList.isEmpty()) {
-                com.movienight.backend.model.CachedMovieList c = cachedList.get(0);
-                Movie fallback = Movie.builder()
-                        .tmdbId(c.getTmdbId())
-                        .title(c.getTitle())
-                        .posterUrl(tmdbClient.buildPosterUrl(c.getPosterPath()))
-                        .releaseYear(parseYear(c.getReleaseDate()))
-                        .mediaType(c.getMediaType())
-                        .tmdbVoteAverage(c.getVoteAverage())
-                        .build();
-                log.info("Serving fallback movie from cached_movie_list for TMDB ID: {} - {}", tmdbId, fallback.getTitle());
-                return movieRepository.save(fallback);
-            }
-            throw new com.movienight.backend.exception.ResourceNotFoundException("Media not found on TMDB or local cache for ID: " + tmdbId);
+            throw new com.movienight.backend.exception.ResourceNotFoundException("Title not found for " + resourceType + ":" + tmdbId);
         }
 
         TmdbMovieDetailsResponse tmdbDetails = detailsOpt.get();
 
+        if (!tmdbId.equals(tmdbDetails.getId()) || tmdbDetails.getEffectiveTitle() == null
+                || tmdbDetails.getEffectiveTitle().isBlank()) {
+            throw new IllegalStateException("Provider returned invalid title details");
+        }
         // Extract Cast (top 5) & Director/Creator
         String director = tmdbDetails.getEffectiveDirectorOrCreator();
 
@@ -222,7 +186,7 @@ public class MovieCatalogLookupService {
                 .trailerKey(safeTrailer)
                 .director(safeDirector)
                 .castMembers(castMembers)
-                .mediaType(tmdbDetails.getResolvedMediaType())
+                .mediaType(tmdbDetails.getResolvedMediaType(resourceType))
                 .seasonsCount(tmdbDetails.getNumberOfSeasons())
                 .episodesCount(tmdbDetails.getNumberOfEpisodes())
                 .imdbRating(imdbRating)
@@ -235,7 +199,7 @@ public class MovieCatalogLookupService {
         try {
             return movieRepository.save(movie);
         } catch (org.springframework.dao.DataIntegrityViolationException dive) {
-            return movieRepository.findByTmdbId(tmdbDetails.getId()).orElse(movie);
+            return movieRepository.findByResourceTypeAndTmdbId(resourceType, tmdbDetails.getId()).orElse(movie);
         }
     }
 
@@ -244,28 +208,8 @@ public class MovieCatalogLookupService {
      */
     @Transactional
     public Movie getMovieById(Long id) {
-        Optional<Movie> found = movieRepository.findById(id);
-        if (found.isPresent()) {
-            return found.get();
-        }
-        Optional<Movie> byTmdb = movieRepository.findByTmdbId(id);
-        if (byTmdb.isPresent()) {
-            return byTmdb.get();
-        }
-        List<com.movienight.backend.model.CachedMovieList> cached = cachedMovieListRepository.findByTmdbId(id);
-        if (!cached.isEmpty()) {
-            com.movienight.backend.model.CachedMovieList c = cached.get(0);
-            Movie fallback = Movie.builder()
-                    .tmdbId(c.getTmdbId())
-                    .title(c.getTitle())
-                    .posterUrl(tmdbClient.buildPosterUrl(c.getPosterPath()))
-                    .releaseYear(parseYear(c.getReleaseDate()))
-                    .mediaType(c.getMediaType())
-                    .tmdbVoteAverage(c.getVoteAverage())
-                    .build();
-            return movieRepository.save(fallback);
-        }
-        throw new com.movienight.backend.exception.ResourceNotFoundException("Movie not found with ID: " + id);
+        return movieRepository.findById(id).orElseThrow(() ->
+                new com.movienight.backend.exception.ResourceNotFoundException("Catalog title not found: " + id));
     }
 
     /**
