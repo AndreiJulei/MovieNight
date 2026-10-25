@@ -117,6 +117,19 @@ the release goal includes deployment. Anime films remain deferred.
 - Responsive layout can be developed locally before hosting; actual phone access
   still requires a reachable backend and explicit frontend/API origin setup.
 
+### Main-page logo rotation
+
+- On each full page reload, the main page displays a logo from a user-selected
+  allowlist of assets in `/mainPageLogo`. Only the explicitly selected files are
+  eligible; do not automatically include every file in that folder.
+- With at least two selected logos, the next reload displays a different logo
+  from the previous one. Ordinary component rerenders do not change the logo.
+- Keep the logo legible and correctly contained on desktop and phone, preserving
+  its aspect ratio and accessible branding text.
+- Exact asset filenames and random-versus-sequential selection remain for the
+  user to specify before implementation. Confirm the repository asset path and
+  define single-asset/missing-asset behavior in the selected feature contract.
+
 ### Meaningful discovery and recommendation quality
 
 - Popularity, audience approval, critic approval and personal relevance are
@@ -205,6 +218,7 @@ the release goal includes deployment. Anime films remain deferred.
 | P18 | Load more, repeat the action, then encounter a failed next request | Additional typed titles appear once; existing results remain; failure offers retry and differs from exhaustion or a cap |
 | P19 | Save a discovered title, then refresh or load more; repeat with a failed save | Confirmed watchlist/watched titles are excluded using current typed state; failed saves do not imply membership |
 | P20 | Read recommendation/rating explanations with missing critic coverage | Sources/scales remain distinct, absent data is not zero, and personal relevance is not replaced by generic popularity |
+| P21 | Reload the main page with at least two user-selected logo assets | A different approved logo appears; unselected assets never appear and ordinary rerenders keep the current logo |
 
 ## Implementation and testing decisions
 
@@ -247,6 +261,8 @@ personal-recommendation quality, then additional category results. Settle rankin
 and provider coverage before building pagination against that ranking. Specify
 quality examples with synthetic data and review representative real results
 separately; tests cannot establish universal taste or provider accuracy.
+Main-page logo rotation is an additional small slice before staging; its exact
+asset allowlist and selection order remain pending user input.
 
 Provider references checked on 2026-10-25: TMDB documents
 [popularity signals](https://developer.themoviedb.org/docs/popularity-and-trending)

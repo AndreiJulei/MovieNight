@@ -2,7 +2,7 @@
 
 Deliver one reviewable slice at a time. Each row is a milestone; its first slice
 starts the work and does not establish completion of the whole milestone.
-Order labels 9a–9c insert the 2026-10-25 priorities before deployment without
+Order labels 9a–9d insert the 2026-10-25 priorities before deployment without
 renumbering existing feature records; these labels are not feature IDs.
 
 | Order | Milestone | First verifiable outcome |
@@ -20,6 +20,7 @@ renumbering existing feature records; these labels are not feature IDs.
 | 9a | Desktop and phone usability | Fix desktop signup panel overflow; verify core flows in responsive phone and desktop layouts with touch/keyboard access |
 | 9b | Meaningful discovery and recommendations | Quality-filter popular picks, rank Top Rated with rating confidence, and improve personal relevance explanations; evaluate optional critic enrichment |
 | 9c | Additional discovery results | Load more category results with bounded work, stable ranking, typed deduplication and current watchlist/watched exclusions |
+| 9d | Main-page logo rotation | Display a different user-approved `/mainPageLogo` asset on each reload; exact filenames and selection order pending user input |
 | 10 | Staging and public release | Deploy over HTTPS; verify access, privacy, restart/release retention, and backup/restore |
 
 Public deployment is required for the initial release. Anime films, public
@@ -63,6 +64,13 @@ pages per category on full refresh; extending results requires backend candidate
 retrieval as well as UI changes. The observed 41 TV titles are a user report,
 not a diagnosed hardcoded limit. Settle batch/cap sizes, stable ordering,
 exhaustion/error behavior and refreshed library exclusions with the 9b policy.
+
+Add **9d: main-page logo rotation** as a small slice before staging. Use only the
+logos the user explicitly selects from `/mainPageLogo`, with a different logo on
+each reload when multiple assets are approved and no change on ordinary
+rerenders. Keep desktop/phone sizing and accessible branding intact. Confirm the
+exact filenames, asset path and random-versus-sequential behavior before
+implementation; no assets are selected by this documentation update.
 
 These priorities implement the product direction in [spec.md](spec.md#product-rules).
 They are planned, not implemented or validated. Keep them as roadmap entries until
