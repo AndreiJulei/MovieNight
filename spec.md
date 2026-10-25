@@ -36,6 +36,10 @@ the release goal includes deployment. Anime films remain deferred.
 - Discover choices from accepted friends and personal watched history, with
   sources and limitations explained.
 - Discover movies, TV, and anime TV with distinct catalog identities.
+- Use the same web application on desktop and phone, including touch-friendly
+  navigation, authentication, discovery and personal-library actions.
+- Find credible discovery choices with understandable ranking signals, and load
+  additional eligible titles beyond the initial category results.
 - Use the publicly deployed app with supported onboarding and data retained
   across restarts and releases.
 
@@ -95,6 +99,76 @@ the release goal includes deployment. Anime films remain deferred.
   the rest of the library. Exact retry and fallback behavior belongs in the
   affected feature spec.
 
+### Desktop and phone access
+
+- Support responsive browser use of the same application on desktop and phone;
+  this does not require a native app, installation, offline mode or device sync
+  beyond the existing authenticated server persistence.
+- Navigation, discovery, details, watchlist/watched actions, ratings, notes,
+  custom lists and friendships remain usable with touch and keyboard. Essential
+  actions must not depend on hover. Content must reflow without page-level
+  horizontal overflow or controls hidden behind fixed navigation or the keyboard.
+- Sign-in and account-creation containers must accommodate every field, validation
+  message and submit action. In particular, the desktop signup form must not
+  extend below its containing panel. Preserve the existing visual identity.
+- Choose representative phone/desktop viewports and browser coverage in the
+  feature contract. Check portrait/landscape, zoom, long text, error states and
+  the phone keyboard. Emulation alone does not certify physical-device behavior.
+- Responsive layout can be developed locally before hosting; actual phone access
+  still requires a reachable backend and explicit frontend/API origin setup.
+
+### Meaningful discovery and recommendation quality
+
+- Popularity, audience approval, critic approval and personal relevance are
+  distinct signals. Explain the category's purpose and label rating sources and
+  scales accurately; never present a TMDB audience score as an IMDb rating.
+- The default popular discovery category should favor titles that are both
+  popular and credibly well received, with a label such as "Popular & well rated"
+  reflecting that policy. Raw popularity alone is insufficient for this category.
+- Top Rated must account for rating confidence and vote volume rather than only
+  sorting raw averages. Define a deterministic confidence-aware policy and
+  minimum evidence per media type; a small-sample high average must not dominate
+  solely because of that average. Do not hardcode particular films or guarantee
+  that established classics always outrank newer titles.
+- Released/first-aired titles belong in quality-ranked categories; known future
+  releases belong in explicitly upcoming categories. Settle unknown-date handling
+  and regional release semantics in the feature contract.
+- Personal recommendations retain watched-history relevance. Add credibility
+  signals without replacing taste matching with a universal popular list or
+  changing the agreed accepted-friend scoring formula. Explain the source and
+  reason for a recommendation without promising that every user will like it.
+- Critic aggregates are a candidate enrichment, subject to verified API access,
+  permitted use, cost and coverage. Keep critic and audience measures distinct;
+  a positive-review percentage is not an average score out of ten. Missing
+  critic data is unknown, not zero or a fabricated endorsement. Optional critic
+  enrichment must not make otherwise eligible discovery unusable; failures and
+  reduced coverage must be communicated honestly.
+- Exact filters, weights, confidence formula, tie-breaking, refresh policy and
+  comparison examples require a selected feature contract before implementation.
+  New ML training methods are not required by this direction.
+
+### Additional discovery results
+
+- Category result pages for movies, TV and anime TV must support requesting more
+  eligible titles beyond their initial batch. Prefer an explicit "Load more"
+  button for the first slice; automatic infinite scrolling is not required.
+- Append results without replacing earlier results, duplicating typed titles or
+  disturbing the current scroll position. Preserve category/filter/ranking
+  context across batches; ranking only each individual batch is insufficient.
+- Exclude the current user's watchlist and watched titles from Explore discovery
+  results as well as personal recommendations. Refresh/reload must use confirmed
+  current library state, including saves made since the previous fetch. A failed
+  save must not exclude a title as though it succeeded. Custom-list membership
+  alone does not exclude a title; library pages, direct details and explicit
+  catalog search must still allow access to saved titles.
+- Use bounded server/provider work and a documented loading/session limit. An
+  empty filtered provider page does not prove that all eligible titles are
+  exhausted. Distinguish provider exhaustion, the configured cap and a failed
+  request; retain loaded results and allow retry without duplicates on failure.
+- Reset pagination on account/category/filter changes and page refresh; persisted
+  user library state survives. Ignore stale responses from a previous context.
+  Exact batch size, cap and pagination consistency belong in the feature contract.
+
 ### Deployed release
 
 - Public deployment is a required roadmap milestone. Broader access to the app
@@ -125,6 +199,12 @@ the release goal includes deployment. Anime films remain deferred.
 | P12 | A save request fails | UI communicates failure and does not claim confirmed persistence |
 | P13 | Restart or release the deployed application, then sign in | User library, ratings, notes, and custom lists are retained |
 | P14 | A user outside the owner's friend group follows the supported onboarding flow | They can use their own account without accessing another user's private data |
+| P15 | Use core flows on a narrow phone viewport and desktop, including signup validation | Controls remain reachable with touch/keyboard; fields and messages fit their panel without page-level horizontal overflow |
+| P16 | Compare a small-sample high average with a well-supported rating in Top Rated | The documented confidence-aware policy determines order; raw average alone does not determine rank |
+| P17 | Browse popular quality picks and upcoming releases | Popular quality picks meet the documented reception/release rules; known unreleased titles appear in the upcoming category instead |
+| P18 | Load more, repeat the action, then encounter a failed next request | Additional typed titles appear once; existing results remain; failure offers retry and differs from exhaustion or a cap |
+| P19 | Save a discovered title, then refresh or load more; repeat with a failed save | Confirmed watchlist/watched titles are excluded using current typed state; failed saves do not imply membership |
+| P20 | Read recommendation/rating explanations with missing critic coverage | Sources/scales remain distinct, absent data is not zero, and personal relevance is not replaced by generic popularity |
 
 ## Implementation and testing decisions
 
@@ -160,6 +240,22 @@ requests; title/list text limits and ordering rules; recommendation tie-breaking
 refresh triggers, and TV coverage; cache freshness and retries; rating updates;
 and the automated browser-test approach. A dependent feature remains blocked
 until its own questions and acceptance criteria are resolved.
+
+The 2026-10-25 additions establish product direction, not implementation-ready
+feature contracts. Select responsive/signup coverage first, then discovery and
+personal-recommendation quality, then additional category results. Settle ranking
+and provider coverage before building pagination against that ranking. Specify
+quality examples with synthetic data and review representative real results
+separately; tests cannot establish universal taste or provider accuracy.
+
+Provider references checked on 2026-10-25: TMDB documents
+[popularity signals](https://developer.themoviedb.org/docs/popularity-and-trending)
+and [discovery filters/paging](https://developer.themoviedb.org/reference/discover-movie).
+[OMDb](https://www.omdbapi.com/) is an existing enrichment integration to evaluate;
+this is not evidence that critic scores are available for every title or account.
+[Rotten Tomatoes](https://www.rottentomatoes.com/about) defines its Tomatometer as
+the percentage of positive professional reviews, distinct from an average rating.
+No new provider integration, paid service or scraping is selected here.
 
 Deployment design must also settle the hosting and database choices, onboarding
 policy, supported recovery flow, configuration, and operating requirements.
