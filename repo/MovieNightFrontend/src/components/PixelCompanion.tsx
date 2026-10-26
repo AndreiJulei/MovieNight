@@ -410,13 +410,13 @@ export default function PixelCompanion() {
       ref={containerRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="fixed bottom-3 right-4 z-40 flex flex-col items-center select-none lg:bottom-5 lg:right-7 cursor-pointer"
+      className="relative z-10 mx-auto flex w-fit flex-col items-center pb-20 pointer-events-none select-none lg:fixed lg:bottom-5 lg:right-7 lg:z-40 lg:pb-0 lg:pointer-events-auto lg:cursor-pointer"
     >
       {/* Switch Character Quick Toggle Pill */}
       <button
         onClick={cycleCharacter}
         title="Click to cycle companion (or configure in Settings)"
-        className="companion-control-btn mb-1.5 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/65 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-zinc-300 backdrop-blur-md transition-all hover:border-accent hover:bg-black/90 hover:text-white active:scale-95 shadow-md"
+        className="companion-control-btn mb-1.5 hidden lg:flex items-center gap-1.5 rounded-full border border-white/10 bg-black/65 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-zinc-300 backdrop-blur-md transition-all hover:border-accent hover:bg-black/90 hover:text-white active:scale-95 shadow-md"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         {getLabel()}

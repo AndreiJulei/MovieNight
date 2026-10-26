@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "./Toast";
-import { useEscapeKey } from "../hooks/useOverlay";
+import { useEscapeKey, useOverlayFocus } from "../hooks/useOverlay";
 import type { Movie } from "../store/data";
 
 interface AddToListPopoverProps {
@@ -19,6 +20,46 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  useOverlayFocus(isOpen, panelRef);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const trigger = triggerRef.current;
+    if (!isOpen || !panel || !trigger) return;
+    const place = () => {
+      const viewport = window.visualViewport;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      const offsetLeft = viewport?.offsetLeft ?? 0;
+      const anchor = trigger.getBoundingClientRect();
+      // Leave fixed navigation and viewport/keyboard edges clear.
+      panel.style.maxHeight = `${Math.max(44, height - 112)}px`;
+      const left = Math.max(offsetLeft + 8, Math.min(anchor.left, offsetLeft + width - panel.offsetWidth - 8));
+      const below = anchor.bottom + 8;
+      const top = below + panel.offsetHeight <= offsetTop + height - 72
+        ? below : Math.max(offsetTop + 8, anchor.top - panel.offsetHeight - 8);
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(panel);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
+    };
+  }, [isOpen]);
+
 
   useEscapeKey(isOpen, () => {
     setIsOpen(false);
@@ -29,7 +70,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
     if (!isOpen) return;
 
     const onDocumentClick = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) {
         setIsOpen(false);
         setIsCreating(false);
       }
@@ -69,6 +110,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
     <div ref={popoverRef} className="relative inline-block">
       {/* Secondary affordance: small, quiet, visually subordinate */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-all active:scale-95 ${
@@ -106,11 +148,13 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
       </button>
 
       {/* Floating checklist popover */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={panelRef}
           role="dialog"
+          tabIndex={-1}
           aria-label="Add to custom list"
-          className="absolute left-0 top-full mt-2 z-50 w-64 rounded-xl border border-white/15 bg-[#0e1320] p-3 shadow-2xl backdrop-blur-xl animate-fadeIn"
+          className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320] p-3 shadow-2xl backdrop-blur-xl animate-fadeIn"
         >
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
@@ -238,7 +282,8 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
               </div>
             </form>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

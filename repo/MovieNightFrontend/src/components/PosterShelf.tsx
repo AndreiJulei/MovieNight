@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, type MouseEvent } from "react";
+import { useRef, useState, useCallback, useEffect, type MouseEvent } from "react";
 import type { Movie } from "../store/data";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -20,6 +20,15 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
     setCanScrollLeft(el.scrollLeft > 6);
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 6);
   }, []);
+
+  useEffect(() => {
+    const track = scrollRef.current;
+    if (!track) return;
+    updateArrows();
+    const observer = new ResizeObserver(updateArrows);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [movies.length, updateArrows]);
 
   const scrollBy = (dir: number) => {
     const el = scrollRef.current;
@@ -94,11 +103,12 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
       {/* Left Centered Arrow */}
       <button
         type="button"
+        disabled={!canScrollLeft}
         onClick={() => scrollBy(-1)}
         className={`absolute -left-2 top-[56%] z-40 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/85 text-2xl font-light text-text-muted backdrop-blur-md transition-all duration-200 hover:border-white/30 hover:bg-black hover:text-white hover:scale-105 shadow-xl ${
           canScrollLeft
-            ? "opacity-0 group-hover/shelf:opacity-100"
-            : "opacity-0 group-hover/shelf:opacity-40 pointer-events-none"
+            ? "opacity-100 lg:opacity-0 lg:group-hover/shelf:opacity-100 group-focus-within/shelf:opacity-100"
+            : "opacity-40 lg:opacity-0 pointer-events-none"
         }`}
         aria-label="Scroll left"
       >
@@ -124,11 +134,12 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
       {/* Right Centered Arrow */}
       <button
         type="button"
+        disabled={!canScrollRight}
         onClick={() => scrollBy(1)}
         className={`absolute -right-2 top-[56%] z-40 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/85 text-2xl font-light text-text-muted backdrop-blur-md transition-all duration-200 hover:border-white/30 hover:bg-black hover:text-white hover:scale-105 shadow-xl ${
           canScrollRight
-            ? "opacity-0 group-hover/shelf:opacity-100"
-            : "opacity-0 group-hover/shelf:opacity-40 pointer-events-none"
+            ? "opacity-100 lg:opacity-0 lg:group-hover/shelf:opacity-100 group-focus-within/shelf:opacity-100"
+            : "opacity-40 lg:opacity-0 pointer-events-none"
         }`}
         aria-label="Scroll right"
       >
@@ -214,7 +225,7 @@ function ShelfPoster({
       )}
 
       {/* Hover detail overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/95 via-[#05070d]/60 to-transparent opacity-0 group-hover/poster:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3.5 pointer-events-none">
+      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/95 via-[#05070d]/60 to-transparent opacity-0 group-hover/poster:opacity-100 group-focus-visible/poster:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3.5 pointer-events-none">
         <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2 drop-shadow-sm">
           {movie.title}
         </h4>

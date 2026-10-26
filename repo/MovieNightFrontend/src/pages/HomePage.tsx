@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import { useStore } from "../store/MovieStore";
-import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
+import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay";
 import type { Movie } from "../store/data";
 
 export default function HomePage() {
@@ -528,35 +528,7 @@ function TrailerModal({
   useEscapeKey(open, onClose);
   useBodyScrollLock(open);
 
-  useEffect(() => {
-    if (!open) return;
-    const el = modalRef.current;
-    if (!el) return;
-    const focusable = el.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    if (focusable.length > 0) {
-      focusable[0]?.focus();
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
+  useOverlayFocus(open && !!trailerKey, modalRef, true);
 
   if (!open || !trailerKey) return null;
 
@@ -570,7 +542,8 @@ function TrailerModal({
     >
       <div
         ref={modalRef}
-        className="relative w-full max-w-4xl overflow-hidden rounded-xl border border-white/10 bg-[#080c14] shadow-2xl"
+        tabIndex={-1}
+        className="relative max-h-[90dvh] w-full max-w-4xl overflow-y-auto rounded-xl border border-white/10 bg-[#080c14] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
@@ -595,6 +568,9 @@ function TrailerModal({
             className="h-full w-full border-0"
           />
         </div>
+        {/* A cross-origin player cannot bubble Tab to the parent document. */}
+        <span tabIndex={0} data-focus-guard aria-hidden="true" className="sr-only"
+          onFocus={() => modalRef.current?.querySelector<HTMLButtonElement>("button")?.focus()} />
       </div>
     </div>
   );

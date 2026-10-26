@@ -1,13 +1,19 @@
 # Desktop and phone usability
 
-Status: agreed unpublished local contract, confirmed 2026-10-25; ready for
-implementation. Specification only; application acceptance has not been run.
+Status: agreed unpublished local contract, confirmed 2026-10-25. Implementation
+is uncommitted; required browser validation is incomplete; not integrated.
 Roadmap: 9a (Desktop and phone usability). Product requirements: P15, with
 representative regressions of P01–P12; no deployment certification.
 GitHub issue: not published.
 Fixed specification base: `3e6a7dac45368240a83e3bfdb38de6a27d456e02` on
 `feat/009-durable-storage`. Existing modified `roadmap.md` and `spec.md` supplied
 the current product direction and are preserved. No remote fetch.
+
+Fixed implementation base: `5b0e9d77cdc91a8f16fc7575daecabf7304ea794` on
+`feat/011-desktop-phone-usability`; implementation started with a clean worktree.
+The specification-session changes above were already committed at this base.
+Concurrent roadmap/logo edits during implementation are excluded; see the
+[implementation evidence](validation.md).
 
 ## Outcome
 
@@ -173,12 +179,13 @@ implemented runner is claimed here. Record any environment blockers and
 pre-existing failures separately. Obtain independent Standards/Spec reviews
 against this contract and the fixed implementation base, accurately stating
 their comparison boundary. Complete the workflow human-review checkpoint before
-any commit; implementation/publication is not authorized by this spec-only task.
+any commit; publication remains excluded; implementation was separately authorized by the user.
 
 ## Out of scope
 
-- Application/test/tooling implementation or runtime execution in this task;
-  tracker publication, provisioning, deployment, commit, push or merge.
+- Tracker publication, provisioning, deployment, commit, push or merge. The
+  original specification-only session also excluded implementation/runtime work;
+  the user separately authorized implementation and verification on 2026-10-25.
 - Visual redesign, native app, installation/offline support, browser history or
   deep-link restoration, and new account/device preference synchronization.
 - Ranking/quality changes (9b), additional results/pagination (9c), main-page logo
@@ -191,60 +198,83 @@ any commit; implementation/publication is not authorized by this spec-only task.
 - Required physical-device testing; unexecuted hardware/keyboard/safe-area
   coverage must remain explicitly unverified.
 
-## Validation — specification only, 2026-10-25
+## Validation
 
-Document/source inspection and Git inventory informed this contract. No app
-tests, build, browser walkthrough, provider requests, provisioning or deployment
-ran for this specification task. Historical results are not fresh evidence.
+See [implementation evidence](validation.md) for the fixed base and working-tree
+digest, per-ID actual results, commands, red/green regressions, independent
+reviews and limitations. Chrome automated real-account flows and engineering
+checks passed within their stated boundaries. Required Safari, manual interaction
+and actual desktop 200% browser-zoom evidence remain missing; this is not a full
+acceptance pass or an integrated feature. Physical-phone checks remain optional
+and unverified. No product ambiguity blocks implementation; execution coverage
+blocks declaring acceptance complete.
 
-Documentation checks actually run: template-section and stable-ID checks passed
-for UI01–UI11, each with one acceptance row and one Not run validation row; all
-10 relative document links resolve; final newline is present. `git diff --check`
-and `git diff --no-index --check /dev/null docs/features/011-desktop-phone-usability/spec.md`
-reported no whitespace errors. Git status showed this one new file and only the
-two pre-existing modified files named above. These are document checks, not
-application acceptance passes.
+The original specification session ran only document/source inspection, Git
+inventory, template/ID/link and whitespace checks. Historical specification-only
+Not run results are superseded by the explicit current mapping in validation.md;
+no historical runtime pass was inferred.
 
-| Acceptance ID | Result | Planned check / evidence |
-| --- | --- | --- |
-| UI01 | Not run | Automated containment/inactive-focus checks; real signup/sign-in, validation and failure walkthrough. |
-| UI02 | Not run | Touch/keyboard navigation and search in the required browser matrix. |
-| UI03 | Not run | Typed discovery/details, long-content and missing-metadata states; no implicit saves. |
-| UI04 | Not run | Real library/rating/note writes, repeat actions and reload/re-login; labelled pending/failure checks. |
-| UI05 | Not run | Real list lifecycle/independence plus viewport-edge, long-name and error-state checks. |
-| UI06 | Not run | Separate-account friendship/profile/source walkthrough and account switching. |
-| UI07 | Not run | Target measurements, keyboard focus, modal/popover dismissal/return and no-hover operation. |
-| UI08 | Not run | Orientation, breakpoint, zoom, long-content/state and simulated keyboard constraints; hardware limits recorded. |
-| UI09 | Not run | Compact customization absence and non-obstructing retained presentation. |
-| UI10 | Not run | Desktop selection → compact resize/reload → desktop recovery, including exact breakpoint. |
-| UI11 | Not run | Fixed-revision evidence, complete result mapping, engineering checks and independent reviews. |
+## Human review checkpoint — implementation, uncommitted
 
-Unresolved questions: none blocking implementation. Browser versions, physical
-devices if used, exact automation commands and demonstrated repair paths are
-execution facts to record, not unresolved product decisions. Required coverage
-that cannot execute remains blocked during validation.
+Before: signup could exceed its panel; phone customization controls were offered;
+small controls, menu interactions and overlays had demonstrated keyboard/touch
+blockers. After: active auth panels grow with content; compact customization
+controls disappear without resetting saved presentation; essential targets have a
+shared 44px floor; navigation, overlays, lists and long metadata have bounded
+responsive repairs. Product rules and the visual identity are preserved.
 
-## Human review checkpoint — documentation only
+Every proposed changed/new file and its reason:
 
-Proposed scope: one added file,
-`docs/features/011-desktop-phone-usability/spec.md`, recording the confirmed
-outcome, UI01–UI11, essential decisions, exclusions and test boundary. No file
-deletions or application changes. Existing `roadmap.md` and `spec.md` edits are
-unrelated starting changes and excluded from this change set; feature 010 is
-preserved. Before: 9a was product direction without a selected contract. After:
-9a has an agreed implementation-ready local contract; application behavior and
-runtime validation status have not changed.
+| File (relative to repo/MovieNightFrontend unless stated) | Reason / acceptance |
+| --- | --- |
+| pnpm-lock.yaml | Restore the existing ogl declaration's missing lock entry so demo setup can proceed; UI11. |
+| src/components/AddToListPopover.tsx | Focus entry/return, viewport/keyboard-aware placement and portal above navigation; UI05/UI07/UI08. |
+| src/components/AppShell.tsx | Mount only the active navigation layout; UI02/UI08. |
+| src/components/NavRail.tsx | Reliable click/keyboard toggles, contained Explore options and modal focus; UI02/UI07/UI08. |
+| src/components/PixelCompanion.tsx | Hide compact quick-cycle control; reserve compact display space; UI09/UI10. |
+| src/components/PosterShelf.tsx | No-hover/keyboard arrows and focus presentation; UI03/UI07. |
+| src/components/TopBar.tsx | Scrollable focused filter sheet/dropdowns and breakpoint cleanup; UI07/UI08. |
+| src/hooks/useOverlay.ts | Shared focus entry/containment/return, including iframe boundaries; UI07. |
+| src/hooks/useCompactLayout.ts (new) | Subscribe to the agreed 1024px navigation boundary; UI02/UI08. |
+| src/index.css | Shared touch-target floor, visible input focus and long-content/form constraints; UI01/UI07/UI08. |
+| src/pages/CustomListsIndexPage.tsx | Keep nested keyboard Delete actions from triggering card navigation; UI05/UI07. |
+| src/pages/FriendProfilePage.tsx | Focused scrollable removal confirmation; UI06/UI07. |
+| src/pages/HomePage.tsx | Use shared trailer focus/return and a cross-frame Tab boundary; UI07. |
+| src/pages/LoginPage.tsx | Active form controls establish panel height; inactive controls are hidden/inert; UI01/UI08. |
+| src/pages/MovieDetailPage.tsx | Accessible private-note input and wrapped long genre labels; UI03/UI04/UI07/UI08. |
+| src/pages/SettingsPage.tsx | Hide compact customization pickers, expose selection and field labels; UI07/UI09/UI10. |
+| tests/browser/responsive-usability.cjs (new) | Repeatable rendered-browser and real-account regression evidence; UI01–UI11. |
+| docs/features/011-desktop-phone-usability/spec.md (root-relative) | Current implementation status and this review checkpoint. |
+| docs/features/011-desktop-phone-usability/validation.md (new, root-relative) | Actual results, commands, reviews and unverified boundaries. |
 
-Inspect from the repository root; new files need separate inspection:
+There are no proposed deletions. Concurrent unrelated `roadmap.md` and untracked
+`mainPageLogo/test_*.png` files are preserved and excluded. No backend application
+changes, feature-010 edits, product/glossary/ADR changes or integration updates.
+
+Try locally using the demo commands in validation.md: open Create Account at
+1280×720, trigger validation, then resize to 390×844. Create/sign in, open Settings
+and confirm customization is absent; return to desktop and confirm controls and
+saved selections remain. Navigate details, save/reload and open list/filter
+controls using keyboard. This is a review scenario, not a claim that the missing
+manual/Safari/zoom checks have been executed.
+
+Inspect the complete proposed scope from the root, including new files:
 
 ```sh
 git status --short --untracked-files=all
-git diff --stat
-git diff -- roadmap.md spec.md
-cat docs/features/011-desktop-phone-usability/spec.md
-git diff --no-index -- /dev/null docs/features/011-desktop-phone-usability/spec.md
+git diff --stat 5b0e9d77cdc91a8f16fc7575daecabf7304ea794 -- repo/MovieNightFrontend docs/features/011-desktop-phone-usability
+git diff 5b0e9d77cdc91a8f16fc7575daecabf7304ea794 -- repo/MovieNightFrontend docs/features/011-desktop-phone-usability
+cat repo/MovieNightFrontend/src/hooks/useCompactLayout.ts
+cat repo/MovieNightFrontend/tests/browser/responsive-usability.cjs
+cat docs/features/011-desktop-phone-usability/validation.md
+# New-file diffs return 1 for expected differences:
+git diff --no-index -- /dev/null repo/MovieNightFrontend/src/hooks/useCompactLayout.ts
+git diff --no-index -- /dev/null repo/MovieNightFrontend/tests/browser/responsive-usability.cjs
+git diff --no-index -- /dev/null docs/features/011-desktop-phone-usability/validation.md
+# Inspect excluded concurrent work separately:
+git diff -- roadmap.md
 ```
 
-The new-file diff returns 1 when showing expected differences. No staging or
-commit is part of this task. Any later commit requires explicit approval of the
+The exact proposed commit scope is the 19 files named above, excluding concurrent
+work. No staging/commit is part of this handoff. Wait for explicit approval of the
 reviewed change set under [the workflow](../../movienight-workflow.md).

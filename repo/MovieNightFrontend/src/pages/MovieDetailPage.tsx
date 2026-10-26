@@ -510,14 +510,14 @@ export default function MovieDetailPage() {
                 showContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
               }`}
             >
-              <div className="inline-flex items-stretch rounded-md border border-white/15 bg-black/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
+              <div className="inline-flex max-w-full flex-wrap items-stretch rounded-md border border-white/15 bg-black/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
                 {movie.genres.map((genre, idx) => {
                   const isFirst = idx === 0;
                   const isLast = idx === movie.genres!.length - 1;
                   return (
                     <div
                       key={genre}
-                      className={`flex h-7 items-center justify-center px-3 text-[11px] font-bold text-zinc-300 transition-colors ${
+                      className={`flex min-h-7 min-w-0 max-w-full items-center justify-center px-3 py-1 text-[11px] font-bold text-zinc-300 transition-colors ${
                         isFirst ? "rounded-l-md" : ""
                       } ${isLast ? "rounded-r-md" : ""} ${
                         !isLast ? "border-r border-white/10" : ""
@@ -526,7 +526,7 @@ export default function MovieDetailPage() {
                         boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)",
                       }}
                     >
-                      <span>{genre}</span>
+                      <span className="wrap-anywhere">{genre}</span>
                     </div>
                   );
                 })}
@@ -855,6 +855,7 @@ function DescriptionBox({
         {saved && <span className="text-xs text-success">✓ Saved</span>}
       </div>
       <textarea
+        aria-label="Your private note"
         value={value}
         onChange={(e) => {
           setValue(e.target.value);

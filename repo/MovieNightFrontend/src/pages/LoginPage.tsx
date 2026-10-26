@@ -241,7 +241,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-end overflow-hidden bg-[#05070D]">
+    <div className="relative flex min-h-dvh w-full items-center justify-end overflow-x-clip bg-[#05070D]">
       {/* Fullscreen Atmospheric Ambient Video Background */}
       <CinematicScene fading={fading} onFinished={handleSequenceFinished} />
 
@@ -422,21 +422,14 @@ export default function LoginPage() {
               )}
             </div>
           ) : (
-            /* ==================== 3D FLIP CONTAINER: LOGIN / SIGNUP ==================== */
+            /* Active form determines panel height and keyboard/accessibility navigation. */
             <div
-              className="relative w-full transition-transform duration-700 ease-in-out"
-              style={{
-                transformStyle: "preserve-3d",
-                transform: mode === "signup" ? "rotateY(-180deg)" : "rotateY(0deg)",
-              }}
+              className="relative w-full"
             >
               {/* FRONT FACE: LOGIN */}
               <div
-                className="w-full rounded-2xl bg-black/50 border border-white/10 p-6 sm:p-8 backdrop-blur-xl shadow-2xl"
-                style={{
-                  backfaceVisibility: "hidden",
-                  WebkitBackfaceVisibility: "hidden",
-                }}
+                className={`${mode === "login" ? "block" : "hidden"} w-full rounded-2xl bg-black/50 border border-white/10 p-6 sm:p-8 backdrop-blur-xl shadow-2xl`}
+                inert={mode !== "login"}
               >
                 {/* Wordmark Logo */}
                 <div className="mb-7 flex flex-col items-center text-center">
@@ -529,12 +522,8 @@ export default function LoginPage() {
 
               {/* BACK FACE: SIGN UP */}
               <div
-                className="absolute inset-0 w-full rounded-2xl bg-black/60 border border-white/10 p-6 sm:p-8 backdrop-blur-xl shadow-2xl"
-                style={{
-                  backfaceVisibility: "hidden",
-                  WebkitBackfaceVisibility: "hidden",
-                  transform: "rotateY(-180deg)",
-                }}
+                className={`${mode === "signup" ? "block" : "hidden"} w-full rounded-2xl bg-black/60 border border-white/10 p-6 sm:p-8 backdrop-blur-xl shadow-2xl`}
+                inert={mode !== "signup"}
               >
                 {/* Wordmark Logo */}
                 <div className="mb-6 flex flex-col items-center text-center">

@@ -12,7 +12,7 @@ import type { Movie, Status } from "../store/data"
 import AppShell from "../components/AppShell"
 import MovieGrid from "../components/MovieGrid"
 import SegmentedRadio from "../components/SegmentedRadio"
-import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay"
+import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay"
 import { useToast } from "../components/Toast"
 
 export default function FriendProfilePage() {
@@ -34,6 +34,9 @@ export default function FriendProfilePage() {
   )
   const [tab, setTab] = useState<Status>("watched")
   const [showConfirmRemove, setShowConfirmRemove] = useState(false)
+
+  const removeDialogRef = useRef<HTMLDivElement>(null)
+  useOverlayFocus(showConfirmRemove, removeDialogRef, true)
 
   useEscapeKey(showConfirmRemove, () => setShowConfirmRemove(false))
   useBodyScrollLock(showConfirmRemove)
@@ -263,12 +266,14 @@ export default function FriendProfilePage() {
       {/* Remove Friend Confirmation Modal */}
       {showConfirmRemove && (
         <div
+          ref={removeDialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label={`Remove ${displayName}?`}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
         >
-          <div className="w-full max-w-sm rounded-xl border border-white/15 bg-[#0e1320] p-6 shadow-2xl">
+          <div className="max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320] p-6 shadow-2xl">
             <h3 className="text-base font-bold text-text-primary">
               Remove {displayName}?
             </h3>

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import useCompactLayout from "../hooks/useCompactLayout";
 import NavRail from "./NavRail";
 import AmbientBackground from "./AmbientBackground";
 
@@ -13,18 +14,14 @@ export default function AppShell({
   children: ReactNode;
   fullBleed?: boolean;
 }) {
+  const compact = useCompactLayout();
   return (
     <div className="relative min-h-full bg-bg">
       {/* Ambient Interactive Background */}
       <AmbientBackground />
 
-      {/* Desktop: top bar */}
-      <div className="relative z-20 hidden lg:block">
-        <NavRail orientation="vertical" />
-      </div>
-      {/* Mobile: bottom strip */}
-      <div className="relative z-20 lg:hidden">
-        <NavRail orientation="horizontal" />
+      <div className="relative z-20">
+        <NavRail key={compact ? "compact" : "desktop"} orientation={compact ? "horizontal" : "vertical"} />
       </div>
 
       <main

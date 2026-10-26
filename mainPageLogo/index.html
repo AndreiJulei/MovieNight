@@ -87,6 +87,9 @@
         <button id="btnCharKillBill" onclick="setCharacter('killbill')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
           🗡️ Kill Bill
         </button>
+        <button id="btnCharFightClub" onclick="setCharacter('fightclub')" class="px-2.5 py-1 rounded-md font-bold text-white/70 hover:text-white transition-all">
+          🧼 Fight Club
+        </button>
       </div>
 
       <div class="hidden lg:block">
@@ -127,9 +130,10 @@
           ALL CAPS
         </button>
 
-        <!-- Color Accent (Violet vs Yellow vs Gold vs Sith Red) -->
+        <!-- Color Accent (Violet vs Pink vs Yellow vs Gold vs Sith Red) -->
         <div class="flex items-center gap-1 border-l border-white/10 pl-2">
           <button id="btnColorViolet" onclick="setColor('violet')" class="w-5 h-5 rounded-full bg-[#6355ff] border-2 border-white ring-1 ring-white/20" title="Movie Night Violet"></button>
+          <button id="btnColorPink" onclick="setColor('pink')" class="w-5 h-5 rounded-full bg-[#f5448e] border-2 border-transparent hover:border-white/50" title="Fight Club Soap Pink"></button>
           <button id="btnColorYellow" onclick="setColor('yellow')" class="w-5 h-5 rounded-full bg-[#f8bc33] border-2 border-transparent hover:border-white/50" title="Kill Bill Tracksuit Yellow"></button>
           <button id="btnColorGold" onclick="setColor('gold')" class="w-5 h-5 rounded-full bg-[#f59e0b] border-2 border-transparent hover:border-white/50" title="Dawn of Justice Gold"></button>
           <button id="btnColorRed" onclick="setColor('red')" class="w-5 h-5 rounded-full bg-[#ef4444] border-2 border-transparent hover:border-white/50" title="Sith Red"></button>
@@ -188,6 +192,12 @@
             <option value="killbill_marvel_anton_violet.png">Kill Bill - Anton Marvel ALL CAPS (Movie Night Violet)</option>
             <option value="killbill_transparent_yellow.png">Kill Bill - Transparent Layer (Yellow)</option>
             <option value="killbill_transparent_violet.png">Kill Bill - Transparent Layer (Violet)</option>
+          </optgroup>
+          <optgroup label="Fight Club - Tyler Durden & Narrator (fightclub-removebg-preview.png)">
+            <option value="fightclub_marvel_anton_pink.png">Fight Club - Anton Marvel ALL CAPS (Soap Pink)</option>
+            <option value="fightclub_marvel_anton_violet.png">Fight Club - Anton Marvel ALL CAPS (Movie Night Violet)</option>
+            <option value="fightclub_transparent_pink.png">Fight Club - Transparent Layer (Soap Pink)</option>
+            <option value="fightclub_transparent_violet.png">Fight Club - Transparent Layer (Violet)</option>
           </optgroup>
         </select>
         <button id="btnPosterFit" onclick="togglePosterFit()" class="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-white/90 hover:bg-white/20 transition-all" title="Toggle between full image fit and screen fill">
@@ -329,6 +339,15 @@
         heightClass: 'h-full',
         size: 160,
         spacing: 0
+      },
+      fightclub: {
+        name: 'Fight Club (Tyler & Narrator)',
+        img: 'fightclub-removebg-preview.png',
+        defaultPoster: 'fightclub_marvel_anton_pink.png',
+        isVertical: false,
+        heightClass: 'h-[83%]',
+        size: 170,
+        spacing: 0
       }
     };
 
@@ -337,13 +356,14 @@
       const charData = CHARACTERS[charKey];
 
       // Update switcher buttons
-      ['spidey', 'bvs', 'crossed', 'vader', 'joker', 'killbill'].forEach(k => {
+      ['spidey', 'bvs', 'crossed', 'vader', 'joker', 'killbill', 'fightclub'].forEach(k => {
         const btn = document.getElementById(
           k === 'spidey' ? 'btnCharSpidey' :
           k === 'bvs' ? 'btnCharBvS' : 
           k === 'crossed' ? 'btnCharCrossed' : 
           k === 'vader' ? 'btnCharVader' : 
-          k === 'joker' ? 'btnCharJoker' : 'btnCharKillBill'
+          k === 'joker' ? 'btnCharJoker' : 
+          k === 'killbill' ? 'btnCharKillBill' : 'btnCharFightClub'
         );
         if (!btn) return;
         if (k === charKey) {
@@ -364,12 +384,19 @@
       const charContainer = document.getElementById('charContainer');
       charContainer.className = `relative z-10 ${charData.heightClass} flex items-end justify-center pointer-events-auto group`;
 
+      if (charKey === 'killbill') {
+        setColor('yellow');
+      } else if (charKey === 'fightclub') {
+        setColor('pink');
+      }
+
       updateLiveProps();
     }
 
     function setColor(color) {
       currentColor = color;
       const btnViolet = document.getElementById('btnColorViolet');
+      const btnPink = document.getElementById('btnColorPink');
       const btnYellow = document.getElementById('btnColorYellow');
       const btnGold = document.getElementById('btnColorGold');
       const btnRed = document.getElementById('btnColorRed');
@@ -379,11 +406,18 @@
       const halo = document.getElementById('charHalo');
 
       // Reset borders
-      [btnViolet, btnYellow, btnGold, btnRed].forEach(b => {
+      [btnViolet, btnPink, btnYellow, btnGold, btnRed].forEach(b => {
         if (b) b.className = b.className.replace('border-white ring-1 ring-white/20', 'border-transparent');
       });
 
-      if (color === 'yellow') {
+      if (color === 'pink') {
+        btnPink.className = 'w-5 h-5 rounded-full bg-[#f5448e] border-2 border-white ring-1 ring-white/20';
+        wordNight.style.color = '#f5448e';
+        heroArea.style.setProperty('--glow-color', 'rgba(245, 68, 142, 0.25)');
+        heroArea.style.setProperty('--accent-glow', 'rgba(245, 68, 142, 0.70)');
+        flare.className = 'w-[85vw] h-[2px] bg-gradient-to-r from-transparent via-pink-500/40 to-transparent blur-[1px]';
+        halo.className = 'absolute inset-x-8 top-1/4 bottom-0 rounded-full bg-[#f5448e]/25 blur-3xl -z-10 group-hover:bg-[#f5448e]/40 transition-colors duration-500';
+      } else if (color === 'yellow') {
         btnYellow.className = 'w-5 h-5 rounded-full bg-[#f8bc33] border-2 border-white ring-1 ring-white/20';
         wordNight.style.color = '#f8bc33';
         heroArea.style.setProperty('--glow-color', 'rgba(248, 188, 51, 0.25)');

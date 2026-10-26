@@ -37,6 +37,21 @@ An optional opinion on a watched title, from 0 to 10 in half-point increments.
 Zero is a rating; no rating means the user has not supplied one.
 _Avoid_: Provider rating when referring to the user's own opinion.
 
+**Audience rating**:
+An aggregate of viewers' opinions reported by a named external provider on its
+stated scale, distinct from a person's MovieNight personal rating.
+_Avoid_: IMDb rating for another provider's score; critic approval.
+
+**Critic approval**:
+The percentage of critic reviews a named provider classifies as positive for a
+title, distinct from an average review score or audience rating.
+_Avoid_: Rating out of ten; audience rating.
+
+**Discovery ranking score**:
+A comparative value used to order titles within an Explore category, distinct
+from an audience rating and from a prediction of personal enjoyment.
+_Avoid_: Personal rating; guaranteed quality.
+
 **Private note**:
 An owner's personal text about a library entry, visible only to that owner.
 _Avoid_: Public review, friend review.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { GearIcon, MenuIcon } from "./NavRail.icons";
-import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
+import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay";
 import NavSearch from "./NavSearch";
 
 const EXPLORE_OPTIONS = [
@@ -35,58 +35,17 @@ export default function NavRail({
   const { path, search, navigate } = useRouter();
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [exploreHovered, setExploreHovered] = useState(false);
+  const [desktopExploreOpen, setDesktopExploreOpen] = useState(false);
   const [mobileExploreOpen, setMobileExploreOpen] = useState(false);
 
   const menuContainerRef = useRef<HTMLDivElement>(null);
-  const menuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const exploreTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Hover handlers for the main 3-line menu
-  const handleMenuEnter = () => {
-    if (menuTimeoutRef.current) {
-      clearTimeout(menuTimeoutRef.current);
-      menuTimeoutRef.current = null;
-    }
-    setMenuOpen(true);
-  };
-
-  const handleMenuLeave = () => {
-    if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
-    menuTimeoutRef.current = setTimeout(() => {
-      setMenuOpen(false);
-      setExploreHovered(false);
-    }, 240);
-  };
-
-  // Hover handlers for the Explore submenu flyout
-  const handleExploreEnter = () => {
-    if (exploreTimeoutRef.current) {
-      clearTimeout(exploreTimeoutRef.current);
-      exploreTimeoutRef.current = null;
-    }
-    setExploreHovered(true);
-  };
-
-  const handleExploreLeave = () => {
-    if (exploreTimeoutRef.current) clearTimeout(exploreTimeoutRef.current);
-    exploreTimeoutRef.current = setTimeout(() => {
-      setExploreHovered(false);
-    }, 200);
-  };
-
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayFocus(menuOpen, panelRef, orientation === "horizontal");
   useEscapeKey(menuOpen, () => {
     setMenuOpen(false);
-    setExploreHovered(false);
+    setDesktopExploreOpen(false);
   });
   useBodyScrollLock(menuOpen && orientation === "horizontal");
-
-  useEffect(() => {
-    return () => {
-      if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
-      if (exploreTimeoutRef.current) clearTimeout(exploreTimeoutRef.current);
-    };
-  }, []);
 
   // Close desktop menu on outside click
   useEffect(() => {
@@ -94,7 +53,7 @@ export default function NavRail({
     const onDoc = (e: MouseEvent) => {
       if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
-        setExploreHovered(false);
+        setDesktopExploreOpen(false);
       }
     };
     document.addEventListener("mousedown", onDoc);
@@ -118,7 +77,7 @@ export default function NavRail({
     return (
       <>
         {menuOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation Menu">
+          <div ref={panelRef} tabIndex={-1} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation Menu">
             <div
               className="absolute inset-0 bg-black/75 backdrop-blur-md transition-opacity"
               onClick={() => setMenuOpen(false)}
@@ -275,12 +234,10 @@ export default function NavRail({
           <span className="text-accent">Night</span>
         </Link>
 
-        {/* 3-Line Menu Trigger (No text "Menu", color animates on hover/click, opens on hover) */}
+        {/* Explicit menu toggle works with mouse, touch and keyboard. */}
         <div
           ref={menuContainerRef}
           className="relative"
-          onMouseEnter={handleMenuEnter}
-          onMouseLeave={handleMenuLeave}
         >
           <button
             type="button"
@@ -302,12 +259,13 @@ export default function NavRail({
           {/* Clean Distilled Menu Panel */}
           {menuOpen && (
             <div
+              ref={panelRef}
               id="desktop-main-menu"
               role="menu"
               aria-label="Navigation Menu"
               className="absolute left-0 top-full pt-2 z-50 animate-in fade-in zoom-in-95 duration-150"
             >
-              <div className="relative w-[230px] rounded-2xl border border-white/15 bg-[#0b101b]/98 p-2.5 shadow-2xl backdrop-blur-2xl">
+              <div className="relative max-h-[calc(100dvh-5rem)] overflow-y-auto w-[230px] rounded-2xl border border-white/15 bg-[#0b101b]/98 p-2.5 shadow-2xl backdrop-blur-2xl">
                 <div className="flex flex-col gap-1.5">
                   {mainMenuItems.map((item) => {
                     const active = isRouteActive(path, search, item.key);
@@ -316,17 +274,16 @@ export default function NavRail({
                       return (
                         <div
                           key={item.key}
-                          onMouseEnter={handleExploreEnter}
-                          onMouseLeave={handleExploreLeave}
                         >
                           <button
                             type="button"
                             role="menuitem"
+                            aria-expanded={desktopExploreOpen}
                             onClick={() => {
-                              setExploreHovered((o) => !o);
+                              setDesktopExploreOpen((o) => !o);
                             }}
                             className={`flex h-10 w-full items-center justify-between rounded-xl border px-3.5 text-[13.5px] font-medium transition-all cursor-pointer ${
-                              exploreHovered || path.startsWith("/explore")
+                              desktopExploreOpen || path.startsWith("/explore")
                                 ? "border-accent/40 bg-accent/15 text-white"
                                 : "border-white/[0.08] bg-white/[0.02] text-text-primary hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
                             }`}
@@ -336,6 +293,17 @@ export default function NavRail({
                               ›
                             </span>
                           </button>
+                          {desktopExploreOpen && (
+                            <div className="ml-3 mt-2 space-y-1 border-l border-white/10 pl-2">
+                              {EXPLORE_OPTIONS.map((category) => (
+                                <Link key={category.to} to={category.to} role="menuitem"
+                                  onClick={() => { setMenuOpen(false); setDesktopExploreOpen(false); }}
+                                  className="flex items-center rounded-lg px-3 py-2 text-sm text-text-primary hover:bg-white/[0.06]">
+                                  {category.label}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -347,7 +315,7 @@ export default function NavRail({
                         role="menuitem"
                         onClick={() => {
                           setMenuOpen(false);
-                          setExploreHovered(false);
+                          setDesktopExploreOpen(false);
                         }}
                         className={`flex h-10 items-center rounded-xl border px-3.5 text-[13.5px] font-medium transition-all ${
                           active
@@ -361,45 +329,7 @@ export default function NavRail({
                   })}
                 </div>
 
-                {/* Explore Flyout Submenu:
-                    Vertically aligned with pixel precision:
-                    - Submenu starts at top-[46px]
-                    - Button 1 (Movies) lines up with Watchlist (y = 56px)
-                    - Button 2 (TV Series) lines up with Explore (y = 102px)
-                    - Button 3 (Anime) lines up with Friends (y = 148px)
-                    - Invisible hover bridge on the left prevents mouse cursor drops
-                */}
-                {exploreHovered && (
-                  <div
-                    className="absolute left-full top-[46px] ml-2 w-[165px] rounded-2xl border border-white/15 bg-[#0b101b]/98 p-2.5 shadow-2xl backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150 z-50 before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-4"
-                    onMouseEnter={handleExploreEnter}
-                    onMouseLeave={handleExploreLeave}
-                  >
-                    <div className="flex flex-col gap-1.5">
-                      {EXPLORE_OPTIONS.map((cat) => {
-                        const subActive = path === cat.to;
-                        return (
-                          <Link
-                            key={cat.to}
-                            to={cat.to}
-                            role="menuitem"
-                            onClick={() => {
-                              setMenuOpen(false);
-                              setExploreHovered(false);
-                            }}
-                            className={`flex h-10 items-center rounded-xl border px-3.5 text-[13.5px] font-medium transition-all ${
-                              subActive
-                                ? "border-accent/40 bg-accent/20 text-white font-semibold"
-                                : "border-white/[0.08] bg-white/[0.02] text-text-primary hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
-                            }`}
-                          >
-                            <span>{cat.label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+
               </div>
             </div>
           )}

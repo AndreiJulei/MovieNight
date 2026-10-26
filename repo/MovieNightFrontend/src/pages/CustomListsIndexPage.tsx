@@ -157,7 +157,7 @@ export default function CustomListsIndexPage() {
                   onClick={() => navigate(`/lists/${list.id}`)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && navigate(`/lists/${list.id}`)}
+                  onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === "Enter") navigate(`/lists/${list.id}`); }}
                   className="group relative flex flex-col justify-between gap-4 rounded-xl border border-white/[0.08] bg-[#0b1019] p-4 sm:flex-row sm:items-center sm:p-5 transition-all duration-200 hover:border-white/20 hover:bg-[#0e1320] cursor-pointer shadow-sm"
                 >
                   {/* Left: Overlapping poster collage + List details */}

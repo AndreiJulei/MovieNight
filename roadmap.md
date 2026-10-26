@@ -19,7 +19,7 @@ renumbering existing feature records; these labels are not feature IDs.
 | 9 | Production readiness | Specify and verify durable storage, migrations, onboarding, recovery, secrets, and operations |
 | 9a | Desktop and phone usability | Fix desktop signup panel overflow; verify core flows in responsive phone and desktop layouts with touch/keyboard access |
 | 9b | Meaningful discovery and recommendations | Quality-filter popular picks, rank Top Rated with rating confidence, and improve personal relevance explanations; evaluate optional critic enrichment |
-| 9c | Additional discovery results | Load more category results with bounded work, stable ranking, typed deduplication and current watchlist/watched exclusions |
+| 9c |   discovery results | Load more category results with bounded work, stable ranking, typed deduplication and current watchlist/watched exclusions |
 | 9d | Main-page logo rotation | Display a different user-approved `/mainPageLogo` asset on each reload; exact filenames and selection order pending user input |
 | 10 | Staging and public release | Deploy over HTTPS; verify access, privacy, restart/release retention, and backup/restore |
 

@@ -355,10 +355,10 @@ export default function SettingsPage() {
 
           <form onSubmit={handleProfileSubmit} className="mt-5 space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <label htmlFor="settings-username" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Username
               </label>
-              <input
+              <input id="settings-username"
                 type="text"
                 disabled
                 value={user?.username || ""}
@@ -368,10 +368,10 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <label htmlFor="settings-display-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Display Name
               </label>
-              <input
+              <input id="settings-display-name"
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
@@ -410,10 +410,10 @@ export default function SettingsPage() {
 
           <form onSubmit={handlePasswordSubmit} className="mt-5 space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <label htmlFor="settings-current-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Current Password
               </label>
-              <input
+              <input id="settings-current-password"
                 type="password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
@@ -424,10 +424,10 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+                <label htmlFor="settings-new-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
                   New Password
                 </label>
-                <input
+                <input id="settings-new-password"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -436,10 +436,10 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+                <label htmlFor="settings-confirm-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
                   Confirm Password
                 </label>
-                <input
+                <input id="settings-confirm-password"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -471,7 +471,7 @@ export default function SettingsPage() {
         </section>
 
         {/* 3. Ambient Background Theme Section */}
-        <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
+        <section className="hidden lg:block mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-primary">
@@ -493,6 +493,7 @@ export default function SettingsPage() {
                 <button
                   key={bg.id}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => handleSelectBg(bg.id)}
                   className={`group relative flex flex-col justify-between rounded-lg border p-4 text-left transition-all ${
                     isSelected
@@ -560,7 +561,7 @@ export default function SettingsPage() {
         </section>
 
         {/* 4. Pixel Companion Character Picker Section */}
-        <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
+        <section className="hidden lg:block mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-primary">
@@ -582,6 +583,7 @@ export default function SettingsPage() {
                 <button
                   key={char.id}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => handleSelectChar(char.id)}
                   className={`group relative flex items-center gap-4 rounded-lg border p-3.5 text-left transition-all ${
                     isSelected

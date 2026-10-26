@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
+import useCompactLayout from "../hooks/useCompactLayout";
 import SegmentedRadio from "./SegmentedRadio";
-import { useEscapeKey, useBodyScrollLock } from "../hooks/useOverlay";
+import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay";
 import type { MediaType } from "../store/data";
 
 export type SortBy = "recommendation" | "addedAt" | "title" | "year" | "rating";
@@ -66,6 +67,8 @@ export default function TopBar({
 }) {
   const sortLabels = Object.fromEntries(Object.entries(SORT_LABELS).filter(([key]) => recommendationOrder || key !== "recommendation"));
   const [sheetOpen, setSheetOpen] = useState(false);
+  const compact = useCompactLayout();
+  useEffect(() => { if (!compact) setSheetOpen(false); }, [compact]);
 
   const summary =
     avg != null
@@ -141,7 +144,7 @@ export default function TopBar({
           )}
         </div>
 
-        {sheetOpen && (
+        {sheetOpen && compact && (
           <FilterSheet
             sortLabels={sortLabels}
             filters={filters}
@@ -170,6 +173,8 @@ function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
+  useOverlayFocus(open, optionsRef);
   useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
@@ -196,6 +201,8 @@ function Dropdown({
       </button>
       {open && (
         <div
+          ref={optionsRef}
+          tabIndex={-1}
           role="listbox"
           aria-label={label}
           className="absolute right-0 z-40 mt-1.5 min-w-[150px] overflow-hidden rounded-lg border border-white/15 bg-[#0e1320] py-1 shadow-xl backdrop-blur-xl"
@@ -240,17 +247,19 @@ function FilterSheet({
   onClose: () => void;
   sortLabels: Record<string, string>;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   useEscapeKey(true, onClose);
   useBodyScrollLock(true);
+  useOverlayFocus(true, panelRef, true);
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filter Options">
+    <div ref={panelRef} tabIndex={-1} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filter Options">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="absolute inset-x-0 bottom-0 rounded-t-[20px] border-t border-white/15 bg-[#0e1320] p-6 pb-9 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 max-h-[90dvh] overflow-y-auto rounded-t-[20px] border-t border-white/15 bg-[#0e1320] p-6 pb-9 shadow-2xl">
         <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-white/20" />
         {mediaTypeFilter !== undefined && onMediaTypeChange && (
           <SheetGroup
