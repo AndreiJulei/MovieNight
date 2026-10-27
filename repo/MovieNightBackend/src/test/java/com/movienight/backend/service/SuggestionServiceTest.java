@@ -37,6 +37,9 @@ class SuggestionServiceTest {
     private CachedMovieListRepository cachedMovieListRepository;
 
     @Mock
+    private DiscoverySnapshotRepository discoverySnapshotRepository;
+
+    @Mock
     private PersonalizedRecommendationRepository personalizedRecommendationRepository;
 
     @Mock
@@ -104,6 +107,11 @@ class SuggestionServiceTest {
                 .thenReturn(Collections.emptyList());
         when(cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.UPCOMING))
                 .thenReturn(Collections.emptyList());
+        for (MovieListType shelf : List.of(MovieListType.POPULAR, MovieListType.RECENT, MovieListType.UPCOMING)) {
+            when(discoverySnapshotRepository.findByMediaTypeAndListType("MOVIE", shelf))
+                .thenReturn(Optional.of(DiscoverySnapshot.builder().mediaType("MOVIE").listType(shelf)
+                    .updatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)).build()));
+        }
 
         SuggestionsResponse response = suggestionService.getSuggestions("john@example.com");
 
@@ -157,6 +165,9 @@ class SuggestionServiceTest {
         SuggestionsResponse response = suggestionService.getExploreMedia("movies");
         assertThat(response).isNotNull();
         assertThat(response.getCategories()).isNotEmpty();
-        assertThat(response.getCategories().get(0).getId()).isEqualTo("popular");
+        assertThat(response.getCategories().get(0).getId()).isEqualTo("newest");
+        assertThat(response.getCategories().get(1).getId()).isEqualTo("popular");
+        assertThat(response.getCategories().get(1).getState()).isEqualTo("UNAVAILABLE");
+        assertThat(response.getCategories().get(1).getMovies()).isEmpty();
     }
 }

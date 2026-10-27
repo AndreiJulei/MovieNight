@@ -1,4 +1,5 @@
 import usePersonalRecommendations, { mapPersonalMovie } from "../hooks/usePersonalRecommendations";
+import { ratingEvidence } from "../components/ratingEvidence";
 import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus";
 import useFriendSuggestions from "../hooks/useFriendSuggestions";
 import { mapApiMovie } from "../hooks/useSuggestions";
@@ -190,12 +191,14 @@ export default function HomePage() {
                       </Link>
 
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/80">
-                        {topPersonalized.imdb != null && (
-                          <span className="nums flex items-center gap-1 font-semibold text-amber-400">
-                            ★ {topPersonalized.imdb.toFixed(1)}
-                          </span>
+                        {ratingEvidence(topPersonalized) && (
+                          <>
+                            <span className="nums flex items-center gap-1 font-semibold text-amber-400">
+                              {ratingEvidence(topPersonalized)}
+                            </span>
+                            <span>·</span>
+                          </>
                         )}
-                        <span>·</span>
                         <span>{topPersonalized.year}</span>
                         <span>·</span>
                         <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase font-medium">
@@ -226,6 +229,7 @@ export default function HomePage() {
                     <p className="mt-3 text-sm text-text-muted leading-relaxed">
                       These movie picks come from your watched movies. Your ratings influence their order, and unrated watched movies also contribute.
                     </p>
+                    {topPersonalized.reason && <p className="mt-2 text-sm text-text-muted">{topPersonalized.reason}</p>}
 
                     {/* Thin hairline divider separating description from preview */}
                     <div className="my-6 h-px w-full bg-white/[0.08]" />

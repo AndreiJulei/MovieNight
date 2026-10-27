@@ -235,6 +235,21 @@ class PersonalRecommendationsPersistenceTest {
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].state").value("MISSING_METADATA"));
     }
 
+    @Test void personalReasonNamesRealContributorsAndKeepsAudienceSeparateFromImdb() throws Exception {
+        save(seed, "Watched Alpha", "MOVIE", "WATCHED", "7.5");
+        save(seed + 10, "Watched Beta", "MOVIE", "WATCHED", "8");
+        neighbor(seed, candidate, 1);
+        neighbor(seed + 10, candidate, .5);
+        catalog.save(Movie.builder().tmdbId(candidate).mediaType("MOVIE").title("Candidate")
+            .tmdbVoteAverage(8.2).tmdbVoteCount(40).imdbRating(7.9).build());
+        read("/api/suggestions/personal").andExpect(status().isOk())
+            .andExpect(jsonPath("$.categories[0].movies[0].reason")
+                .value("Because you watched Watched Alpha and Watched Beta (MovieLens similarity)"))
+            .andExpect(jsonPath("$.categories[0].movies[0].voteAverage").value(8.2))
+            .andExpect(jsonPath("$.categories[0].movies[0].voteCount").value(40))
+            .andExpect(jsonPath("$.categories[0].movies[0].imdbRating").value(7.9));
+    }
+
     void neighbor(long source, long target, double score) {
         similarities.save(MovieSimilarity.builder().tmdbId(source).neighborTmdbId(target).score(score).build());
     }

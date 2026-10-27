@@ -50,6 +50,13 @@ public class PersonalizedRecommendation {
 
     private Double voteAverage;
 
+    private Integer audienceVoteCount;
+
+    private Double imdbRating;
+
+    @Column(length = 1000)
+    private String reason;
+
     private Integer releaseYear;
 
     @Column(nullable = false)

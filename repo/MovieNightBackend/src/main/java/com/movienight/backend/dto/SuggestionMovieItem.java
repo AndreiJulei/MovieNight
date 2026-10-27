@@ -15,6 +15,7 @@ public class SuggestionMovieItem {
     private String posterUrl;
     private Integer releaseYear;
     private Double voteAverage;
+    private Integer voteCount;
     private Double imdbRating;
     private Double rottenTomatoesRating;
     private Double score;

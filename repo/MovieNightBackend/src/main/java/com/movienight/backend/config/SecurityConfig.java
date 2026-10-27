@@ -95,6 +95,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/movies/tmdb/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/movies/{id:[0-9]+}", "/api/movies/{id:[0-9]+}/**").permitAll()
                         .requestMatchers("/api/movies/explore/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/suggestions/explore/**").authenticated()
                         .requestMatchers("/api/suggestions/explore/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/error").permitAll()

@@ -21,6 +21,9 @@ export type Movie = {
   posterSeed?: number | null;
   posterUrl: string | null;
   imdb?: number | null;
+  tmdbRating?: number | null;
+  tmdbVotes?: number | null;
+  reason?: string | null;
   rt?: number | null;
   overview?: string;
   genres?: string[];

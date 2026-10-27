@@ -110,7 +110,8 @@ public class MovieCatalogLookupService {
                     var c = cached.get();
                     return movieRepository.save(Movie.builder().tmdbId(tmdbId).title(c.getTitle())
                             .mediaType(c.getMediaType()).posterUrl(tmdbClient.buildPosterUrl(c.getPosterPath()))
-                            .releaseYear(parseYear(c.getReleaseDate())).tmdbVoteAverage(c.getVoteAverage()).build());
+                            .releaseYear(parseYear(c.getReleaseDate())).tmdbVoteAverage(c.getVoteAverage())
+                            .tmdbVoteCount(c.getVoteCount()).build());
                 }
             }
             throw new com.movienight.backend.exception.ResourceNotFoundException("Title not found for " + resourceType + ":" + tmdbId);

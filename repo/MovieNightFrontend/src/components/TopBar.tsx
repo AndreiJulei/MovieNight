@@ -54,6 +54,7 @@ export default function TopBar({
   onMediaTypeChange,
   showAddButton = true,
   recommendationOrder = false,
+  audienceControls = false,
 }: {
   count: number;
   avg: number | null;
@@ -64,8 +65,12 @@ export default function TopBar({
   onMediaTypeChange?: (mt: MediaTypeFilter) => void;
   showAddButton?: boolean;
   recommendationOrder?: boolean;
+  audienceControls?: boolean;
 }) {
-  const sortLabels = Object.fromEntries(Object.entries(SORT_LABELS).filter(([key]) => recommendationOrder || key !== "recommendation"));
+  const sortLabels = Object.fromEntries(Object.entries({ ...SORT_LABELS,
+    rating: audienceControls ? "TMDB audience rating" : SORT_LABELS.rating,
+  }).filter(([key]) => (recommendationOrder || key !== "recommendation") && (!audienceControls || key !== "addedAt")));
+  const ratingLabels = audienceControls ? { 0: "All TMDB ratings", 6: "TMDB audience 6+/10" } : RATING_LABELS;
   const [sheetOpen, setSheetOpen] = useState(false);
   const compact = useCompactLayout();
   useEffect(() => { if (!compact) setSheetOpen(false); }, [compact]);
@@ -93,7 +98,7 @@ export default function TopBar({
             )}
             <Dropdown
               label="Sort"
-              value={SORT_LABELS[filters.sortBy]}
+              value={sortLabels[filters.sortBy] ?? SORT_LABELS[filters.sortBy]}
               options={Object.entries(sortLabels).map(([v, l]) => ({ value: v, label: l }))}
               onSelect={(v) => onChange({ ...filters, sortBy: v as SortBy })}
             />
@@ -109,12 +114,12 @@ export default function TopBar({
             {showRating && (
               <Dropdown
                 label="Rating"
-                value={RATING_LABELS[filters.minRating]}
-                options={Object.entries(RATING_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+                value={ratingLabels[filters.minRating]}
+                options={Object.entries(ratingLabels).map(([v, l]) => ({ value: v, label: l }))}
                 onSelect={(v) => onChange({ ...filters, minRating: Number(v) as MinRating })}
               />
             )}
-            {filters.dateRange && (
+            {!audienceControls && filters.dateRange && (
               <Dropdown
                 label="Date"
                 value={DATE_LABELS[filters.dateRange]}
@@ -150,6 +155,8 @@ export default function TopBar({
             filters={filters}
             onChange={onChange}
             showRating={showRating}
+            ratingLabels={ratingLabels}
+            showDate={!audienceControls}
             mediaTypeFilter={mediaTypeFilter}
             onMediaTypeChange={onMediaTypeChange}
             onClose={() => setSheetOpen(false)}
@@ -235,6 +242,8 @@ function FilterSheet({
   filters,
   onChange,
   showRating,
+  ratingLabels,
+  showDate,
   mediaTypeFilter,
   onMediaTypeChange,
   onClose,
@@ -242,6 +251,8 @@ function FilterSheet({
   filters: Filters;
   onChange: (f: Filters) => void;
   showRating: boolean;
+  ratingLabels: Record<MinRating, string>;
+  showDate: boolean;
   mediaTypeFilter?: MediaTypeFilter;
   onMediaTypeChange?: (mt: MediaTypeFilter) => void;
   onClose: () => void;
@@ -288,16 +299,16 @@ function FilterSheet({
           <SheetGroup
             label="Rating"
             value={String(filters.minRating)}
-            options={RATING_LABELS}
+          options={ratingLabels}
             onSelect={(v) => onChange({ ...filters, minRating: Number(v) as MinRating })}
           />
         )}
-        <SheetGroup
+        {showDate && <SheetGroup
           label="Date"
           value={filters.dateRange}
           options={DATE_LABELS}
           onSelect={(v) => onChange({ ...filters, dateRange: v as DateRange })}
-        />
+        />}
         <button
           type="button"
           onClick={onClose}

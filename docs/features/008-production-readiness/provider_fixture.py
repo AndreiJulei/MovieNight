@@ -7,19 +7,20 @@ from urllib.parse import parse_qs, urlsplit
 
 
 MOVIES = {
-    862: {"id": 862, "title": "Demo Seed", "media_type": "movie", "release_date": "2020-01-01", "vote_average": 8.0, "vote_count": 1200},
-    863: {"id": 863, "title": "Demo Candidate", "media_type": "movie", "release_date": "2021-01-01", "vote_average": 7.5, "vote_count": 1200},
-    137: {"id": 137, "title": "Demo Friend Pick", "media_type": "movie", "release_date": "2019-01-01", "vote_average": 7.0, "vote_count": 1200},
+    862: {"id": 862, "title": "Demo Seed", "media_type": "movie", "release_date": "2020-01-01", "vote_average": 8.0, "vote_count": 1200, "popularity": 60.0},
+    863: {"id": 863, "title": "Demo Candidate", "media_type": "movie", "release_date": "2021-01-01", "vote_average": 7.5, "vote_count": 1200, "popularity": 90.0},
+    137: {"id": 137, "title": "Demo Friend Pick", "media_type": "movie", "release_date": "2019-01-01", "vote_average": 7.0, "vote_count": 1200, "popularity": 50.0},
 }
 TV = {
-    862: {"id": 862, "name": "Demo Series", "media_type": "tv", "first_air_date": "2020-02-01", "original_language": "en", "origin_country": ["US"], "genre_ids": [18], "vote_average": 7.0, "vote_count": 1200},
-    900: {"id": 900, "name": "Demo Anime", "media_type": "tv", "first_air_date": "2022-03-01", "original_language": "ja", "origin_country": ["JP"], "genre_ids": [16], "vote_average": 8.5, "vote_count": 1200},
+    862: {"id": 862, "name": "Demo Series", "media_type": "tv", "first_air_date": "2020-02-01", "original_language": "en", "origin_country": ["US"], "genre_ids": [18], "vote_average": 7.0, "vote_count": 1200, "popularity": 70.0},
+    900: {"id": 900, "name": "Demo Anime", "media_type": "tv", "first_air_date": "2022-03-01", "original_language": "ja", "origin_country": ["JP"], "genre_ids": [16], "vote_average": 8.5, "vote_count": 1200, "popularity": 80.0},
 }
 
 
 def response_for(url, mode):
     """Return (HTTP status, JSON body) at the external provider boundary."""
     path = urlsplit(url).path
+    page = int(parse_qs(urlsplit(url).query).get("page", ["1"])[0])
     if mode == "failure":
         return 503, {"status_message": "Demo provider unavailable"}
     if mode == "empty":
@@ -27,9 +28,9 @@ def response_for(url, mode):
     if path == "/3/search/multi":
         return 200, {"results": list(MOVIES.values()) + list(TV.values())}
     if path == "/3/discover/movie":
-        return 200, {"results": list(MOVIES.values())}
+        return 200, {"results": list(MOVIES.values()) if page == 1 else []}
     if path in ("/3/discover/tv", "/3/tv/on_the_air"):
-        return 200, {"results": list(TV.values())}
+        return 200, {"results": list(TV.values()) if page == 1 else []}
     parts = path.strip("/").split("/")
     if len(parts) >= 3 and parts[0] == "3" and parts[1] in ("movie", "tv") and parts[2].isdigit():
         resource = MOVIES if parts[1] == "movie" else TV

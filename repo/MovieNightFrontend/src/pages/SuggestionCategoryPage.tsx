@@ -1,5 +1,5 @@
 import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
@@ -7,6 +7,7 @@ import usePersonalRecommendations, { mapPersonalMovie } from "../hooks/usePerson
 import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus";
 import { useStore } from "../store/MovieStore";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
+import { filterAndSortMovies } from "../components/movieFilterSort";
 
 export default function SuggestionCategoryPage() {
   const store = useStore();
@@ -30,6 +31,7 @@ export default function SuggestionCategoryPage() {
 
   const [sortBy, setSortBy] = useState<SortBy>("recommendation");
   const [minRating, setMinRating] = useState<MinRating>(0);
+  useEffect(() => { setSortBy("recommendation"); setMinRating(0); }, [category, store.currentUser?.id]);
 
   const filters: Filters = {
     sortBy,
@@ -45,32 +47,10 @@ export default function SuggestionCategoryPage() {
     localStorage.setItem("app_view_mode", f.viewMode);
   };
 
-  const [mediaTypeFilter, setMediaTypeFilter] = useState<"ALL" | "MOVIE" | "TV" | "ANIME">("ALL");
-
-  const filteredMovies = useMemo(() => {
-    let list = (rawMovies || []).filter(Boolean);
-    if (minRating > 0) {
-      list = list.filter((m) => (m.imdb ?? 0) >= minRating);
-    }
-    if (mediaTypeFilter === "ALL") return list;
-    return list.filter((m) => {
-      if (m.mediaType === mediaTypeFilter) return true;
-      if (mediaTypeFilter === "MOVIE" && m.id === "anime-demon-slayer-movie") return true;
-      return false;
-    });
-  }, [rawMovies, mediaTypeFilter, minRating]);
-
-  const sortedMovies = useMemo(() => {
-    const list = [...filteredMovies];
-    if (sortBy === "title") {
-      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-    } else if (sortBy === "year") {
-      list.sort((a, b) => (b.year || 0) - (a.year || 0));
-    } else if (sortBy === "rating") {
-      list.sort((a, b) => (b.imdb ?? 0) - (a.imdb ?? 0));
-    }
-    return list;
-  }, [filteredMovies, sortBy]);
+  const sortedMovies = useMemo(
+    () => filterAndSortMovies(rawMovies, sortBy, minRating),
+    [rawMovies, sortBy, minRating],
+  );
 
   // Check if current user already has a movie
   const userHasMovie = (movieId: string) => {
@@ -110,8 +90,7 @@ export default function SuggestionCategoryPage() {
         filters={filters}
         onChange={handleFilterChange}
         showRating={true}
-        mediaTypeFilter={mediaTypeFilter}
-        onMediaTypeChange={setMediaTypeFilter}
+        audienceControls
         showAddButton={false}
       />
 

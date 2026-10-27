@@ -30,7 +30,11 @@ class TvProviderPersistenceTest {
     static final ConcurrentLinkedQueue<String> paths = new ConcurrentLinkedQueue<>();
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
+    @Autowired com.movienight.backend.repository.CachedMovieListRepository cache;
+    @Autowired com.movienight.backend.repository.DiscoverySnapshotRepository snapshots;
     @Autowired JwtTokenProvider tokens;
+
+    @BeforeEach void clearDisposableDiscovery() { cache.deleteAll(); snapshots.deleteAll(); }
 
     @DynamicPropertySource static void fixture(DynamicPropertyRegistry properties) throws Exception {
         provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -72,9 +76,12 @@ class TvProviderPersistenceTest {
         responses.put("/search/multi", new Response(200, "{\"results\":[]}"));
         mvc.perform(get("/api/movies/search?query=unavailable").header("Authorization", token)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
         responses.put("/tv/on_the_air", new Response(503, "{}"));
-        mvc.perform(get("/api/movies/explore/tv").header("Authorization", token)).andExpect(status().is5xxServerError());
+        mvc.perform(get("/api/movies/explore/tv").header("Authorization", token)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.categories[0].state").value("UNAVAILABLE"));
         responses.put("/tv/on_the_air", new Response(200, "{\"results\":[]}"));
-        mvc.perform(get("/api/movies/explore/tv").header("Authorization", token)).andExpect(status().isOk()).andExpect(jsonPath("$.categories", hasSize(0)));
+        mvc.perform(get("/api/movies/explore/tv").header("Authorization", token)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.categories", hasSize(4)))
+            .andExpect(jsonPath("$.categories[0].state").value("EMPTY"));
         mvc.perform(get("/api/movies/library").header("Authorization", token)).andExpect(jsonPath("$", hasSize(0)));
     }
 }

@@ -17,4 +17,5 @@ public class SuggestionCategoryResponse {
     private List<SuggestionMovieItem> movies;
     private String state;
     private List<String> limitations;
+    private String updatedAt;
 }

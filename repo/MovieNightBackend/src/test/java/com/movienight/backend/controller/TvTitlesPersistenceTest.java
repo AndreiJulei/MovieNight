@@ -29,6 +29,7 @@ class TvTitlesPersistenceTest {
     @Autowired UserRepository users;
     @Autowired JwtTokenProvider tokens;
     @Autowired com.movienight.backend.repository.CachedMovieListRepository cache;
+    @Autowired com.movienight.backend.repository.DiscoverySnapshotRepository snapshots;
     @Autowired com.movienight.backend.repository.MovieRepository catalog;
     @MockitoBean TmdbClient tmdb;
     MockMvc mvc;
@@ -39,6 +40,7 @@ class TvTitlesPersistenceTest {
     @BeforeEach void setup() {
         reset(tmdb);
         cache.deleteAll();
+        snapshots.deleteAll();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         owner = users.save(User.builder().username("tv-" + UUID.randomUUID()).password("test").build());
         id = ++nextId;
@@ -49,9 +51,13 @@ class TvTitlesPersistenceTest {
         var anime = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
         anime.setId(id); anime.setName("Anime"); anime.setMediaType("tv"); anime.setGenreIds(java.util.List.of(16));
         anime.setOriginalLanguage("en"); anime.setOriginCountry(java.util.List.of("JP"));
+        anime.setFirstAirDate(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(1).toString());
+        anime.setVoteAverage(8.5); anime.setVoteCount(1200); anime.setPopularity(70.0);
         var tv = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
         tv.setId(id + 1); tv.setName("Japanese drama"); tv.setMediaType("tv"); tv.setGenreIds(java.util.List.of(18));
         tv.setOriginalLanguage("ja"); tv.setOriginCountry(java.util.List.of("JP"));
+        tv.setFirstAirDate(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(1).toString());
+        tv.setVoteAverage(7.5); tv.setVoteCount(1200); tv.setPopularity(60.0);
         when(tmdb.discoverTv(any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(java.util.List.of(anime, tv, anime));
         when(tmdb.getTvOnTheAir(anyInt())).thenReturn(java.util.List.of(anime, tv));

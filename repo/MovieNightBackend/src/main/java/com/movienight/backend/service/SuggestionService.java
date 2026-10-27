@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +28,7 @@ public class SuggestionService {
     private final UserMovieEntryRepository userMovieEntryRepository;
     private final FriendshipRepository friendshipRepository;
     private final CachedMovieListRepository cachedMovieListRepository;
+    private final DiscoverySnapshotRepository discoverySnapshotRepository;
     private final PersonalizedRecommendationService personalizedRecommendationService;
     private final TmdbClient tmdbClient;
     private final SuggestionScheduler suggestionScheduler;
@@ -61,7 +65,7 @@ public class SuggestionService {
         categories.add(personal);
         categories.addAll(friendCategories);
         categories.add(SuggestionCategoryResponse.builder().id("popular")
-                .title("Most Popular").movies(popularMovies).build());
+                .title("Popular & well rated").movies(popularMovies).build());
         categories.add(SuggestionCategoryResponse.builder().id("recent")
                 .title("Most Recent").movies(recentMovies).build());
         categories.add(SuggestionCategoryResponse.builder().id("upcoming")
@@ -126,186 +130,58 @@ public class SuggestionService {
      * Get explore shelves for a specific media type (Movies, TV Series, or Anime).
      */
     public SuggestionsResponse getExploreMedia(String mediaType) {
-        String normalizedType = normalizeMediaType(mediaType);
-        List<CachedMovieList> allCached = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc(normalizedType);
-
-        if (allCached.isEmpty() && tmdbClient.isConfigured()) {
-            suggestionScheduler.refreshMediaType(normalizedType);
-            allCached = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc(normalizedType);
+        String type = normalizeMediaType(mediaType);
+        List<DiscoverySnapshot> snapshots = discoverySnapshotRepository.findByMediaType(type);
+        if (snapshots.size() < 4 && tmdbClient.isConfigured()) {
+            try { suggestionScheduler.refreshMediaType(type); }
+            catch (RuntimeException failure) { log.warn("Discovery refresh unavailable for {}", type); }
+            snapshots = discoverySnapshotRepository.findByMediaType(type);
         }
-
-        // Old overlapping rows cannot leak a recognized anime title into TV Series.
-        if ("TV".equals(normalizedType)) {
-            Set<Long> animeIds = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("ANIME").stream()
-                    .map(CachedMovieList::getTmdbId).collect(Collectors.toSet());
-            movieRepository.findByMediaType("ANIME").stream().map(Movie::getTmdbId).filter(Objects::nonNull).forEach(animeIds::add);
-            allCached = allCached.stream().filter(c -> !animeIds.contains(c.getTmdbId())).toList();
+        Map<MovieListType, DiscoverySnapshot> published = snapshots.stream()
+                .collect(Collectors.toMap(DiscoverySnapshot::getListType, snapshot -> snapshot));
+        List<CachedMovieList> cached = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc(type);
+        if ("TV".equals(type)) {
+            Set<Long> animeIds = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("ANIME")
+                    .stream().map(CachedMovieList::getTmdbId).collect(Collectors.toSet());
+            movieRepository.findByMediaType("ANIME").stream().map(Movie::getTmdbId)
+                    .filter(Objects::nonNull).forEach(animeIds::add);
+            cached = cached.stream().filter(item -> !animeIds.contains(item.getTmdbId())).toList();
         }
         List<SuggestionCategoryResponse> categories = new ArrayList<>();
-        Set<Long> newestOrAiringTmdbIds = new HashSet<>();
-
-        if ("MOVIE".equals(normalizedType)) {
-            // Row 1: Newest Releases
-            List<SuggestionMovieItem> newest = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.RECENT).toList(),
-                    normalizedType
-            );
-            if (!newest.isEmpty()) {
-                newest.forEach(m -> newestOrAiringTmdbIds.add(m.getTmdbId()));
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("newest")
-                        .title("Newest Releases")
-                        .movies(newest)
-                        .build());
-            }
-
-            // Row 2: Most Popular (deduped from Newest)
-            List<SuggestionMovieItem> popular = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.POPULAR && !newestOrAiringTmdbIds.contains(c.getTmdbId())).toList(),
-                    normalizedType
-            );
-            if (!popular.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("popular")
-                        .title("Most Popular")
-                        .movies(popular)
-                        .build());
-            }
-
-            // Row 3: Top Rated
-            List<SuggestionMovieItem> topRated = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.TOP_RATED).toList(),
-                    normalizedType
-            );
-            if (!topRated.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("top-rated")
-                        .title("Top Rated")
-                        .movies(topRated)
-                        .build());
-            }
-
-            // Row 4: Upcoming & Most Anticipated
-            List<SuggestionMovieItem> upcoming = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.UPCOMING).toList(),
-                    normalizedType
-            );
-            if (!upcoming.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("upcoming")
-                        .title("Upcoming & Most Anticipated")
-                        .movies(upcoming)
-                        .build());
-            }
-        } else if ("TV".equals(normalizedType)) {
-            // Row 1: Currently Airing
-            List<SuggestionMovieItem> airing = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.CURRENTLY_AIRING).toList(),
-                    normalizedType
-            );
-            if (!airing.isEmpty()) {
-                airing.forEach(m -> newestOrAiringTmdbIds.add(m.getTmdbId()));
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("airing")
-                        .title("Currently Airing")
-                        .movies(airing)
-                        .build());
-            }
-
-            // Row 2: Most Popular
-            List<SuggestionMovieItem> popular = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.POPULAR && !newestOrAiringTmdbIds.contains(c.getTmdbId())).toList(),
-                    normalizedType
-            );
-            if (!popular.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("popular")
-                        .title("Most Popular")
-                        .movies(popular)
-                        .build());
-            }
-
-            // Row 3: Top Rated
-            List<SuggestionMovieItem> topRated = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.TOP_RATED).toList(),
-                    normalizedType
-            );
-            if (!topRated.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("top-rated")
-                        .title("Top Rated")
-                        .movies(topRated)
-                        .build());
-            }
-
-            // Row 4: Upcoming Seasons
-            List<SuggestionMovieItem> upcoming = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.UPCOMING).toList(),
-                    normalizedType
-            );
-            if (!upcoming.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("upcoming")
-                        .title("Upcoming Seasons")
-                        .movies(upcoming)
-                        .build());
-            }
-        } else if ("ANIME".equals(normalizedType)) {
-            // Row 1: Current Season Hits
-            List<SuggestionMovieItem> hits = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.CURRENTLY_AIRING).toList(),
-                    normalizedType
-            );
-            if (!hits.isEmpty()) {
-                hits.forEach(m -> newestOrAiringTmdbIds.add(m.getTmdbId()));
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("current-season")
-                        .title("Current Season Hits")
-                        .movies(hits)
-                        .build());
-            }
-
-            // Row 2: Most Popular
-            List<SuggestionMovieItem> popular = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.POPULAR && !newestOrAiringTmdbIds.contains(c.getTmdbId())).toList(),
-                    normalizedType
-            );
-            if (!popular.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("popular")
-                        .title("Most Popular")
-                        .movies(popular)
-                        .build());
-            }
-
-            // Row 3: All-Time Acclaimed
-            List<SuggestionMovieItem> topRated = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.TOP_RATED).toList(),
-                    normalizedType
-            );
-            if (!topRated.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("top-rated")
-                        .title("All-Time Acclaimed")
-                        .movies(topRated)
-                        .build());
-            }
-
-            // Row 4: Upcoming Next Season
-            List<SuggestionMovieItem> upcoming = mapCachedItems(
-                    allCached.stream().filter(c -> c.getListType() == MovieListType.UPCOMING).toList(),
-                    normalizedType
-            );
-            if (!upcoming.isEmpty()) {
-                categories.add(SuggestionCategoryResponse.builder()
-                        .id("upcoming")
-                        .title("Upcoming Next Season")
-                        .movies(upcoming)
-                        .build());
-            }
+        if ("MOVIE".equals(type)) {
+            categories.add(exploreShelf(type, "newest", "Newest Releases", MovieListType.RECENT, cached, published));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Movies", MovieListType.UPCOMING, cached, published));
+        } else if ("TV".equals(type)) {
+            categories.add(exploreShelf(type, "airing", "Currently Airing", MovieListType.CURRENTLY_AIRING, cached, published));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Series", MovieListType.UPCOMING, cached, published));
+        } else {
+            categories.add(exploreShelf(type, "current-season", "Current Season Hits", MovieListType.CURRENTLY_AIRING, cached, published));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Anime Series", MovieListType.UPCOMING, cached, published));
         }
-
         return SuggestionsResponse.builder().categories(categories).build();
+    }
+
+    private SuggestionCategoryResponse exploreShelf(String mediaType, String id, String title,
+            MovieListType listType, List<CachedMovieList> cached,
+            Map<MovieListType, DiscoverySnapshot> published) {
+        DiscoverySnapshot snapshot = published.get(listType);
+        if (snapshot == null) return SuggestionCategoryResponse.builder().id(id).title(title)
+                .state("UNAVAILABLE").movies(List.of()).build();
+        Duration age = Duration.between(snapshot.getUpdatedAt(), LocalDateTime.now(ZoneOffset.UTC));
+        if (age.compareTo(Duration.ofDays(7)) > 0) return SuggestionCategoryResponse.builder()
+                .id(id).title(title).state("UNAVAILABLE").updatedAt(snapshot.getUpdatedAt() + "Z")
+                .movies(List.of()).build();
+        List<SuggestionMovieItem> items = mapCachedItems(cached.stream()
+                .filter(item -> item.getListType() == listType).toList(), mediaType);
+        return SuggestionCategoryResponse.builder().id(id).title(title)
+                .state(age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : items.isEmpty() ? "EMPTY" : "READY")
+                .updatedAt(snapshot.getUpdatedAt() + "Z").movies(items).build();
     }
 
     private List<SuggestionMovieItem> mapCachedItems(List<CachedMovieList> list, String mediaType) {
@@ -316,6 +192,7 @@ public class SuggestionService {
                         .title(item.getTitle())
                         .posterUrl(item.getPosterPath() != null ? tmdbClient.buildPosterUrl(item.getPosterPath()) : null)
                         .voteAverage(item.getVoteAverage())
+                        .voteCount(item.getVoteCount())
                         .releaseYear(parseYear(item.getReleaseDate()))
                         .mediaType(mediaType)
                         .build())
@@ -323,6 +200,10 @@ public class SuggestionService {
     }
 
     private List<SuggestionMovieItem> getCachedCategoryMovies(String mediaType, MovieListType listType, Set<Long> userLibraryTmdbIds) {
+        Optional<DiscoverySnapshot> snapshot = discoverySnapshotRepository
+                .findByMediaTypeAndListType(mediaType, listType);
+        if (snapshot.isEmpty() || Duration.between(snapshot.get().getUpdatedAt(),
+                LocalDateTime.now(ZoneOffset.UTC)).compareTo(Duration.ofDays(7)) > 0) return List.of();
         List<CachedMovieList> cached = cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc(mediaType, listType);
         return cached.stream()
                 .filter(item -> !userLibraryTmdbIds.contains(item.getTmdbId()))
@@ -331,6 +212,7 @@ public class SuggestionService {
                         .title(item.getTitle())
                         .posterUrl(item.getPosterPath() != null ? tmdbClient.buildPosterUrl(item.getPosterPath()) : null)
                         .voteAverage(item.getVoteAverage())
+                        .voteCount(item.getVoteCount())
                         .releaseYear(parseYear(item.getReleaseDate()))
                         .mediaType(mediaType)
                         .build())

@@ -46,6 +46,8 @@ public class TmdbSearchResponse {
         @JsonProperty("vote_count")
         private Integer voteCount;
 
+        private Double popularity;
+
         @JsonProperty("original_language")
         private String originalLanguage;
 

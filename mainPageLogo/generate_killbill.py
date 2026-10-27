@@ -8,42 +8,40 @@ def create_killbill_banner(
     font_path="fonts/Anton.ttf",
     canvas_w=2560,
     canvas_h=1440,
-    font_size=460,
+    font_size=515,
     vertical_stretch=1.35,
-    target_bottom_y=680,        # Bottom of logo sits above page middle (680px vs 720px midpoint)
-    left_x=80,                  # MOVIE x start
-    right_x=1460,               # NIGHT x start (Total span 80..2468, centered at x=1274)
+    top_y=25,                   # Moved higher with comfortable top margin
+    left_x=60,                  # MOVIE x start
+    right_x=1450,               # NIGHT x start (Frames Beatrix and katana)
     accent_color=(248, 188, 51),# Tracksuit Yellow (#f8bc33)
     transparent_bg=False,
     add_glow=True,
-    char_scale_h=1440,
+    char_scale_h=1300,          # Slightly smaller character (90.3% height) pinned to bottom
     char_x_offset=0
 ):
     """
     Generates high-impact Kill Bill / The Bride desktop hero banner in the Anton Marvel All-Caps style,
-    matching joker_marvel_anton_allcaps.png with centered horizontal typography placed above the middle
-    behind Beatrix Kiddo and her katana blade.
+    with towering typography placed higher up (top_y=25, font_size=515) behind Beatrix Kiddo (char_scale_h=1300).
     """
     # 1. Typography (Anton All-Caps with Marvel-style Vertical Stretch)
     font = ImageFont.truetype(font_path, font_size)
 
     def render_stretched_word(text, fill_color):
         bbox = font.getbbox(text)
-        w = bbox[2] - bbox[0] + 40
-        h = bbox[3] - bbox[1] + 40
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
         temp = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         d = ImageDraw.Draw(temp)
-        d.text((-bbox[0] + 20, -bbox[1] + 20), text, font=font, fill=fill_color)
+        d.text((-bbox[0], -bbox[1]), text, font=font, fill=fill_color)
         new_h = int(h * vertical_stretch)
         return temp.resize((w, new_h), Image.Resampling.LANCZOS)
 
     word_m_img = render_stretched_word("MOVIE", (255, 255, 255, 255))
     word_n_img = render_stretched_word("NIGHT", (*accent_color[:3], 255))
 
-    m_ink = word_m_img.getbbox()
-    m_y = target_bottom_y - m_ink[3]
-    n_y = m_y
-    center_y = m_y + (word_m_img.height // 2)
+    m_y = top_y
+    n_y = top_y
+    center_y = top_y + (word_m_img.height // 2)
 
     # 2. Canvas Setup
     if transparent_bg:

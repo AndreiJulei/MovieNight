@@ -7,7 +7,8 @@ import type { Movie } from "../store/data";
 /** Use only movie response metadata; the local catalog may hold TV at the same ID. */
 export function mapPersonalMovie(item: ApiSuggestionMovieItem): Movie {
   return { id: titleId(item.tmdbId, "MOVIE"), tmdbId: item.tmdbId, title: item.title,
-    mediaType: "MOVIE", year: item.releaseYear ?? null, imdb: item.voteAverage ?? null,
+    mediaType: "MOVIE", year: item.releaseYear ?? null, imdb: item.imdbRating ?? null,
+    tmdbRating: item.voteAverage ?? null, tmdbVotes: item.voteCount ?? null, reason: item.reason ?? null,
     posterSeed: null, posterUrl: item.posterUrl ?? null, rt: null, overview: "", genres: [] };
 }
 

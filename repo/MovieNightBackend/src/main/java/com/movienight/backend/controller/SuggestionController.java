@@ -2,6 +2,7 @@ package com.movienight.backend.controller;
 
 import com.movienight.backend.dto.SuggestionsResponse;
 import com.movienight.backend.model.User;
+import com.movienight.backend.model.MovieListType;
 import com.movienight.backend.repository.UserRepository;
 import com.movienight.backend.service.PersonalizedRecommendationService;
 import com.movienight.backend.service.SuggestionService;
@@ -65,6 +66,27 @@ public class SuggestionController {
     public ResponseEntity<Map<String, String>> refreshExploreLists() {
         suggestionScheduler.refreshAllCachedLists();
         return ResponseEntity.ok(Map.of("message", "TMDB Discover explore shelves refreshed successfully"));
+    }
+
+    @PostMapping("/explore/{mediaType}/{category}/refresh")
+    public ResponseEntity<SuggestionsResponse> refreshExploreCategory(@PathVariable String mediaType,
+                                                                       @PathVariable String category) {
+        String type = switch (mediaType.trim().toUpperCase()) {
+            case "MOVIE", "MOVIES" -> "MOVIE";
+            case "TV", "SERIES" -> "TV";
+            case "ANIME" -> "ANIME";
+            default -> throw new IllegalArgumentException("Unknown discovery media type");
+        };
+        MovieListType listType = switch (category) {
+            case "newest" -> MovieListType.RECENT;
+            case "airing", "current-season" -> MovieListType.CURRENTLY_AIRING;
+            case "popular" -> MovieListType.POPULAR;
+            case "top-rated" -> MovieListType.TOP_RATED;
+            case "upcoming" -> MovieListType.UPCOMING;
+            default -> throw new IllegalArgumentException("Unknown discovery category");
+        };
+        suggestionScheduler.refreshCategory(type, listType);
+        return ResponseEntity.ok(suggestionService.getExploreMedia(type));
     }
 
     /**

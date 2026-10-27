@@ -124,6 +124,7 @@ public class PostgresStorageConfiguration {
                 "custom_list_entries", List.of(List.of("custom_list_id", "movie_id")),
                 "friendships", List.of(List.of("user_id", "friend_id")),
                 "movie_similarity", List.of(List.of("tmdb_id", "neighbor_tmdb_id")),
+                "discovery_snapshots", List.of(List.of("media_type", "list_type")),
                 "personalized_recommendations", List.of(List.of("user_id", "resource_type", "tmdb_id")));
         for (var table : uniqueKeys.entrySet()) {
             Map<String, SortedMap<Short, String>> indexes = new HashMap<>();

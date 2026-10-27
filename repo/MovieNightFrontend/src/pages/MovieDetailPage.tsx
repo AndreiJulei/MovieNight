@@ -69,7 +69,8 @@ export default function MovieDetailPage() {
           id: titleId(res.tmdbId, res.mediaType, res.id), catalogMovieId: res.id,
           tmdbId: res.tmdbId, title: res.title, mediaType: res.mediaType as MediaType,
           year: res.releaseYear ?? null, posterUrl: res.posterUrl ?? null, posterSeed: null,
-          imdb: res.imdbRating ?? res.tmdbVoteAverage ?? null, rt: res.rottenTomatoesRating ?? null,
+          imdb: res.imdbRating ?? null, tmdbRating: res.tmdbVoteAverage ?? null,
+          tmdbVotes: res.tmdbVoteCount ?? null, rt: res.rottenTomatoesRating ?? null,
           overview: res.overview ?? "", genres: res.genres?.split(",").map(g => g.trim()) ?? [],
           director: res.director, trailerKey: res.trailerKey,
           cast: res.castMembers?.split(",").map(name => ({ name: name.trim(), role: "Cast" })),
@@ -405,7 +406,8 @@ export default function MovieDetailPage() {
                 </div>
               )}
 
-              <ExternalRatings imdb={movie.imdb ?? null} rt={movie.rt ?? null} />
+              <ExternalRatings imdb={movie.imdb ?? null} tmdb={movie.tmdbRating ?? null}
+                votes={movie.tmdbVotes ?? null} rt={movie.rt ?? null} />
             </div>
           </div>
 
@@ -873,11 +875,11 @@ function DescriptionBox({
   );
 }
 
-function ExternalRatings({ imdb, rt }: { imdb: number | null; rt: number | null }) {
+function ExternalRatings({ imdb, tmdb, votes, rt }: { imdb: number | null; tmdb: number | null; votes: number | null; rt: number | null }) {
   const hasImdb = imdb != null;
   const hasRt = rt != null;
 
-  if (!hasImdb && !hasRt) return null;
+  if (!hasImdb && tmdb == null && !hasRt) return null;
 
   return (
     <div className="flex items-center gap-2">
@@ -886,13 +888,18 @@ function ExternalRatings({ imdb, rt }: { imdb: number | null; rt: number | null 
           <span className="rounded bg-warning px-1 py-0.2 text-[10px] font-black text-black">
             IMDb
           </span>
-          {imdb.toFixed(1)}
+          {imdb.toFixed(1)}/10
+        </span>
+      )}
+      {tmdb != null && (
+        <span className="nums rounded-md border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-bold text-accent">
+          TMDB audience {tmdb.toFixed(1)}/10{votes != null ? ` · ${votes.toLocaleString()} votes` : ""}
         </span>
       )}
       {hasRt && (
         <span className="nums inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-bold text-rose-300 shadow-sm">
           <span className="text-xs">🍅</span>
-          {rt}%
+          Rotten Tomatoes critics {rt}% approval
         </span>
       )}
     </div>

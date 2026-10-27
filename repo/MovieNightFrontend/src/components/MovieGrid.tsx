@@ -4,6 +4,7 @@ import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "./PosterTransitionContext";
 import PixelPoster from "./PixelPoster";
+import { ratingEvidence } from "./ratingEvidence";
 
 export function Poster({ movie }: { movie: Movie }) {
   if (movie.posterUrl) {
@@ -105,8 +106,9 @@ export function MovieCard({
           </h3>
           <p className="nums mt-0.5 text-xs text-text-muted">
             {movie.year}
-            {movie.imdb != null ? ` · ${movie.imdb.toFixed(1)}` : ""}
+            {ratingEvidence(movie) ? ` · ${ratingEvidence(movie)}` : ""}
           </p>
+          {movie.reason && <p className="mt-1 text-xs text-text-muted line-clamp-2">{movie.reason}</p>}
         </div>
       )}
     </a>

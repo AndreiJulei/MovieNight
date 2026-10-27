@@ -1,5 +1,5 @@
 import { titleId } from "../store/titleIdentity";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store/MovieStore";
 import { moviesApi, type ApiSuggestionsResponse } from "../api/movies";
 import type { Movie } from "../store/data";
@@ -25,26 +25,59 @@ export interface SuggestionRow {
  */
 export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
   const store = useStore();
-  const [revision, setRevision] = useState(0);
-  const key = JSON.stringify([mediaType, store.currentUser?.id, revision]);
-  const [state, setState] = useState<{ key: string; data: ApiSuggestionsResponse | null; error: string | null } | null>(null);
+  const inputKey = JSON.stringify([mediaType, store.currentUser?.id]);
+  const input = useRef({ key: inputKey, generation: 0 });
+  if (input.current.key !== inputKey) input.current = { key: inputKey, generation: input.current.generation + 1 };
+  const key = JSON.stringify([inputKey, input.current.generation]);
+  const latest = useRef(key);
+  latest.current = key;
+  const pending = useRef(false);
+  const [state, setState] = useState<{ key: string; data: ApiSuggestionsResponse | null;
+    error: string | null; pending: boolean; failedCategory: string | null } | null>(null);
+
   useEffect(() => {
     let active = true;
+    pending.current = false;
     void moviesApi.getExploreMedia(mediaType).then(data => {
-      if (active) setState({ key, data, error: null });
+      if (active && latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
     }).catch(error => {
-      if (active) setState({ key, data: null, error: error instanceof Error ? error.message : "Could not load discovery. Retry." });
+      if (active && latest.current === key) setState({ key, data: null,
+        error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null });
     });
     return () => { active = false; };
   }, [key, mediaType]);
+
   const current = state?.key === key ? state : null;
+  const readAgain = () => {
+    if (pending.current) return;
+    pending.current = true;
+    setState({ key, data: current?.data ?? null, error: null, pending: true, failedCategory: null });
+    void moviesApi.getExploreMedia(mediaType).then(data => {
+      if (latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
+    }).catch(error => {
+      if (latest.current === key) setState({ key, data: recalculateFreshness(current?.data ?? null),
+        error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null });
+    }).finally(() => { if (latest.current === key) pending.current = false; });
+  };
+  const refresh = (category: string) => {
+    if (pending.current || !current?.data) return;
+    pending.current = true;
+    setState({ ...current, error: null, pending: true, failedCategory: null });
+    void moviesApi.refreshExploreCategory(mediaType, category).then(data => {
+      if (latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
+    }).catch(error => {
+      if (latest.current === key) setState({ key, data: recalculateFreshness(current.data),
+        error: error instanceof Error ? error.message : "Could not refresh discovery. Retry.", pending: false, failedCategory: category });
+    }).finally(() => { if (latest.current === key) pending.current = false; });
+  };
   return { rows: useMemo(() => current?.data?.categories.map(category => ({ ...category,
       movies: category.movies.map(item => mapApiMovie(item, store)) })) ?? [], [current, store]),
-    error: current?.error ?? null, loading: !current,
-    reload: () => { if (current) setRevision(value => value + 1); } };
+    error: current?.error ?? null, loading: !current, pending: current?.pending ?? false,
+    failedCategory: current?.failedCategory ?? null,
+    reload: readAgain, refresh };
 }
 
-export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
+export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; voteCount?: number; reason?: string; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
   const id = titleId(m.tmdbId, m.mediaType ?? "");
   const existing = store.movieById(id);
   return {
@@ -54,12 +87,51 @@ export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: stri
     year: m.releaseYear ?? existing?.year ?? null,
     posterSeed: null,
     posterUrl: m.posterUrl ?? existing?.posterUrl ?? null,
-    imdb: m.imdbRating ?? m.voteAverage ?? existing?.imdb ?? null,
+    imdb: m.imdbRating ?? existing?.imdb ?? null,
+    tmdbRating: m.voteAverage ?? existing?.tmdbRating ?? null,
+    tmdbVotes: m.voteCount ?? existing?.tmdbVotes ?? null,
+    reason: m.reason ?? existing?.reason ?? null,
     rt: m.rottenTomatoesRating ?? existing?.rt ?? null,
     overview: existing?.overview ?? "",
     genres: existing?.genres ?? [],
     trailerKey: existing?.trailerKey,
     director: existing?.director,
     mediaType: ((m.mediaType || existing?.mediaType || "MOVIE").toUpperCase()) as any,
+  };
+}
+
+/**
+ * Recalculate category freshness based on snapshot updatedAt and current time.
+ *
+ * Implements DQ09:
+ * - Fallback to last successful snapshot only when it is at most 7 days old.
+ * - Older than 7 days becomes UNAVAILABLE and empties results.
+ * - Older than 24 hours becomes STALE.
+ */
+export function recalculateFreshness(data: ApiSuggestionsResponse | null): ApiSuggestionsResponse | null {
+  if (!data) return null;
+  const now = Date.now();
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
+
+  return {
+    ...data,
+    categories: data.categories.map((cat) => {
+      if (!cat.updatedAt) {
+        return { ...cat, state: "UNAVAILABLE", movies: [] };
+      }
+      const updatedTime = Date.parse(cat.updatedAt);
+      if (Number.isNaN(updatedTime)) {
+        return { ...cat, state: "UNAVAILABLE", movies: [] };
+      }
+      const ageMs = now - updatedTime;
+      if (ageMs > SEVEN_DAYS_MS) {
+        return { ...cat, state: "UNAVAILABLE", movies: [] };
+      }
+      if (ageMs > ONE_DAY_MS) {
+        return { ...cat, state: "STALE" };
+      }
+      return { ...cat, state: cat.movies.length === 0 ? "EMPTY" : "READY" };
+    }),
   };
 }

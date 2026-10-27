@@ -40,7 +40,10 @@ public class PersonalizedRecommendationService {
 
     @Transactional
     public SuggestionCategoryResponse movieCategory(User user) {
-        if (user.isNeedsRecommendationRefresh() || user.getPersonalRecommendationState() == null) {
+        List<PersonalizedRecommendation> previous = personalizedRecommendationRepository
+                .findByUserIdAndMediaTypeOrderByRankOrderAsc(user.getId(), "MOVIE");
+        if (user.isNeedsRecommendationRefresh() || user.getPersonalRecommendationState() == null
+                || previous.stream().anyMatch(row -> row.getReason() == null)) {
             recomputeRecommendationsForUser(user);
         }
         Set<Long> excluded = libraryIds(entries(user));
@@ -48,8 +51,11 @@ public class PersonalizedRecommendationService {
             .findByUserIdAndMediaTypeOrderByRankOrderAsc(user.getId(), "MOVIE").stream()
             .filter(r -> !excluded.contains(r.getTmdbId()))
             .map(r -> SuggestionMovieItem.builder().tmdbId(r.getTmdbId()).title(r.getTitle())
-                .posterUrl(tmdbClient.buildPosterUrl(r.getPosterPath())).releaseYear(r.getReleaseYear()).voteAverage(r.getVoteAverage())
-                .score(r.getScore()).mediaType("MOVIE").reason("Based on your watched movies and personal ratings")
+                .posterUrl(r.getPosterPath() != null && r.getPosterPath().startsWith("http")
+                        ? r.getPosterPath() : tmdbClient.buildPosterUrl(r.getPosterPath()))
+                .releaseYear(r.getReleaseYear()).voteAverage(r.getVoteAverage())
+                .voteCount(r.getAudienceVoteCount()).imdbRating(r.getImdbRating())
+                .score(r.getScore()).mediaType("MOVIE").reason(r.getReason())
                 .build()).toList();
         List<String> limitations = new ArrayList<>();
         if (user.getPersonalRecommendationLimitations() != null && !user.getPersonalRecommendationLimitations().isBlank()) {
@@ -76,6 +82,8 @@ public class PersonalizedRecommendationService {
         }
         Set<String> limitations = new LinkedHashSet<>();
         Map<Long, Double> scores = new HashMap<>();
+        Map<Long, Map<Long, Double>> contributions = new HashMap<>();
+        Map<Long, Set<String>> sources = new HashMap<>();
         Set<Long> covered = new HashSet<>();
         Map<Long, TmdbMovieSummary> summaries = new HashMap<>();
         if (!weights.isEmpty()) {
@@ -84,6 +92,11 @@ public class PersonalizedRecommendationService {
                 if (sim.getNeighborTmdbId() > 0 && Double.isFinite(sim.getScore())) {
                     covered.add(sim.getTmdbId());
                     scores.merge(sim.getNeighborTmdbId(), weights.get(sim.getTmdbId()) * sim.getScore(), Double::sum);
+                    contributions.computeIfAbsent(sim.getNeighborTmdbId(), ignored -> new HashMap<>())
+                            .merge(sim.getTmdbId(), weights.get(sim.getTmdbId()) * sim.getScore(), Double::sum);
+                    if (weights.get(sim.getTmdbId()) * sim.getScore() > 0)
+                        sources.computeIfAbsent(sim.getNeighborTmdbId(), ignored -> new LinkedHashSet<>())
+                                .add("MovieLens similarity");
                 }
             }
             if (!tmdbClient.isConfigured()) limitations.add("TMDB_UNCONFIGURED");
@@ -101,7 +114,12 @@ public class PersonalizedRecommendationService {
                                 || (rec.getMediaType() != null && !"movie".equalsIgnoreCase(rec.getMediaType()))) {
                             throw new IllegalStateException("Invalid movie recommendation response");
                         }
-                        scores.merge(rec.getId(), Math.max(0.1, 1.0 - .04 * i), Double::sum);
+                        double boost = Math.max(0.1, 1.0 - .04 * i);
+                        scores.merge(rec.getId(), boost, Double::sum);
+                        contributions.computeIfAbsent(rec.getId(), ignored -> new HashMap<>())
+                                .merge(seed, boost, Double::sum);
+                        sources.computeIfAbsent(rec.getId(), ignored -> new LinkedHashSet<>())
+                                .add("TMDB recommendations");
                         summaries.putIfAbsent(rec.getId(), rec);
                     }
                 }
@@ -112,6 +130,10 @@ public class PersonalizedRecommendationService {
             .filter(e -> e.getValue() > 0 && Double.isFinite(e.getValue()))
             .sorted(Map.Entry.<Long, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey())).toList();
         Set<Long> excluded = libraryIds(entries);
+        Map<Long, String> watchedTitles = entries.stream()
+                .filter(e -> e.getStatus() == MovieStatus.WATCHED && isMovie(e.getMovie())
+                        && e.getMovie().getTmdbId() != null)
+                .collect(Collectors.toMap(e -> e.getMovie().getTmdbId(), e -> e.getMovie().getTitle(), (a, b) -> a));
         // Every source is explicitly movie-only before resolving metadata.
         Map<Long, Movie> catalog = movieRepository.findAll().stream().filter(this::isMovie)
             .filter(m -> m.getTmdbId() != null && validTitle(m.getTitle()))
@@ -130,9 +152,27 @@ public class PersonalizedRecommendationService {
             String title = movie != null ? movie.getTitle() : cached != null ? cached.getTitle() : summary != null ? summary.getTitle() : null;
             if (!validTitle(title)) { limitations.add("METADATA_OMITTED"); continue; }
             if (result.size() == 30) continue;
+            List<String> reasonTitles = contributions.getOrDefault(id, Map.of()).entrySet().stream()
+                    .filter(e -> e.getValue() > 0 && watchedTitles.containsKey(e.getKey()))
+                    .sorted(Map.Entry.<Long, Double>comparingByValue().reversed()
+                            .thenComparing(Map.Entry.comparingByKey()))
+                    .limit(2).map(e -> watchedTitles.get(e.getKey())).toList();
+            String reason = reasonTitles.isEmpty() ? null : "Because you watched "
+                    + String.join(" and ", reasonTitles) + " ("
+                    + String.join(" and ", sources.getOrDefault(id, Set.of())) + ")";
+            Double audience = null;
+            Integer audienceVotes = null;
+            if (movie != null && validAudience(movie.getTmdbVoteAverage())) {
+                audience = movie.getTmdbVoteAverage(); audienceVotes = movie.getTmdbVoteCount();
+            } else if (cached != null && validAudience(cached.getVoteAverage())) {
+                audience = cached.getVoteAverage(); audienceVotes = cached.getVoteCount();
+            } else if (summary != null && validAudience(summary.getVoteAverage())) {
+                audience = summary.getVoteAverage(); audienceVotes = summary.getVoteCount();
+            }
             result.add(PersonalizedRecommendation.builder().user(user).tmdbId(id).mediaType("MOVIE").title(title)
                 .posterPath(movie != null ? movie.getPosterUrl() : cached != null ? cached.getPosterPath() : summary.getPosterPath())
-                .voteAverage(movie != null ? movie.getImdbRating() : cached != null ? cached.getVoteAverage() : summary.getVoteAverage())
+                .voteAverage(audience).audienceVoteCount(audienceVotes)
+                .imdbRating(movie != null ? movie.getImdbRating() : null).reason(reason)
                 .releaseYear(movie != null ? movie.getReleaseYear() : year(cached != null ? cached.getReleaseDate() : summary.getReleaseDate()))
                 .score(candidate.getValue()).rankOrder(result.size() + 1).build());
         }
@@ -149,6 +189,9 @@ public class PersonalizedRecommendationService {
     }
 
     private boolean validTitle(String title) { return title != null && !title.isBlank(); }
+    private boolean validAudience(Double value) {
+        return value != null && Double.isFinite(value) && value >= 0 && value <= 10;
+    }
     private Integer year(String date) {
         if (date == null || !date.matches("\\d{4}-\\d{2}-\\d{2}")) return null;
         return Integer.valueOf(date.substring(0, 4));

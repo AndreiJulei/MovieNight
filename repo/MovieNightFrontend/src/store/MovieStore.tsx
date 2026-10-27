@@ -149,6 +149,8 @@ function fromCatalogResponse(m: ApiMovieResponse): Movie {
     posterSeed: null,
     posterUrl: m.posterUrl ?? null,
     imdb: m.imdbRating ?? null,
+    tmdbRating: m.tmdbVoteAverage ?? null,
+    tmdbVotes: m.tmdbVoteCount ?? null,
     rt: m.rottenTomatoesRating ?? null,
     overview: m.overview ?? "",
     genres: m.genres?.split(",").map((g) => g.trim()) ?? [],

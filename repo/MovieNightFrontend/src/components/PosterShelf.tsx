@@ -1,5 +1,6 @@
-import { useRef, useState, useCallback, useEffect, type MouseEvent } from "react";
+import { useRef, useState, useCallback, useEffect, useId, type MouseEvent } from "react";
 import type { Movie } from "../store/data";
+import { ratingEvidence } from "./ratingEvidence";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "./PosterTransitionContext";
@@ -156,6 +157,7 @@ function ShelfPoster({
   movie: Movie;
   referrer?: string;
 }) {
+  const ratingId = useId();
   const posterRef = useRef<HTMLAnchorElement>(null);
   const { startTransition } = usePosterTransition();
   const { navigate } = useRouter();
@@ -205,6 +207,7 @@ function ShelfPoster({
       onClick={handleClick}
       title={movie.title}
       aria-label={movie.title}
+      aria-describedby={ratingEvidence(movie) ? ratingId : undefined}
       className="shelf-card group/poster relative shrink-0 h-[252px] w-[168px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none select-none"
     >
       {/* Poster image */}
@@ -224,6 +227,13 @@ function ShelfPoster({
         </div>
       )}
 
+      {ratingEvidence(movie) && <span id={ratingId}
+        className="absolute bottom-2 left-2 right-2 rounded bg-[#05070d]/90 px-2 py-1 text-center text-[10px] font-semibold text-white shadow-sm">
+        {movie.tmdbRating != null ? `TMDB ${movie.tmdbRating.toFixed(1)}/10`
+          : movie.imdb != null ? `IMDb ${movie.imdb.toFixed(1)}/10`
+          : `Critics ${movie.rt}% approval`}
+      </span>}
+
       {/* Hover detail overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/95 via-[#05070d]/60 to-transparent opacity-0 group-hover/poster:opacity-100 group-focus-visible/poster:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3.5 pointer-events-none">
         <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2 drop-shadow-sm">
@@ -231,9 +241,9 @@ function ShelfPoster({
         </h4>
         <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
           <span>{movie.year}</span>
-          {movie.imdb != null && (
+          {ratingEvidence(movie) && (
             <span className="nums font-semibold text-accent">
-              ★ {movie.imdb.toFixed(1)}
+              {ratingEvidence(movie)}
             </span>
           )}
         </div>

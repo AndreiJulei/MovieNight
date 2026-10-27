@@ -1,5 +1,5 @@
 import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, matchPath, useRouter } from "../router";
 import AppShell from "../components/AppShell";
 import PosterShelf from "../components/PosterShelf";
@@ -7,6 +7,7 @@ import MovieGrid from "../components/MovieGrid";
 import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
 import { useStore } from "../store/MovieStore";
 import { useExploreMedia } from "../hooks/useSuggestions";
+import { filterAndSortMovies } from "../components/movieFilterSort";
 import type { Movie, MediaType } from "../store/data";
 
 type ExploreMediaType = "movies" | "tv" | "anime";
@@ -41,6 +42,8 @@ interface SuggestionRow {
   title: string;
   movies: Movie[];
   subtitle?: string;
+  state?: string;
+  updatedAt?: string;
 }
 
 export default function ExploreContentPage() {
@@ -64,8 +67,9 @@ export default function ExploreContentPage() {
     }
     return "grid";
   });
-  const [sortBy, setSortBy] = useState<SortBy>("rating");
+  const [sortBy, setSortBy] = useState<SortBy>("recommendation");
   const [minRating, setMinRating] = useState<MinRating>(0);
+  useEffect(() => { setSortBy("recommendation"); setMinRating(0); }, [type, rowId, store.currentUser?.id]);
 
   const filters: Filters = {
     sortBy,
@@ -88,21 +92,21 @@ export default function ExploreContentPage() {
         let subtitle: string | undefined;
 
         if (r.id === "newest") {
-          subtitle = "Released in theaters & digital in the last 90 days";
+          subtitle = "Movies released in the last 90 days";
         } else if (r.id === "popular") {
-          subtitle = "Trending global favorites and community hits";
+          subtitle = "Popular among TMDB viewers, with at least 7/10 audience rating and enough votes";
         } else if (r.id === "top-rated") {
-          subtitle = "Highest rated masterworks with established acclaim";
+          subtitle = "Ranked by TMDB audience rating adjusted for vote volume within a bounded candidate pool";
         } else if (r.id === "upcoming") {
           subtitle = type === "anime"
-            ? "Most anticipated anime premiering next calendar season"
+            ? "Anime series premiering within the next 12 months"
             : type === "tv"
-            ? "Upcoming new seasons and series premiering this year"
-            : "Most anticipated theatrical & streaming releases of the year";
+            ? "Series premiering within the next 12 months"
+            : "Movies with release dates in the next 12 months";
         } else if (r.id === "airing" || r.id === "current-season") {
           subtitle = type === "anime"
-            ? "Currently airing animation hits this season"
-            : "Active broadcast and streaming episodes airing right now";
+            ? "Anime in the current quarter whose series have premiered"
+            : "Series in TMDB's airing feed that have premiered";
         }
 
         return {
@@ -118,18 +122,8 @@ export default function ExploreContentPage() {
   // If a rowId was requested, render full grid view for that row
   if (rowId) {
     const matchedRow = rows.find((r) => r.id === rowId);
-    let rawMovies = matchedRow ? matchedRow.movies : [];
-
-    if (minRating > 0) {
-      rawMovies = rawMovies.filter((m) => (m.imdb ?? 0) >= minRating);
-    }
-
-    const sortedMovies = [...rawMovies].sort((a, b) => {
-      if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "year") return (b.year ?? 0) - (a.year ?? 0);
-      if (sortBy === "rating") return (b.imdb ?? 0) - (a.imdb ?? 0);
-      return 0;
-    });
+    const rawMovies = matchedRow ? matchedRow.movies : [];
+    const sortedMovies = filterAndSortMovies(rawMovies, sortBy, minRating);
 
     const userHasMovie = (movieId: string) => {
       if (!store.currentUser) return false;
@@ -138,10 +132,14 @@ export default function ExploreContentPage() {
 
     return (
       <AppShell>
-        {explore.loading && <p role="status" className="mb-4 text-text-muted">Loading discovery…</p>}
+        {(explore.loading || explore.pending) && <p role="status" className="mb-4 text-text-muted">{explore.pending ? "Refreshing discovery…" : "Loading discovery…"}</p>}
         {explore.error && <p role="alert" className="mb-4 text-danger">{explore.error}</p>}
         {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
-        <button type="button" disabled={explore.loading} onClick={explore.reload} className="mb-4 text-sm text-accent underline disabled:opacity-50">{explore.error ? "Retry discovery" : "Reload discovery"}</button>
+        <button type="button" disabled={explore.loading || explore.pending} onClick={() => matchedRow ? explore.refresh(matchedRow.id) : explore.reload()} className="mb-4 text-sm text-accent underline disabled:opacity-50">{explore.error ? "Retry discovery" : "Refresh discovery"}</button>
+        {matchedRow?.state === "STALE" && <p role="status" className="mb-3 text-warning">Last successful discovery snapshot is stale (updated {matchedRow.updatedAt}).</p>}
+        {explore.failedCategory === matchedRow?.id && matchedRow?.state !== "UNAVAILABLE" &&
+          <p role="status" className="mb-3 text-warning">Refresh failed. Showing the last successful snapshot from {matchedRow?.updatedAt}.</p>}
+        {matchedRow?.state === "UNAVAILABLE" && <p role="alert" className="mb-3 text-danger">Discovery is unavailable. Retry this category.</p>}
         <div className="mb-4">
           <Link
             to={`/explore/${type}`}
@@ -166,6 +164,7 @@ export default function ExploreContentPage() {
           filters={filters}
           onChange={handleFilterChange}
           showRating={true}
+          recommendationOrder audienceControls
           showAddButton={false}
         />
 
@@ -185,10 +184,10 @@ export default function ExploreContentPage() {
   // Shelf rows view
   return (
     <AppShell>
-        {explore.loading && <p role="status" className="mb-4 text-text-muted">Loading discovery…</p>}
+        {(explore.loading || explore.pending) && <p role="status" className="mb-4 text-text-muted">{explore.pending ? "Refreshing discovery…" : "Loading discovery…"}</p>}
         {explore.error && <p role="alert" className="mb-4 text-danger">{explore.error}</p>}
         {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
-        <button type="button" disabled={explore.loading} onClick={explore.reload} className="mb-4 text-sm text-accent underline disabled:opacity-50">{explore.error ? "Retry discovery" : "Reload discovery"}</button>
+        {explore.error && <button type="button" disabled={explore.loading || explore.pending} onClick={explore.reload} className="mb-4 text-sm text-accent underline disabled:opacity-50">Retry discovery</button>}
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {config.title}
@@ -209,7 +208,13 @@ export default function ExploreContentPage() {
                     {row.subtitle}
                   </p>
                 )}
+                {row.state === "STALE" && <p role="status" className="mt-1 text-xs text-warning">Stale snapshot · updated {row.updatedAt}</p>}
+                {explore.failedCategory === row.id && row.state !== "UNAVAILABLE" &&
+                  <p role="status" className="mt-1 text-xs text-warning">Refresh failed · showing last successful snapshot from {row.updatedAt}</p>}
+                {row.state === "UNAVAILABLE" && <p role="alert" className="mt-1 text-xs text-danger">Unavailable · try refreshing</p>}
+                {row.state === "EMPTY" && <p className="mt-1 text-xs text-text-muted">No titles met this shelf's criteria.</p>}
               </div>
+              <button type="button" disabled={explore.loading || explore.pending} onClick={() => explore.refresh(row.id)} className="text-xs font-semibold text-accent underline disabled:opacity-50">Refresh</button>
               {row.movies.length > 4 && (
                 <Link
                   to={`/explore/${type}/${row.id}`}
@@ -222,10 +227,10 @@ export default function ExploreContentPage() {
                 </Link>
               )}
             </div>
-            <PosterShelf
+            {row.movies.length > 0 && <PosterShelf
               movies={row.movies.slice(0, 20)}
               referrer={`/explore/${type}`}
-            />
+            />}
           </section>
         ))}
 

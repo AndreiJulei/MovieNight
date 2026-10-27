@@ -315,6 +315,15 @@ export const moviesApi = {
     return response;
   },
 
+  async refreshExploreCategory(mediaType: string, category: string): Promise<ApiSuggestionsResponse> {
+    const response = await libraryRequest<ApiSuggestionsResponse>(
+      `${API_BASE}/api/suggestions/explore/${encodeURIComponent(mediaType)}/${encodeURIComponent(category)}/refresh`,
+      { method: "POST" },
+    );
+    if (!Array.isArray(response?.categories)) throw new Error("Could not refresh discovery. Retry.");
+    return response;
+  },
+
   /**
    * Request immediate recalculation of personalized recommendations.
    */
@@ -339,6 +348,7 @@ export interface ApiSuggestionMovieItem {
   posterUrl?: string;
   releaseYear?: number;
   voteAverage?: number;
+  voteCount?: number;
   imdbRating?: number;
   rottenTomatoesRating?: number;
   score?: number;
@@ -348,6 +358,7 @@ export interface ApiSuggestionMovieItem {
 
 export interface ApiSuggestionCategory {
   state?: string;
+  updatedAt?: string;
   limitations?: string[];
   id: string;
   title: string;

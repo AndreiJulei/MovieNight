@@ -51,6 +51,10 @@ public class CachedMovieList {
 
     private Double voteAverage;
 
+    private Integer voteCount;
+
+    private Double popularity;
+
     private String releaseDate;
 
     @Column(nullable = false)
