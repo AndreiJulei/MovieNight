@@ -33,6 +33,7 @@ public class SuggestionService {
     private final TmdbClient tmdbClient;
     private final SuggestionScheduler suggestionScheduler;
     private final MovieRepository movieRepository;
+    private final UserLibraryExclusionService userLibraryExclusionService;
 
     /**
      * Get legacy aggregated discovery rows for the authenticated user.
@@ -130,7 +131,12 @@ public class SuggestionService {
      * Get explore shelves for a specific media type (Movies, TV Series, or Anime).
      */
     public SuggestionsResponse getExploreMedia(String mediaType) {
-        String type = normalizeMediaType(mediaType);
+        return getExploreMedia(mediaType, null);
+    }
+
+    public SuggestionsResponse getExploreMedia(String mediaType, String username) {
+        String type = userLibraryExclusionService.normalizeMediaType(mediaType);
+        Set<Long> excludedTmdbIds = userLibraryExclusionService.getExcludedTmdbIds(username, type);
         List<DiscoverySnapshot> snapshots = discoverySnapshotRepository.findByMediaType(type);
         if (snapshots.size() < 4 && tmdbClient.isConfigured()) {
             try { suggestionScheduler.refreshMediaType(type); }
@@ -149,40 +155,50 @@ public class SuggestionService {
         }
         List<SuggestionCategoryResponse> categories = new ArrayList<>();
         if ("MOVIE".equals(type)) {
-            categories.add(exploreShelf(type, "newest", "Newest Releases", MovieListType.RECENT, cached, published));
-            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
-            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
-            categories.add(exploreShelf(type, "upcoming", "Upcoming Movies", MovieListType.UPCOMING, cached, published));
+            categories.add(exploreShelf(type, "newest", "Newest Releases", MovieListType.RECENT, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Movies", MovieListType.UPCOMING, cached, published, excludedTmdbIds));
         } else if ("TV".equals(type)) {
-            categories.add(exploreShelf(type, "airing", "Currently Airing", MovieListType.CURRENTLY_AIRING, cached, published));
-            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
-            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
-            categories.add(exploreShelf(type, "upcoming", "Upcoming Series", MovieListType.UPCOMING, cached, published));
+            categories.add(exploreShelf(type, "airing", "Currently Airing", MovieListType.CURRENTLY_AIRING, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Series", MovieListType.UPCOMING, cached, published, excludedTmdbIds));
         } else {
-            categories.add(exploreShelf(type, "current-season", "Current Season Hits", MovieListType.CURRENTLY_AIRING, cached, published));
-            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published));
-            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published));
-            categories.add(exploreShelf(type, "upcoming", "Upcoming Anime Series", MovieListType.UPCOMING, cached, published));
+            categories.add(exploreShelf(type, "current-season", "Current Season Hits", MovieListType.CURRENTLY_AIRING, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "popular", "Popular & well rated", MovieListType.POPULAR, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "top-rated", "Top Rated", MovieListType.TOP_RATED, cached, published, excludedTmdbIds));
+            categories.add(exploreShelf(type, "upcoming", "Upcoming Anime Series", MovieListType.UPCOMING, cached, published, excludedTmdbIds));
         }
         return SuggestionsResponse.builder().categories(categories).build();
     }
 
     private SuggestionCategoryResponse exploreShelf(String mediaType, String id, String title,
             MovieListType listType, List<CachedMovieList> cached,
-            Map<MovieListType, DiscoverySnapshot> published) {
+            Map<MovieListType, DiscoverySnapshot> published, Set<Long> excludedTmdbIds) {
         DiscoverySnapshot snapshot = published.get(listType);
         if (snapshot == null) return SuggestionCategoryResponse.builder().id(id).title(title)
-                .state("UNAVAILABLE").movies(List.of()).build();
+                .state("UNAVAILABLE").movies(List.of()).hasMore(false).totalEligibleInPool(0).build();
         Duration age = Duration.between(snapshot.getUpdatedAt(), LocalDateTime.now(ZoneOffset.UTC));
         if (age.compareTo(Duration.ofDays(7)) > 0) return SuggestionCategoryResponse.builder()
                 .id(id).title(title).state("UNAVAILABLE").updatedAt(snapshot.getUpdatedAt() + "Z")
-                .movies(List.of()).build();
-        List<SuggestionMovieItem> items = mapCachedItems(cached.stream()
-                .filter(item -> item.getListType() == listType).toList(), mediaType);
+                .movies(List.of()).hasMore(false).totalEligibleInPool(0).build();
+        List<CachedMovieList> filtered = cached.stream()
+                .filter(item -> item.getListType() == listType)
+                .filter(item -> !excludedTmdbIds.contains(item.getTmdbId()))
+                .toList();
+        List<SuggestionMovieItem> items = mapCachedItems(filtered, mediaType);
+        List<SuggestionMovieItem> previewItems = items.stream().limit(20).toList();
+        boolean hasMore = items.size() > 20;
         return SuggestionCategoryResponse.builder().id(id).title(title)
-                .state(age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : items.isEmpty() ? "EMPTY" : "READY")
-                .updatedAt(snapshot.getUpdatedAt() + "Z").movies(items).build();
+                .state(age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : previewItems.isEmpty() ? "EMPTY" : "READY")
+                .updatedAt(snapshot.getUpdatedAt() + "Z").movies(previewItems)
+                .hasMore(hasMore)
+                .totalEligibleInPool(items.size())
+                .build();
     }
+
+
 
     private List<SuggestionMovieItem> mapCachedItems(List<CachedMovieList> list, String mediaType) {
         Set<Long> seen = new HashSet<>();
@@ -219,13 +235,7 @@ public class SuggestionService {
                 .collect(Collectors.toList());
     }
 
-    private String normalizeMediaType(String type) {
-        if (type == null) return "MOVIE";
-        String s = type.trim().toUpperCase();
-        if (s.contains("TV") || s.contains("SERIES")) return "TV";
-        if (s.contains("ANIME")) return "ANIME";
-        return "MOVIE";
-    }
+
 
     private Integer parseYear(String releaseDate) {
         if (releaseDate == null || releaseDate.length() < 4) return null;

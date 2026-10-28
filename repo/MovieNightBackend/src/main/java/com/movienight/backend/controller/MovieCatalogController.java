@@ -19,14 +19,39 @@ public class MovieCatalogController {
 
     private final MovieCatalogLookupService movieCatalogLookupService;
     private final com.movienight.backend.service.SuggestionService suggestionService;
+    private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
 
     /**
      * Get explore catalog shelves for a specific media type (movies, tv, anime).
      * Example: GET /api/movies/explore/movies
      */
     @GetMapping("/explore/{mediaType}")
-    public ResponseEntity<com.movienight.backend.dto.SuggestionsResponse> getExploreMedia(@PathVariable String mediaType) {
-        return ResponseEntity.ok(suggestionService.getExploreMedia(mediaType));
+    public ResponseEntity<com.movienight.backend.dto.SuggestionsResponse> getExploreMedia(
+            @PathVariable String mediaType,
+            org.springframework.security.core.Authentication authentication
+    ) {
+        String username = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(suggestionService.getExploreMedia(mediaType, username));
+    }
+
+    /**
+     * Get paginated Explore category items with pinned session and server sorting/filtering.
+     * Example: GET /api/movies/explore/movies/popular
+     */
+    @GetMapping("/explore/{mediaType}/{category}")
+    public ResponseEntity<com.movienight.backend.dto.ExploreCategoryPageResponse> getExploreCategory(
+            @PathVariable String mediaType,
+            @PathVariable String category,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false, defaultValue = "0") Integer cursor,
+            @RequestParam(required = false, defaultValue = "20") Integer limit,
+            @RequestParam(required = false, defaultValue = "recommendation") String sortBy,
+            @RequestParam(required = false, defaultValue = "0") Integer minRating,
+            org.springframework.security.core.Authentication authentication
+    ) {
+        String username = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(exploreSessionManager.getCategoryPage(
+                username, mediaType, category, sessionId, cursor, limit, sortBy, minRating));
     }
 
     /**

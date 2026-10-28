@@ -139,28 +139,59 @@ public class SuggestionScheduler {
         SeasonRange season = getCurrentSeasonRange(today);
         if ("MOVIE".equals(type)) {
             switch (listType) {
-                case RECENT -> refreshMovieCategory(type, listType, "popularity.desc", 10, today.minusDays(90).toString(), now, 3);
-                case POPULAR -> refreshMovieCategory(type, listType, "popularity.desc", 200, null, now, 3);
-                case TOP_RATED -> refreshMovieCategory(type, listType, "vote_average.desc", 1000, null, now, 3);
-                case UPCOMING -> refreshMovieCategory(type, listType, "popularity.desc", 0, today.plusDays(1).toString(), nextYear, 3);
+                case RECENT -> refreshMovieCategory(type, listType, "popularity.desc", 10, today.minusDays(90).toString(), now, 10);
+                case POPULAR -> refreshMovieCategory(type, listType, "popularity.desc", 200, null, now, 10);
+                case TOP_RATED -> refreshMovieCategory(type, listType, "vote_average.desc", 1000, null, now, 10);
+                case UPCOMING -> refreshMovieCategory(type, listType, "popularity.desc", 0, today.plusDays(1).toString(), nextYear, 10);
                 default -> throw new IllegalArgumentException("Invalid movie shelf");
             }
         } else if ("TV".equals(type) || "ANIME".equals(type)) {
             int votes = listType == MovieListType.TOP_RATED ? ("TV".equals(type) ? 500 : 200)
                     : listType == MovieListType.POPULAR ? ("TV".equals(type) ? 100 : 50) : 0;
             if (listType == MovieListType.CURRENTLY_AIRING && "TV".equals(type)) {
-                refreshTvOnTheAirCategory(type, listType, 3);
+                refreshTvOnTheAirCategory(type, listType, 10);
             } else if (listType == MovieListType.CURRENTLY_AIRING) {
                 refreshTvCategory(type, listType, "popularity.desc", 5, null, now,
-                        season.start, season.end, "16", null, 3);
+                        season.start, season.end, "16", null, 10);
             } else if (listType == MovieListType.POPULAR || listType == MovieListType.TOP_RATED) {
                 refreshTvCategory(type, listType, listType == MovieListType.POPULAR ? "popularity.desc" : "vote_average.desc",
-                        votes, null, now, null, null, "ANIME".equals(type) ? "16" : null, null, 3);
+                        votes, null, now, null, null, "ANIME".equals(type) ? "16" : null, null, 10);
             } else if (listType == MovieListType.UPCOMING) {
                 refreshTvCategory(type, listType, "popularity.desc", 0, today.plusDays(1).toString(),
-                        nextYear, null, null, "ANIME".equals(type) ? "16" : null, null, 3);
+                        nextYear, null, null, "ANIME".equals(type) ? "16" : null, null, 10);
             } else throw new IllegalArgumentException("Invalid series shelf");
         } else throw new IllegalArgumentException("Invalid media type");
+    }
+
+    public static class CategoryPublicationMeta {
+        private final String mediaType;
+        private final MovieListType listType;
+        private final boolean selectionLimitReached;
+        private final boolean providerExhausted;
+        private final LocalDateTime publishedAt;
+
+        public CategoryPublicationMeta(String mediaType, MovieListType listType,
+                                       boolean selectionLimitReached, boolean providerExhausted,
+                                       LocalDateTime publishedAt) {
+            this.mediaType = mediaType;
+            this.listType = listType;
+            this.selectionLimitReached = selectionLimitReached;
+            this.providerExhausted = providerExhausted;
+            this.publishedAt = publishedAt;
+        }
+
+        public String getMediaType() { return mediaType; }
+        public MovieListType getListType() { return listType; }
+        public boolean isSelectionLimitReached() { return selectionLimitReached; }
+        public boolean isProviderExhausted() { return providerExhausted; }
+        public LocalDateTime getPublishedAt() { return publishedAt; }
+    }
+
+    private final Map<String, CategoryPublicationMeta> categoryPublicationMetaMap = new ConcurrentHashMap<>();
+
+    public CategoryPublicationMeta getPublicationMeta(String mediaType, MovieListType listType) {
+        String key = (mediaType != null ? mediaType.toUpperCase() : "") + ":" + listType;
+        return categoryPublicationMetaMap.get(key);
     }
 
     private void refreshMovieCategory(
@@ -173,16 +204,24 @@ public class SuggestionScheduler {
             int maxPages
     ) {
         List<TmdbSearchResponse.TmdbMovieSummary> candidates = new ArrayList<>();
+        boolean hitBoundOnAnyStream = false;
         for (String source : sources(listType, sortBy)) {
+            boolean streamEnded = false;
             for (int page = 1; page <= maxPages; page++) {
                 List<TmdbSearchResponse.TmdbMovieSummary> results = tmdbClient.discoverMovies(
                         source, minVotes, releaseDateGte, releaseDateLte, page);
                 if (results == null) throw new IllegalStateException("Invalid discovery response");
-                if (results.isEmpty()) break;
+                if (results.isEmpty()) {
+                    streamEnded = true;
+                    break;
+                }
                 candidates.addAll(results);
             }
+            if (!streamEnded) {
+                hitBoundOnAnyStream = true;
+            }
         }
-        publish(mediaType, listType, minVotes, candidates);
+        publish(mediaType, listType, minVotes, candidates, hitBoundOnAnyStream, !hitBoundOnAnyStream);
     }
 
     private void refreshTvCategory(
@@ -199,18 +238,26 @@ public class SuggestionScheduler {
             int maxPages
     ) {
         List<TmdbSearchResponse.TmdbMovieSummary> candidates = new ArrayList<>();
+        boolean hitBoundOnAnyStream = false;
         for (String source : sources(listType, sortBy)) {
+            boolean streamEnded = false;
             for (int page = 1; page <= maxPages; page++) {
                 List<TmdbSearchResponse.TmdbMovieSummary> results = tmdbClient.discoverTv(
                         source, minVotes, firstAirDateGte, firstAirDateLte, airDateGte, airDateLte,
                         withGenres, withOriginalLanguage, page);
                 if (results == null) throw new IllegalStateException("Invalid discovery response");
-                if (results.isEmpty()) break;
+                if (results.isEmpty()) {
+                    streamEnded = true;
+                    break;
+                }
                 results.forEach(item -> item.setMediaType("tv"));
                 candidates.addAll(results);
             }
+            if (!streamEnded) {
+                hitBoundOnAnyStream = true;
+            }
         }
-        publish(mediaType, listType, minVotes, candidates);
+        publish(mediaType, listType, minVotes, candidates, hitBoundOnAnyStream, !hitBoundOnAnyStream);
     }
 
     private List<String> sources(MovieListType listType, String defaultSort) {
@@ -219,7 +266,8 @@ public class SuggestionScheduler {
     }
 
     private void publish(String mediaType, MovieListType listType, int minimumVotes,
-                         List<TmdbSearchResponse.TmdbMovieSummary> candidates) {
+                         List<TmdbSearchResponse.TmdbMovieSummary> candidates,
+                         boolean selectionLimitReached, boolean providerExhausted) {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         Map<Long, TmdbSearchResponse.TmdbMovieSummary> unique = new LinkedHashMap<>();
         for (TmdbSearchResponse.TmdbMovieSummary item : candidates) {
@@ -262,8 +310,11 @@ public class SuggestionScheduler {
         cachedMovieListRepository.saveAll(entries);
         DiscoverySnapshot snapshot = discoverySnapshotRepository.findByMediaTypeAndListType(mediaType, listType)
                 .orElseGet(() -> DiscoverySnapshot.builder().mediaType(mediaType).listType(listType).build());
-        snapshot.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        snapshot.setUpdatedAt(now);
         discoverySnapshotRepository.save(snapshot);
+        categoryPublicationMetaMap.put(mediaType + ":" + listType,
+                new CategoryPublicationMeta(mediaType, listType, selectionLimitReached, providerExhausted, now));
         log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
     }
 
@@ -278,14 +329,19 @@ public class SuggestionScheduler {
 
     private void refreshTvOnTheAirCategory(String mediaType, MovieListType listType, int maxPages) {
         List<TmdbSearchResponse.TmdbMovieSummary> candidates = new ArrayList<>();
+        boolean streamEnded = false;
         for (int page = 1; page <= maxPages; page++) {
             List<TmdbSearchResponse.TmdbMovieSummary> pageResults = tmdbClient.getTvOnTheAir(page);
             if (pageResults == null) throw new IllegalStateException("Invalid discovery response");
-            if (pageResults.isEmpty()) break;
+            if (pageResults.isEmpty()) {
+                streamEnded = true;
+                break;
+            }
             pageResults.forEach(item -> item.setMediaType("tv"));
             candidates.addAll(pageResults);
         }
-        publish(mediaType, listType, 0, candidates);
+        boolean hitBound = !streamEnded;
+        publish(mediaType, listType, 0, candidates, hitBound, !hitBound);
     }
 
     private static class SeasonRange {

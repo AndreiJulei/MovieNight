@@ -47,6 +47,9 @@ class SuggestionControllerTest {
     @Mock
     private com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
 
+    @Mock
+    private com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
+
     @InjectMocks
     private SuggestionController suggestionController;
 
@@ -163,7 +166,7 @@ class SuggestionControllerTest {
                 ))
                 .build();
 
-        when(suggestionService.getExploreMedia("movies")).thenReturn(response);
+        when(suggestionService.getExploreMedia("movies", "john@example.com")).thenReturn(response);
 
         mockMvc.perform(get("/api/suggestions/explore/movies")
                         .principal(mockPrincipal)

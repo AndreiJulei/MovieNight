@@ -25,6 +25,7 @@ public class SuggestionController {
     private final PersonalizedRecommendationService personalizedRecommendationService;
     private final UserRepository userRepository;
     private final com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
+    private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
 
     /**
      * Get all suggestion category rows for the authenticated user.
@@ -54,8 +55,31 @@ public class SuggestionController {
      * Get explore shelves for a media type (movies, tv, anime).
      */
     @GetMapping("/explore/{mediaType}")
-    public ResponseEntity<SuggestionsResponse> getExploreMedia(@PathVariable String mediaType) {
-        return ResponseEntity.ok(suggestionService.getExploreMedia(mediaType));
+    public ResponseEntity<SuggestionsResponse> getExploreMedia(
+            @PathVariable String mediaType,
+            Authentication authentication
+    ) {
+        String username = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(suggestionService.getExploreMedia(mediaType, username));
+    }
+
+    /**
+     * Get paginated Explore category items with pinned session and server sorting/filtering.
+     */
+    @GetMapping("/explore/{mediaType}/{category}")
+    public ResponseEntity<com.movienight.backend.dto.ExploreCategoryPageResponse> getExploreCategory(
+            @PathVariable String mediaType,
+            @PathVariable String category,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false, defaultValue = "0") Integer cursor,
+            @RequestParam(required = false, defaultValue = "20") Integer limit,
+            @RequestParam(required = false, defaultValue = "recommendation") String sortBy,
+            @RequestParam(required = false, defaultValue = "0") Integer minRating,
+            Authentication authentication
+    ) {
+        String username = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(exploreSessionManager.getCategoryPage(
+                username, mediaType, category, sessionId, cursor, limit, sortBy, minRating));
     }
 
     /**
@@ -69,8 +93,11 @@ public class SuggestionController {
     }
 
     @PostMapping("/explore/{mediaType}/{category}/refresh")
-    public ResponseEntity<SuggestionsResponse> refreshExploreCategory(@PathVariable String mediaType,
-                                                                       @PathVariable String category) {
+    public ResponseEntity<SuggestionsResponse> refreshExploreCategory(
+            @PathVariable String mediaType,
+            @PathVariable String category,
+            Authentication authentication
+    ) {
         String type = switch (mediaType.trim().toUpperCase()) {
             case "MOVIE", "MOVIES" -> "MOVIE";
             case "TV", "SERIES" -> "TV";
@@ -86,7 +113,9 @@ public class SuggestionController {
             default -> throw new IllegalArgumentException("Unknown discovery category");
         };
         suggestionScheduler.refreshCategory(type, listType);
-        return ResponseEntity.ok(suggestionService.getExploreMedia(type));
+        exploreSessionManager.onCategoryRebuilt(type, listType);
+        String username = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(suggestionService.getExploreMedia(type, username));
     }
 
     /**

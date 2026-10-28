@@ -54,6 +54,9 @@ class SuggestionServiceTest {
     @Mock
     private SuggestionScheduler suggestionScheduler;
 
+    @Mock
+    private UserLibraryExclusionService userLibraryExclusionService;
+
     @InjectMocks
     private SuggestionService suggestionService;
 
@@ -61,6 +64,15 @@ class SuggestionServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(userLibraryExclusionService.getExcludedTmdbIds(any(), any())).thenReturn(Collections.emptySet());
+        lenient().when(userLibraryExclusionService.normalizeMediaType(any())).thenAnswer(call -> {
+            String s = call.getArgument(0);
+            if (s == null) return "MOVIE";
+            String up = s.trim().toUpperCase();
+            if (up.contains("TV") || up.contains("SERIES")) return "TV";
+            if (up.contains("ANIME")) return "ANIME";
+            return "MOVIE";
+        });
         testUser = User.builder()
                 .id(1L)
                 .username("john@example.com")

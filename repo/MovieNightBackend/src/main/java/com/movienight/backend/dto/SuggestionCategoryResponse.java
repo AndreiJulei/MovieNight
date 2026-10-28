@@ -18,4 +18,6 @@ public class SuggestionCategoryResponse {
     private String state;
     private List<String> limitations;
     private String updatedAt;
+    private Boolean hasMore;
+    private Integer totalEligibleInPool;
 }
