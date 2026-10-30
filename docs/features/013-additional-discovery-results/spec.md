@@ -1,6 +1,6 @@
 # Additional discovery results
 
-Status: Implemented; local Ticket 3 verification updated on 2026-10-30.
+Status: Implemented; local Ticket 4 verification updated on 2026-10-30.
 Roadmap: 9c (Additional discovery results). Product requirements: P18/P19;
 preserve P01/P09/P11/P12/P16/P17/P20 and privacy.
 GitHub issue: not published.
@@ -264,3 +264,56 @@ providers, hosted behavior, or account switching between two real accounts.
 Sorted-control restoration is exercised on desktop; the lifetime regression
 runs on desktop and mobile. Standards and Spec review found no remaining
 actionable issue in the lifetime fix.
+
+### Ticket 4 freshness, snapshots, terminal states, and provenance — 2026-10-30
+
+Tested revision: `b0ab321` plus the reviewed Ticket 4 working tree on
+`feat/013-additional-discovery-results`.
+
+Scope and verification (including review findings resolution):
+- Spec Finding 11 (Q10) & Spec Finding 1: In `ExploreContentPage.tsx`, `SuggestionService.java`,
+  and `SuggestionCategoryResponse.java`, shelf-level and category-grid terminal state
+  notices and explanations (`ALL_CANDIDATES_EXCLUDED_BY_LIBRARY`, `NO_MATCHING_UNSAVED_TITLES`,
+  provider bounds) render authoritatively even when `movies.length === 0`.
+- Spec Finding 2 & Legacy Snapshots: In `ExploreSessionManager.java` and `SuggestionService.java`,
+  when publication metadata is absent (legacy snapshot), unknown provenance is preserved
+  (`underlyingLimit: null`), preventing false claims of `PROVIDER_EXHAUSTED`.
+- Spec Finding 3: In `useSuggestions.ts`, client provenance avoids inferring provider bounds
+  from preview pagination `hasMore`, preserving authoritative backend provenance.
+- Spec Finding 4 (Q12) & Spec Finding 1 (Expired Session Retention & Confirmed Save Pruning): In `useExploreCategory.ts`,
+  storage purge is strictly scoped to `UNAVAILABLE` and >7-day snapshots (`isSnapshotUnavailable`).
+  Removed `!current.sessionId` from `persistSessionSnapshot` so saving a retained card in an
+  expired session (`sessionId: null`) prunes the card while keeping the snapshot in `sessionStorage`,
+  retaining loaded results across repeated details-and-back visits (Q6).
+- Spec Finding 2 (Q10 Preview vs Pool Provenance): In `useSuggestions.ts` and `ExploreContentPage.tsx`,
+  empty shelf previews only set `ALL_CANDIDATES_EXCLUDED_BY_LIBRARY` when `!category.hasMore`.
+  When `hasMore` is true, the shelf clarifies that preview titles are in the library and directs
+  users to explore the full category, preventing false claims of total pool exhaustion.
+- Spec Finding 3 (Q12 Mounted Snapshot Expiration): In `useExploreCategory.ts` and `useSuggestions.ts`,
+  snapshot age is rechecked on window focus, visibility change, and an exact-expiration timer while
+  mounted. When snapshot age exceeds 7 days, cards are immediately emptied, the explicit UNAVAILABLE
+  retry state is presented, and storage is purged throughout the session.
+- Spec Finding 5: In `recalculateFreshness`, explicit `UNAVAILABLE` state is preserved with
+  cleared cards even when `updatedAt` is recent.
+- Standards Finding: In `useExploreCategory.ts`, extracted `pruneAndTransitionLibraryMovies`
+  to deduplicate library pruning and terminal provenance transitions across `removeMovie`,
+  `handleFocus`, and store update effects.
+- Database Schema Boundary: Sessions and publication metadata remain in-memory; no database
+  migrations or schema alterations were made, adhering to the ticket boundary and avoiding
+  PostgreSQL upgrade requirements.
+- Spec Finding 12 (DR05): In `ExploreSessionManager.java`, bounded 10-page limits
+  (`SELECTION_LIMIT_REACHED`) are accurately distinguished from provider exhaustion
+  (`PROVIDER_EXHAUSTED`), and underlying limit provenance is preserved when library
+  exclusions or filter criteria modify the primary terminal reason.
+
+Checks run for Ticket 4:
+- `cd repo/MovieNightFrontend && npx tsc --noEmit`: passed with 0 errors.
+- `cd repo/MovieNightFrontend && npm run build`: passed production Vite build.
+- `cd repo/MovieNightBackend && ./mvnw test -Dtest=AdditionalDiscoveryPersistenceTest`:
+  passed with 9 tests, 0 failures, 0 errors.
+- Full backend suite: `cd repo/MovieNightBackend && ./mvnw -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar test`:
+  passed with 147 tests, 0 failures, 0 errors, 2 opt-in live-provider skips.
+- `node --check repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`: passed.
+- Playwright browser test: `MOVIENIGHT_PLAYWRIGHT_MODULE=/Users/juv/.npm/_npx/9833c18b2d85bc59/node_modules/playwright node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`:
+  passed with Chrome 156 at 1440×900 and 390×844 viewports.
+- `git diff --check`: passed with 0 whitespace issues.
