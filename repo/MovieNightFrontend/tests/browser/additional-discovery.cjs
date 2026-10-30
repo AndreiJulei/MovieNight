@@ -37,19 +37,21 @@ function makeMovie(id, title, rating = 7.5, year = 2022) {
 }
 
 function makeExploreRows() {
+  const now = new Date().toISOString();
   return {
     categories: [
-      { id: 'newest', title: 'Newest Releases', state: 'READY', movies: [makeMovie(101, 'New Movie 1')] },
+      { id: 'newest', title: 'Newest Releases', state: 'READY', updatedAt: now, movies: [makeMovie(101, 'New Movie 1')] },
       {
         id: 'popular',
         title: 'Popular & well rated',
         state: 'READY',
+        updatedAt: now,
         hasMore: true,
         totalEligibleInPool: 45,
         movies: Array.from({ length: 6 }, (_, i) => makeMovie(200 + i, `Popular Movie ${i + 1}`, 7.5 + (i % 3) * 0.5)),
       },
-      { id: 'top-rated', title: 'Top Rated', state: 'READY', movies: [makeMovie(301, 'Top Movie 1', 9.0)] },
-      { id: 'upcoming', title: 'Upcoming Movies', state: 'READY', movies: [makeMovie(401, 'Upcoming Movie 1')] },
+      { id: 'top-rated', title: 'Top Rated', state: 'READY', updatedAt: now, movies: [makeMovie(301, 'Top Movie 1', 9.0)] },
+      { id: 'upcoming', title: 'Upcoming Movies', state: 'READY', updatedAt: now, movies: [makeMovie(401, 'Upcoming Movie 1')] },
     ],
   };
 }
@@ -528,6 +530,35 @@ async function testAdditionalDiscovery(browser, viewport) {
     await refreshBtn.waitFor();
     assert(await refreshBtn.isVisible(), 'Refresh discovery button offered on expired session');
 
+    // Spec Finding 1 / Finding 1: Verify expired-session restoration does NOT purge sessionStorage
+    // and saving a retained card prunes it while preserving storage for repeated returns
+    assert(await page.evaluate(() => sessionStorage.getItem('explore_session_movies_popular') !== null), 'Expired session retains storage for multiple details-and-back visits');
+    const secondCard = cards.nth(1);
+    await secondCard.click();
+    // Save this retained card to watchlist from details view
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/api/movies/library') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: '+ Add to Watchlist', exact: true }).click(),
+    ]);
+    const backBtnFromSecondCard = page.getByRole('button', { name: /Back to/i });
+    await backBtnFromSecondCard.waitFor();
+    await backBtnFromSecondCard.click();
+    await page.getByRole('heading', { name: /Popular & well rated/i }).waitFor();
+    assert.equal(await cards.count(), 19, 'Saving a retained card removes it from expired view');
+    assert(await page.evaluate(() => sessionStorage.getItem('explore_session_movies_popular') !== null), 'Saving a retained card does NOT delete the expired snapshot from storage');
+    await page.getByText(/Discovery session expired. Refresh discovery to continue./i).waitFor();
+
+    // Return to details of a third card and back: verify remaining 19 cards and storage remain intact
+    const thirdCard = cards.nth(1);
+    await thirdCard.click();
+    const backBtnFromThirdCard = page.getByRole('button', { name: /Back to/i });
+    await backBtnFromThirdCard.waitFor();
+    await backBtnFromThirdCard.click();
+    await page.getByRole('heading', { name: /Popular & well rated/i }).waitFor();
+    assert.equal(await cards.count(), 19, 'Second details-and-back visit after saving still retains remaining loaded results');
+    assert(await page.evaluate(() => sessionStorage.getItem('explore_session_movies_popular') !== null), 'Storage remains intact across subsequent visits');
+    await page.getByText(/Discovery session expired. Refresh discovery to continue./i).waitFor();
+
       // Test failed Refresh preserves cards and details-and-back restoration (Q6)
       let failRefresh = true;
       await page.route('**/api/suggestions/explore/**/refresh*', (route) => {
@@ -540,7 +571,7 @@ async function testAdditionalDiscovery(browser, viewport) {
 
       await refreshBtn.click();
       await page.getByText(/Controlled refresh failure|Could not refresh discovery/i).waitFor();
-      assert.equal(await cards.count(), 20, 'Failed refresh retains visible cards');
+      assert.equal(await cards.count(), 19, 'Failed refresh retains visible cards');
 
       // Navigate to details of a card and back: verify cards are restored after failed refresh
       const testCard = cards.first();
@@ -549,7 +580,7 @@ async function testAdditionalDiscovery(browser, viewport) {
       await backBtnFromFailedRefresh.waitFor();
       await backBtnFromFailedRefresh.click();
       await page.getByRole('heading', { name: /Popular & well rated/i }).waitFor();
-      assert.equal(await cards.count(), 20, 'Details-and-back restores cards even after failed refresh');
+      assert.equal(await cards.count(), 19, 'Details-and-back restores cards even after failed refresh');
 
       // Now click refresh/retry which succeeds and replaces with new recovered pool
       const retryRefreshBtn = page.getByRole('button', { name: /(Retry|Refresh discovery)/i });
@@ -557,6 +588,125 @@ async function testAdditionalDiscovery(browser, viewport) {
       await retryRefreshBtn.click();
       await page.waitForFunction(() => document.querySelectorAll('main a[href*="2001"]').length > 0);
       assert.equal(await cards.count(), 20, 'Recovered from expired session via Refresh discovery');
+
+    // 10b. Test: Terminal explanation and empty state when all candidates are excluded by library (Spec Finding 11)
+    await page.route('**/api/movies/explore/movies/top-rated*', (route) => {
+      return route.fulfill({
+        json: {
+          sessionId: 'sess-toprated-all-saved',
+          cursor: 0,
+          hasMore: false,
+          totalEligibleInPool: 0,
+          title: 'Top Rated',
+          subtitle: 'Acclaimed films with high ratings',
+          state: 'READY',
+          updatedAt: new Date().toISOString(),
+          terminalReason: 'ALL_CANDIDATES_EXCLUDED_BY_LIBRARY',
+          underlyingLimit: 'SELECTION_LIMIT_REACHED',
+          movies: [],
+        },
+      });
+    });
+
+    await page.evaluate(() => window.__navigate('/explore/movies/top-rated'));
+    await page.getByRole('heading', { name: /Top Rated/i }).waitFor();
+    await page.getByText(/All titles in this category are already in your watchlist or watched history/i).waitFor();
+    await page.getByText(/All candidate titles are already in your library/i).waitFor();
+    await page.getByText(/Provider selection limit reached/i).waitFor();
+
+    // Verify shelf overview reflects authoritative terminalReason when !hasMore,
+    // distinguishes empty preview with hasMore (Spec Finding 1, Finding 2),
+    // and continuously visible shelf enforces 7-day expiration timer without focus events (Q12)
+    await page.route('**/api/movies/explore/movies', (route) => {
+      const rows = makeExploreRows();
+      const topRatedShelf = rows.categories.find((c) => c.id === 'top-rated');
+      if (topRatedShelf) {
+        topRatedShelf.movies = [];
+        topRatedShelf.hasMore = false;
+        topRatedShelf.terminalReason = 'ALL_CANDIDATES_EXCLUDED_BY_LIBRARY';
+        topRatedShelf.underlyingLimit = 'SELECTION_LIMIT_REACHED';
+      }
+      const upcomingShelf = rows.categories.find((c) => c.id === 'upcoming');
+      if (upcomingShelf) {
+        upcomingShelf.movies = [];
+        upcomingShelf.hasMore = true;
+        upcomingShelf.terminalReason = null;
+      }
+      const popShelf = rows.categories.find((c) => c.id === 'popular');
+      if (popShelf) {
+        popShelf.updatedAt = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000 - 600)).toISOString();
+        popShelf.movies = [makeMovie(9901, 'Expiring Shelf Movie')];
+      }
+      return route.fulfill({ json: rows });
+    });
+    await page.evaluate(() => window.__navigate('/explore/movies'));
+    await page.getByRole('heading', { name: 'Movies', exact: true }).waitFor();
+    await page.getByText(/All candidate titles in this shelf are already in your library/i).waitFor();
+    await page.getByText(/Preview titles are in your library. Explore category to see more./i).waitFor();
+    await page.getByText(/Provider selection limit reached/i).waitFor();
+    await page.getByRole('link', { name: 'Expiring Shelf Movie' }).first().waitFor();
+
+    // Without user focus or interaction, timer fires once 7-day boundary passes and clears expiring shelf cards
+    await page.waitForTimeout(800);
+    await page.waitForFunction(() => !document.body.innerText.includes('Expiring Shelf Movie'));
+
+    // 10c. Test: Snapshot older than 7 days / UNAVAILABLE renders explicit unavailable state with retry (Spec Finding 4)
+    await page.route('**/api/movies/explore/movies/upcoming*', (route) => {
+      return route.fulfill({
+        json: {
+          sessionId: 'sess-upcoming-unavailable',
+          cursor: 0,
+          hasMore: false,
+          totalEligibleInPool: 0,
+          title: 'Upcoming Movies',
+          subtitle: 'Upcoming releases',
+          state: 'UNAVAILABLE',
+          updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+          terminalReason: 'UNAVAILABLE',
+          movies: [],
+        },
+      });
+    });
+
+    await page.evaluate(() => window.__navigate('/explore/movies/upcoming'));
+    await page.getByRole('heading', { name: /Upcoming Movies/i }).waitFor();
+    await page.getByRole('alert').filter({ hasText: /Discovery is unavailable. Retry this category./i }).waitFor();
+    const retryUnavailableBtn = page.getByRole('button', { name: /Retry discovery/i });
+    await retryUnavailableBtn.waitFor();
+    assert(await retryUnavailableBtn.isVisible(), 'Retry discovery button visible in unavailable state');
+    assert.equal(
+      await page.evaluate(() => sessionStorage.getItem('explore_session_movies_upcoming')),
+      null,
+      'Unavailable session is never persisted in sessionStorage'
+    );
+
+    // Test: Mounted category rechecks snapshot age on focus / visibility change / timer (Q12 / Finding 3)
+    // Snapshot opened 800ms before reaching 7-day staleness boundary
+    await page.route('**/api/movies/explore/movies/airing*', (route) => {
+      return route.fulfill({
+        json: {
+          sessionId: 'sess-airing-fresh',
+          cursor: 0,
+          hasMore: false,
+          totalEligibleInPool: 5,
+          title: 'Currently Airing',
+          subtitle: 'Airing now',
+          state: 'READY',
+          updatedAt: new Date(Date.now() - (7 * 24 * 60 * 60 * 1000 - 800)).toISOString(),
+          movies: Array.from({ length: 5 }, (_, i) => makeMovie(3001 + i, `Airing Movie ${i + 1}`)),
+        },
+      });
+    });
+    await page.evaluate(() => window.__navigate('/explore/movies/airing'));
+    await page.getByRole('heading', { name: /Currently Airing/i }).waitFor();
+    assert.equal(await page.locator('main a[href*="/movies/"]').count(), 5, 'Initially renders 5 titles before 7-day limit');
+
+    // Wait for the mounted timer/focus to transition snapshot to unavailable once 7-day boundary passes
+    await page.waitForTimeout(900);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.getByRole('alert').filter({ hasText: /Discovery is unavailable. Retry this category./i }).waitFor({ timeout: 5000 });
+    assert.equal(await page.locator('main a[href*="/movies/"]').count(), 0, 'Cards cleared when snapshot exceeds 7 days');
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('explore_session_movies_airing')), null, 'Storage purged when snapshot exceeds 7 days');
 
     // 11. Invalidate and purge stored explore sessions from sessionStorage on logout
     assert(await page.evaluate(() => sessionStorage.getItem('explore_session_movies_popular') !== null), 'Explore session present before logout');

@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type AnchorHTMLAttributes,
@@ -36,6 +37,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     setLoc(to);
     setNavState(opts?.state);
     if (typeof window !== "undefined") {
+      (window as any).__navigate = navigate;
       if (!opts?.preserveScroll) {
         window.scrollTo(0, 0);
       }
@@ -48,6 +50,12 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__navigate = navigate;
+    }
+  }, [navigate]);
 
   const value = useMemo(() => {
     const [path, query = ""] = loc.split("?");
