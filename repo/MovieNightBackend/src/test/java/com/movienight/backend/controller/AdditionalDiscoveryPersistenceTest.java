@@ -480,6 +480,74 @@ class AdditionalDiscoveryPersistenceTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.movies", hasSize(0)))
                 .andExpect(jsonPath("$.hasMore").value(false))
-                .andExpect(jsonPath("$.terminalReason").value("NO_MATCHING_UNSAVED_TITLES"));
+                .andExpect(jsonPath("$.terminalReason").value("NO_MATCHING_UNSAVED_TITLES"))
+                .andExpect(jsonPath("$.underlyingLimit").value("PROVIDER_EXHAUSTED"));
+
+        // 6. When all candidates in pool are saved to user library -> terminalReason: ALL_CANDIDATES_EXCLUDED_BY_LIBRARY
+        Movie m1 = movies.save(Movie.builder().tmdbId(6001L).mediaType("MOVIE").title("Zebra").build());
+        Movie m2 = movies.save(Movie.builder().tmdbId(6002L).mediaType("MOVIE").title("Apple").build());
+        Movie m3 = movies.save(Movie.builder().tmdbId(6003L).mediaType("MOVIE").title("Banana").build());
+        Movie m4 = movies.save(Movie.builder().tmdbId(6004L).mediaType("MOVIE").title("Low Rated").build());
+        userEntries.save(UserMovieEntry.builder().user(user).movie(m1).status(MovieStatus.WATCHLIST).build());
+        userEntries.save(UserMovieEntry.builder().user(user).movie(m2).status(MovieStatus.WATCHED).build());
+        userEntries.save(UserMovieEntry.builder().user(user).movie(m3).status(MovieStatus.WATCHLIST).build());
+        userEntries.save(UserMovieEntry.builder().user(user).movie(m4).status(MovieStatus.WATCHED).build());
+
+        mvc.perform(get("/api/movies/explore/movies/top-rated")
+                .param("sessionId", sessionId)
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies", hasSize(0)))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.terminalReason").value("ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"))
+                .andExpect(jsonPath("$.underlyingLimit").value("PROVIDER_EXHAUSTED"));
+
+        // 7. Shelf overview (/api/movies/explore/movies) also reports ALL_CANDIDATES_EXCLUDED_BY_LIBRARY and underlyingLimit
+        mvc.perform(get("/api/movies/explore/movies").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[?(@.id=='top-rated')].movies[0]").doesNotExist())
+                .andExpect(jsonPath("$.categories[?(@.id=='top-rated')].terminalReason").value(hasItem("ALL_CANDIDATES_EXCLUDED_BY_LIBRARY")))
+                .andExpect(jsonPath("$.categories[?(@.id=='top-rated')].underlyingLimit").value(hasItem("PROVIDER_EXHAUSTED")));
+    }
+
+    @Test
+    void legacySnapshotPreservesUnknownProvenanceWithoutFalselyClaimingExhaustion() throws Exception {
+        // Spec Finding 2: When publication metadata is absent (legacy snapshot), provenance is unknown (underlyingLimit: null).
+        // It must NOT falsely claim PROVIDER_EXHAUSTED.
+        context.getBean(SuggestionScheduler.class).clearPublicationMetaForTesting();
+
+        DiscoverySnapshot snapshot = snapshots.findByMediaTypeAndListType("MOVIE", MovieListType.POPULAR)
+                .orElseGet(() -> snapshots.save(DiscoverySnapshot.builder()
+                        .mediaType("MOVIE").listType(MovieListType.POPULAR)
+                        .updatedAt(LocalDateTime.now(ZoneOffset.UTC))
+                        .build()));
+        snapshot.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        snapshots.save(snapshot);
+
+        cache.deleteByMediaTypeAndListType("MOVIE", MovieListType.POPULAR);
+        cache.save(CachedMovieList.builder()
+                .mediaType("MOVIE").listType(MovieListType.POPULAR).tmdbId(7001L)
+                .title("Legacy Movie").rankOrder(1).voteAverage(8.0).voteCount(500)
+                .popularity(100.0).releaseDate(LocalDate.now(ZoneOffset.UTC).minusDays(1).toString()).build());
+
+        User user = users.save(User.builder().username("legacy-user-" + UUID.randomUUID()).password("p").build());
+        String token = createAuthToken(user);
+        var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+
+        // Save candidate to user library to trigger ALL_CANDIDATES_EXCLUDED_BY_LIBRARY
+        Movie movie = movies.save(Movie.builder().tmdbId(7001L).mediaType("MOVIE").title("Legacy Movie").build());
+        userEntries.save(UserMovieEntry.builder().user(user).movie(movie).status(MovieStatus.WATCHLIST).build());
+
+        // Explore category returns ALL_CANDIDATES_EXCLUDED_BY_LIBRARY, but underlyingLimit is null (not falsely PROVIDER_EXHAUSTED)
+        mvc.perform(get("/api/movies/explore/movies/popular").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.terminalReason").value("ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"))
+                .andExpect(jsonPath("$.underlyingLimit").doesNotExist());
+
+        // Shelf endpoint also reports ALL_CANDIDATES_EXCLUDED_BY_LIBRARY with null underlyingLimit
+        mvc.perform(get("/api/movies/explore/movies").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[?(@.id=='popular')].terminalReason").value(hasItem("ALL_CANDIDATES_EXCLUDED_BY_LIBRARY")))
+                .andExpect(jsonPath("$.categories[?(@.id=='popular')].underlyingLimit").value(hasItem(nullValue())));
     }
 }

@@ -194,6 +194,10 @@ public class SuggestionScheduler {
         return categoryPublicationMetaMap.get(key);
     }
 
+    public void clearPublicationMetaForTesting() {
+        categoryPublicationMetaMap.clear();
+    }
+
     private void refreshMovieCategory(
             String mediaType,
             MovieListType listType,

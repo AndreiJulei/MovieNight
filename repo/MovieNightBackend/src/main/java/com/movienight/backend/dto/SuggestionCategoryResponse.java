@@ -20,4 +20,6 @@ public class SuggestionCategoryResponse {
     private String updatedAt;
     private Boolean hasMore;
     private Integer totalEligibleInPool;
+    private String terminalReason;
+    private String underlyingLimit;
 }

@@ -169,8 +169,8 @@ public class ExploreSessionManager {
             }
 
             SuggestionScheduler.CategoryPublicationMeta meta = suggestionScheduler.getPublicationMeta(type, listType);
-            boolean hitBound = meta != null ? meta.isSelectionLimitReached() : false;
-            boolean providerEmpty = meta != null ? meta.isProviderExhausted() : true;
+            boolean hitBound = meta != null && meta.isSelectionLimitReached();
+            boolean providerEmpty = meta != null && meta.isProviderExhausted();
 
             boolean isAuthenticated = username != null && !username.isBlank();
             String newId = isAuthenticated ? UUID.randomUUID().toString() : null;
@@ -243,30 +243,34 @@ public class ExploreSessionManager {
         String terminalReason = null;
         String underlyingLimit = null;
         if (!hasMore) {
+            // Spec Finding 2: Preserve unknown provenance when metadata is absent; never falsely claim PROVIDER_EXHAUSTED
+            String providerLimit = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED"
+                    : (session.isProviderExhausted() ? "PROVIDER_EXHAUSTED" : null);
             if (batch.isEmpty() && effCursor == 0 && session.getCandidatePool().isEmpty()) {
-                terminalReason = session.isProviderExhausted() ? "PROVIDER_EXHAUSTED" : "SELECTION_LIMIT_REACHED";
+                terminalReason = providerLimit != null ? providerLimit : "NO_MATCHING_UNSAVED_TITLES";
             } else if (batch.isEmpty() && effCursor == 0) {
-                terminalReason = "NO_MATCHING_UNSAVED_TITLES";
-                underlyingLimit = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED" : "PROVIDER_EXHAUSTED";
+                boolean allInLibrary = !session.getCandidatePool().isEmpty() &&
+                        session.getCandidatePool().stream().allMatch(item -> finalExcludedIds.contains(item.getTmdbId()));
+                terminalReason = allInLibrary ? "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY" : "NO_MATCHING_UNSAVED_TITLES";
+                underlyingLimit = providerLimit;
             } else {
                 boolean hasFilteredOrSaved = session.getCandidatePool().stream()
                         .anyMatch(item -> (minRating != null && minRating > 0 && (item.getVoteAverage() == null || item.getVoteAverage() < minRating))
                                 || finalExcludedIds.contains(item.getTmdbId()));
                 if (nextCursorIndex >= pool.size() && !hasFilteredOrSaved) {
-                    terminalReason = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED" : "PROVIDER_EXHAUSTED";
-                } else if (hasFilteredOrSaved && nextCursorIndex < pool.size()) {
-                    terminalReason = "NO_MATCHING_UNSAVED_TITLES";
-                    underlyingLimit = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED" : "PROVIDER_EXHAUSTED";
-                } else if (hasFilteredOrSaved) {
-                    terminalReason = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED" : "PROVIDER_EXHAUSTED";
+                    terminalReason = providerLimit != null ? providerLimit : "NO_MATCHING_UNSAVED_TITLES";
                 } else {
-                    terminalReason = session.isSelectionLimitReached() ? "SELECTION_LIMIT_REACHED" : "PROVIDER_EXHAUSTED";
+                    boolean allInLibrary = !session.getCandidatePool().isEmpty() &&
+                            session.getCandidatePool().stream().allMatch(item -> finalExcludedIds.contains(item.getTmdbId()));
+                    terminalReason = allInLibrary ? "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY" : "NO_MATCHING_UNSAVED_TITLES";
+                    underlyingLimit = providerLimit;
                 }
             }
         }
 
         Duration age = Duration.between(session.getSnapshotUpdatedAt(), now);
-        String state = age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : totalEligible == 0 ? "EMPTY" : "READY";
+        String state = age.compareTo(Duration.ofDays(7)) > 0 ? "UNAVAILABLE"
+                : age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : totalEligible == 0 ? "EMPTY" : "READY";
 
         return ExploreCategoryPageResponse.builder()
                 .sessionId(session.getSessionId())

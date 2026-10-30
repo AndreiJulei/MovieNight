@@ -178,23 +178,50 @@ public class SuggestionService {
             Map<MovieListType, DiscoverySnapshot> published, Set<Long> excludedTmdbIds) {
         DiscoverySnapshot snapshot = published.get(listType);
         if (snapshot == null) return SuggestionCategoryResponse.builder().id(id).title(title)
-                .state("UNAVAILABLE").movies(List.of()).hasMore(false).totalEligibleInPool(0).build();
+                .state("UNAVAILABLE").movies(List.of()).hasMore(false).totalEligibleInPool(0)
+                .terminalReason("UNAVAILABLE")
+                .build();
         Duration age = Duration.between(snapshot.getUpdatedAt(), LocalDateTime.now(ZoneOffset.UTC));
         if (age.compareTo(Duration.ofDays(7)) > 0) return SuggestionCategoryResponse.builder()
                 .id(id).title(title).state("UNAVAILABLE").updatedAt(snapshot.getUpdatedAt() + "Z")
-                .movies(List.of()).hasMore(false).totalEligibleInPool(0).build();
-        List<CachedMovieList> filtered = cached.stream()
+                .movies(List.of()).hasMore(false).totalEligibleInPool(0)
+                .terminalReason("UNAVAILABLE")
+                .build();
+
+        SuggestionScheduler.CategoryPublicationMeta meta = suggestionScheduler.getPublicationMeta(mediaType, listType);
+        boolean hitBound = meta != null && meta.isSelectionLimitReached();
+        boolean providerEmpty = meta != null && meta.isProviderExhausted();
+        String underlyingLimit = hitBound ? "SELECTION_LIMIT_REACHED"
+                : (providerEmpty ? "PROVIDER_EXHAUSTED" : null);
+
+        List<CachedMovieList> allForShelf = cached.stream()
                 .filter(item -> item.getListType() == listType)
+                .toList();
+        List<CachedMovieList> filtered = allForShelf.stream()
                 .filter(item -> !excludedTmdbIds.contains(item.getTmdbId()))
                 .toList();
         List<SuggestionMovieItem> items = mapCachedItems(filtered, mediaType);
         List<SuggestionMovieItem> previewItems = items.stream().limit(20).toList();
         boolean hasMore = items.size() > 20;
+
+        String terminalReason = null;
+        if (previewItems.isEmpty()) {
+            if (!allForShelf.isEmpty() && !excludedTmdbIds.isEmpty()) {
+                terminalReason = "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY";
+            } else if (allForShelf.isEmpty()) {
+                terminalReason = underlyingLimit != null ? underlyingLimit : "NO_MATCHING_UNSAVED_TITLES";
+            } else {
+                terminalReason = "NO_MATCHING_UNSAVED_TITLES";
+            }
+        }
+
         return SuggestionCategoryResponse.builder().id(id).title(title)
                 .state(age.compareTo(Duration.ofHours(24)) > 0 ? "STALE" : previewItems.isEmpty() ? "EMPTY" : "READY")
                 .updatedAt(snapshot.getUpdatedAt() + "Z").movies(previewItems)
                 .hasMore(hasMore)
                 .totalEligibleInPool(items.size())
+                .terminalReason(terminalReason)
+                .underlyingLimit(underlyingLimit)
                 .build();
     }
 
