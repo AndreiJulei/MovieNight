@@ -157,9 +157,6 @@ function ExploreCategoryGridView({
           Last successful discovery snapshot is stale (updated {category.updatedAt}).
         </p>
       )}
-      {category.state === "UNAVAILABLE" && (
-        <p role="alert" className="mb-3 text-danger">Discovery is unavailable. Retry this category.</p>
-      )}
 
       {store.libraryError && (
         <div className="mb-4 flex items-center gap-3">
@@ -190,63 +187,94 @@ function ExploreCategoryGridView({
         <p className="mt-1 text-sm text-text-muted">{displaySubtitle}</p>
       </div>
 
-      <TopBar
-        count={category.movies.length}
-        avg={null}
-        filters={filters}
-        onChange={handleFilterChange}
-        showRating={true}
-        recommendationOrder
-        audienceControls
-        showAddButton={false}
-      />
-
-      <MovieGrid
-        movies={category.movies}
-        compact={viewMode === "compact"}
-        empty="No titles found in this category."
-        referrerOverride={`/explore/${type}/${rowId}`}
-        showAddToWatchlist
-        onAddToWatchlist={handleAddToWatchlist}
-        userHasMovie={userHasMovie}
-      />
-
-      {/* DR01: Load more action */}
-      {category.hasMore && (
-        <div className="mt-8 flex justify-center pb-8">
+      {category.state === "UNAVAILABLE" ? (
+        <div className="my-8 rounded-lg border border-danger/20 bg-danger/5 p-8 text-center">
+          <p role="alert" className="text-sm font-medium text-danger">
+            Discovery is unavailable. Retry this category.
+          </p>
           <button
             type="button"
-            disabled={category.loadingMore || category.refreshing || category.loading || category.lastFailedAction === "initial" || Boolean(store.libraryError)}
-            onClick={category.loadMore}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#1a2234] border border-white/10 px-6 py-2.5 text-sm font-semibold text-text-primary transition-all hover:bg-[#222d44] hover:border-white/20 disabled:cursor-wait disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent"
-            aria-label="Load more discovery titles"
+            disabled={category.loading || category.refreshing}
+            onClick={category.refresh}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
           >
-            {category.loadingMore ? "Loading more titles…" : "Load more"}
+            {category.refreshing ? "Refreshing discovery…" : "Retry discovery"}
           </button>
         </div>
-      )}
+      ) : (
+        <>
+          <TopBar
+            count={category.movies.length}
+            avg={null}
+            filters={filters}
+            onChange={handleFilterChange}
+            showRating={true}
+            recommendationOrder
+            audienceControls
+            showAddButton={false}
+          />
 
-      {/* DR05 / Q10: Terminal states */}
-      {!category.hasMore && !category.loading && (
-        <div className="mt-8 pb-12 text-center">
-          {category.terminalReason === "SELECTION_LIMIT_REACHED" && (
-            <p role="status" className="text-xs text-text-muted">
-              Selection limit reached · At least one provider stream reached its 10-page bound.
-            </p>
+          <MovieGrid
+            movies={category.movies}
+            compact={viewMode === "compact"}
+            empty={
+              category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
+                ? "All titles in this category are already in your watchlist or watched history."
+                : category.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
+                ? "No matching unsaved titles."
+                : "No titles found in this category."
+            }
+            referrerOverride={`/explore/${type}/${rowId}`}
+            showAddToWatchlist
+            onAddToWatchlist={handleAddToWatchlist}
+            userHasMovie={userHasMovie}
+          />
+
+          {/* DR01: Load more action */}
+          {category.hasMore && (
+            <div className="mt-8 flex justify-center pb-8">
+              <button
+                type="button"
+                disabled={category.loadingMore || category.refreshing || category.loading || category.lastFailedAction === "initial" || Boolean(store.libraryError)}
+                onClick={category.loadMore}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1a2234] border border-white/10 px-6 py-2.5 text-sm font-semibold text-text-primary transition-all hover:bg-[#222d44] hover:border-white/20 disabled:cursor-wait disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent"
+                aria-label="Load more discovery titles"
+              >
+                {category.loadingMore ? "Loading more titles…" : "Load more"}
+              </button>
+            </div>
           )}
-          {category.terminalReason === "PROVIDER_EXHAUSTED" && (
-            <p role="status" className="text-xs text-text-muted">
-              No more results from the provider feeds.
-            </p>
+
+          {/* DR05 / Q10: Terminal states */}
+          {!category.hasMore && !category.loading && (
+            <div className="mt-8 pb-12 text-center">
+              {category.terminalReason === "SELECTION_LIMIT_REACHED" && (
+                <p role="status" className="text-xs text-text-muted">
+                  Selection limit reached · At least one provider stream reached its 10-page bound.
+                </p>
+              )}
+              {category.terminalReason === "PROVIDER_EXHAUSTED" && (
+                <p role="status" className="text-xs text-text-muted">
+                  No more results from the provider feeds.
+                </p>
+              )}
+              {category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY" && (
+                <p role="status" className="text-xs text-text-muted">
+                  All candidate titles are already in your library.
+                  {category.underlyingLimit === "SELECTION_LIMIT_REACHED" && " (Provider selection limit reached)"}
+                  {category.underlyingLimit === "PROVIDER_EXHAUSTED" && " (Provider feeds exhausted)"}
+                </p>
+              )}
+              {category.terminalReason === "NO_MATCHING_UNSAVED_TITLES" && (
+                <p role="status" className="text-xs text-text-muted">
+                  No matching unsaved titles.
+                  {category.underlyingLimit === "SELECTION_LIMIT_REACHED" && " (Provider selection limit reached)"}
+                  {category.underlyingLimit === "PROVIDER_EXHAUSTED" && " (Provider feeds exhausted)"}
+                </p>
+              )}
+            </div>
           )}
-          {category.terminalReason === "NO_MATCHING_UNSAVED_TITLES" && (
-            <p role="status" className="text-xs text-text-muted">
-              No matching unsaved titles.
-              {category.underlyingLimit === "SELECTION_LIMIT_REACHED" && " (Provider selection limit reached)"}
-              {category.underlyingLimit === "PROVIDER_EXHAUSTED" && " (Provider feeds exhausted)"}
-            </p>
-          )}
-        </div>
+        </>
       )}
     </AppShell>
   );
@@ -264,6 +292,14 @@ export default function ExploreContentPage() {
   const { saveWatchlist, error: saveError } = useWatchlistSave();
 
   const explore = useExploreMedia(type);
+  const prevRowIdRef = useRef(rowId);
+  const reloadExplore = explore.reload;
+  useEffect(() => {
+    if (prevRowIdRef.current && !rowId) {
+      reloadExplore();
+    }
+    prevRowIdRef.current = rowId;
+  }, [rowId, reloadExplore]);
   const backendRows = explore.rows;
 
   // Determine shelves with metadata
@@ -383,10 +419,26 @@ export default function ExploreContentPage() {
                 </Link>
               )}
             </div>
-            {row.movies.length > 0 && <PosterShelf
-              movies={row.movies.slice(0, 20)}
-              referrer={`/explore/${type}`}
-            />}
+            {row.movies.length > 0 ? (
+              <PosterShelf
+                movies={row.movies.slice(0, 20)}
+                referrer={`/explore/${type}`}
+              />
+            ) : row.state !== "UNAVAILABLE" ? (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-white/10 px-4 text-center">
+                <p className="text-xs text-text-muted">
+                  {row.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
+                    ? "All candidate titles in this shelf are already in your library."
+                    : row.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
+                    ? "No matching unsaved titles."
+                    : row.hasMore
+                    ? "Preview titles are in your library. Explore category to see more."
+                    : "No titles met this shelf's criteria."}
+                  {row.underlyingLimit === "SELECTION_LIMIT_REACHED" && " (Provider selection limit reached)"}
+                  {row.underlyingLimit === "PROVIDER_EXHAUSTED" && " (Provider feeds exhausted)"}
+                </p>
+              </div>
+            ) : null}
           </section>
         ))}
 

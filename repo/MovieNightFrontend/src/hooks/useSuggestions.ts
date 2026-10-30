@@ -1,5 +1,5 @@
 import { titleId } from "../store/titleIdentity";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store/MovieStore";
 import { moviesApi, type ApiSuggestionsResponse } from "../api/movies";
 import type { Movie } from "../store/data";
@@ -23,6 +23,8 @@ export interface SuggestionRow {
   updatedAt?: string;
   hasMore?: boolean;
   totalEligibleInPool?: number;
+  terminalReason?: string | null;
+  underlyingLimit?: string | null;
 }
 
 /**
@@ -44,7 +46,7 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
     let active = true;
     pending.current = false;
     void moviesApi.getExploreMedia(mediaType).then(data => {
-      if (active && latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
+      if (active && latest.current === key) setState({ key, data: recalculateFreshness(data), error: null, pending: false, failedCategory: null });
     }).catch(error => {
       if (active && latest.current === key) setState({ key, data: null,
         error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null });
@@ -52,35 +54,75 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
     return () => { active = false; };
   }, [key, mediaType]);
 
-  // Window focus listener: sync latest library state from backend to update shelf exclusions (DR04, Q9)
+  // Window focus & visibility listener + expiration timer: sync latest library state from backend
+  // and continuously enforce 7-day snapshot maximum age while mounted (DR04, Q9, Q12)
   useEffect(() => {
-    const handleFocus = () => {
+    const handleFocusOrExpiration = () => {
       if (store.currentUser) {
         void store.refreshLibrary();
       }
+      setState((prev) => (prev ? { ...prev, data: recalculateFreshness(prev.data) } : null));
     };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [store]);
+
+    window.addEventListener("focus", handleFocusOrExpiration);
+    document.addEventListener("visibilitychange", handleFocusOrExpiration);
+
+    // Q12: Enforce 7-day maximum snapshot age continuously for mounted shelves via timer
+    let timer: number | undefined;
+    const categories = state?.data?.categories;
+    if (categories && categories.length > 0) {
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      let nearestRemainingMs: number | null = null;
+
+      for (const cat of categories) {
+        if (!cat.updatedAt || cat.state === "UNAVAILABLE") continue;
+        const updatedTime = Date.parse(cat.updatedAt);
+        if (Number.isNaN(updatedTime)) continue;
+        const remaining = SEVEN_DAYS_MS - (now - updatedTime);
+        if (remaining <= 0) {
+          nearestRemainingMs = 0;
+          break;
+        }
+        if (nearestRemainingMs === null || remaining < nearestRemainingMs) {
+          nearestRemainingMs = remaining;
+        }
+      }
+
+      if (nearestRemainingMs !== null) {
+        if (nearestRemainingMs <= 0) {
+          handleFocusOrExpiration();
+        } else if (nearestRemainingMs <= 2147483647) {
+          timer = window.setTimeout(handleFocusOrExpiration, nearestRemainingMs + 50);
+        }
+      }
+    }
+
+    return () => {
+      window.removeEventListener("focus", handleFocusOrExpiration);
+      document.removeEventListener("visibilitychange", handleFocusOrExpiration);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [store, state?.data]);
 
   const current = state?.key === key ? state : null;
-  const readAgain = () => {
+  const readAgain = useCallback(() => {
     if (pending.current) return;
     pending.current = true;
-    setState({ key, data: current?.data ?? null, error: null, pending: true, failedCategory: null });
+    setState((prev) => ({ key, data: prev?.data ?? null, error: null, pending: true, failedCategory: null }));
     void moviesApi.getExploreMedia(mediaType).then(data => {
-      if (latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
+      if (latest.current === key) setState({ key, data: recalculateFreshness(data), error: null, pending: false, failedCategory: null });
     }).catch(error => {
-      if (latest.current === key) setState({ key, data: recalculateFreshness(current?.data ?? null),
-        error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null });
+      if (latest.current === key) setState((prev) => ({ key, data: recalculateFreshness(prev?.data ?? null),
+        error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null }));
     }).finally(() => { if (latest.current === key) pending.current = false; });
-  };
+  }, [key, mediaType]);
   const refresh = (category: string) => {
     if (pending.current || !current?.data) return;
     pending.current = true;
     setState({ ...current, error: null, pending: true, failedCategory: null });
     void moviesApi.refreshExploreCategory(mediaType, category).then(data => {
-      if (latest.current === key) setState({ key, data, error: null, pending: false, failedCategory: null });
+      if (latest.current === key) setState({ key, data: recalculateFreshness(data), error: null, pending: false, failedCategory: null });
     }).catch(error => {
       if (latest.current === key) setState({ key, data: recalculateFreshness(current.data),
         error: error instanceof Error ? error.message : "Could not refresh discovery. Retry.", pending: false, failedCategory: category });
@@ -89,18 +131,32 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
   return {
     rows: useMemo(
       () =>
-        current?.data?.categories.map((category) => ({
-          ...category,
-          hasMore: category.hasMore,
-          totalEligibleInPool: category.totalEligibleInPool,
-          movies: category.movies
+        current?.data?.categories.map((category) => {
+          const mappedMovies = category.movies
             .map((item) => mapApiMovie(item, store))
             .filter((m) => {
               if (!store.currentUser?.id) return true;
               const entry = store.entryFor(store.currentUser.id, m.id);
               return !entry || (entry.status !== "watchlist" && entry.status !== "watched");
-            }),
-        })) ?? [],
+            });
+
+          let terminalReason = category.terminalReason ?? null;
+          const underlyingLimit = category.underlyingLimit ?? null;
+          // Spec Finding 3 / Finding 2: An empty preview does not imply the entire pool is saved if hasMore is true.
+          // Only set ALL_CANDIDATES_EXCLUDED_BY_LIBRARY when the entire pool has been exhausted (!category.hasMore).
+          if (mappedMovies.length === 0 && category.movies.length > 0 && !category.hasMore) {
+            terminalReason = "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY";
+          }
+
+          return {
+            ...category,
+            hasMore: category.hasMore,
+            totalEligibleInPool: category.totalEligibleInPool,
+            terminalReason,
+            underlyingLimit,
+            movies: mappedMovies,
+          };
+        }) ?? [],
       [current, store],
     ),
     error: current?.error ?? null,
@@ -152,6 +208,10 @@ export function recalculateFreshness(data: ApiSuggestionsResponse | null): ApiSu
   return {
     ...data,
     categories: data.categories.map((cat) => {
+      // Spec Finding 5: Explicit UNAVAILABLE must never become READY, even if updatedAt is recent
+      if (cat.state === "UNAVAILABLE") {
+        return { ...cat, state: "UNAVAILABLE", movies: [] };
+      }
       if (!cat.updatedAt) {
         return { ...cat, state: "UNAVAILABLE", movies: [] };
       }

@@ -406,6 +406,8 @@ export interface ApiSuggestionCategory {
   movies: ApiSuggestionMovieItem[];
   hasMore?: boolean;
   totalEligibleInPool?: number;
+  terminalReason?: string | null;
+  underlyingLimit?: string | null;
 }
 
 export interface ApiSuggestionsResponse {

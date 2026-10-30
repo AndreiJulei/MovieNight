@@ -7,7 +7,7 @@ import type { SortBy, MinRating } from "../components/TopBar";
 
 interface StoredCategorySession {
   userId?: string;
-  sessionId: string;
+  sessionId: string | null;
   cursor: number;
   hasMore: boolean;
   totalEligibleInPool: number;
@@ -218,7 +218,19 @@ export function useExploreCategory(
       if (typeof window === "undefined") return;
       if (!currentUserId) return;
       const current = sessionRef.current;
-      if (!current.sessionId) return;
+      // Spec Finding 4 / Finding 1: Storage purge strictly for UNAVAILABLE or >7-day snapshots.
+      // Expired sessions (sessionId: null) retain their loaded cards across details visits.
+      if (
+        current.state === "UNAVAILABLE" ||
+        isSnapshotUnavailable(current.state, current.updatedAt)
+      ) {
+        try {
+          sessionStorage.removeItem(storageKey);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       try {
         const payload: StoredCategorySession = {
           userId: currentUserId,
@@ -250,6 +262,37 @@ export function useExploreCategory(
 
   const persistSessionSnapshotRef = useRef(persistSessionSnapshot);
   persistSessionSnapshotRef.current = persistSessionSnapshot;
+
+  // Q12 / Finding 3: Centralized transition to UNAVAILABLE when snapshot exceeds 7 days
+  const transitionToUnavailable = useCallback(() => {
+    sessionRef.current.movies = [];
+    sessionRef.current.state = "UNAVAILABLE";
+    sessionRef.current.terminalReason = "UNAVAILABLE";
+    sessionRef.current.underlyingLimit = null;
+    setMovies([]);
+    setState("UNAVAILABLE");
+    setTerminalReason("UNAVAILABLE");
+    setUnderlyingLimit(null);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem(storageKey);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [storageKey]);
+
+  // Q12 / Finding 3: Enforce maximum 7-day age throughout the session
+  const checkFreshness = useCallback(() => {
+    if (
+      sessionRef.current.state === "UNAVAILABLE" ||
+      isSnapshotUnavailable(sessionRef.current.state, sessionRef.current.updatedAt)
+    ) {
+      transitionToUnavailable();
+      return false;
+    }
+    return true;
+  }, [transitionToUnavailable]);
 
   // Standards Finding: Deduplicated API error handler (DR05: 410 session expiration)
   const handleApiError = useCallback((err: unknown, fallbackMessage: string) => {
@@ -289,12 +332,60 @@ export function useExploreCategory(
       setUnderlyingLimit(nextState.underlyingLimit ?? null);
       setMovies(nextState.movies);
 
-      if (persist && nextState.sessionId) {
+      // Spec Finding 4: Storage purge requirement — remove from sessionStorage on UNAVAILABLE
+      if (
+        nextState.state === "UNAVAILABLE" ||
+        isSnapshotUnavailable(nextState.state, nextState.updatedAt)
+      ) {
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem(storageKey);
+          } catch {
+            /* ignore */
+          }
+        }
+      } else if (persist) {
         persistSessionSnapshotRef.current();
       }
     },
-    [],
+    [storageKey],
   );
+
+  // Standards Finding: Deduplicated helper for library pruning and terminal provenance transitions
+  const pruneAndTransitionLibraryMovies = useCallback((prevMovies: Movie[], targetMovies: Movie[]) => {
+    if (targetMovies.length === prevMovies.length) {
+      return prevMovies;
+    }
+    const removedCount = prevMovies.length - targetMovies.length;
+    const newTotal = Math.max(0, sessionRef.current.totalEligibleInPool - removedCount);
+    sessionRef.current.movies = targetMovies;
+    sessionRef.current.totalEligibleInPool = newTotal;
+    setTotalEligibleInPool(newTotal);
+
+    if (!sessionRef.current.hasMore && targetMovies.length === 0) {
+      let currentLimit = sessionRef.current.underlyingLimit ?? null;
+      const currentTerminal = sessionRef.current.terminalReason;
+      if (
+        currentTerminal &&
+        currentTerminal !== "NO_MATCHING_UNSAVED_TITLES" &&
+        currentTerminal !== "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
+      ) {
+        currentLimit = currentLimit || currentTerminal;
+      }
+      sessionRef.current.terminalReason = "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY";
+      sessionRef.current.underlyingLimit = currentLimit;
+      setTerminalReason("ALL_CANDIDATES_EXCLUDED_BY_LIBRARY");
+      setUnderlyingLimit(currentLimit);
+    }
+
+    persistSessionSnapshotRef.current({
+      movies: targetMovies,
+      totalEligibleInPool: newTotal,
+      terminalReason: sessionRef.current.terminalReason,
+      underlyingLimit: sessionRef.current.underlyingLimit,
+    });
+    return targetMovies;
+  }, []);
 
   // Standards Finding: Deduplicated response processing for initial, loadMore, and refresh
   const applyPageResponse = useCallback(
@@ -308,6 +399,13 @@ export function useExploreCategory(
       if (unavailable) {
         // Q12: Unusable snapshot older than 7 days cannot retain cards
         newMovies = [];
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem(storageKey);
+          } catch {
+            /* ignore */
+          }
+        }
       } else if (mode === "append") {
         const seen = new Set(sessionRef.current.movies.map((m) => m.id));
         const added = filtered.filter((m) => !seen.has(m.id));
@@ -316,20 +414,21 @@ export function useExploreCategory(
         newMovies = filtered;
       }
 
-      const newSessionId = res.sessionId ?? sessionRef.current.sessionId;
-      const newCursor = res.cursor ?? (mode === "append" ? sessionRef.current.cursor : 0);
-      const newHasMore = res.hasMore;
-      const newTotal =
-        res.totalEligibleInPool ??
-        (mode === "append"
-          ? Math.max(sessionRef.current.totalEligibleInPool, newMovies.length)
-          : filtered.length);
+      const newSessionId = unavailable ? null : (res.sessionId ?? sessionRef.current.sessionId);
+      const newCursor = unavailable ? 0 : (res.cursor ?? (mode === "append" ? sessionRef.current.cursor : 0));
+      const newHasMore = unavailable ? false : res.hasMore;
+      const newTotal = unavailable
+        ? 0
+        : (res.totalEligibleInPool ??
+          (mode === "append"
+            ? Math.max(sessionRef.current.totalEligibleInPool, newMovies.length)
+            : filtered.length));
       const newTitle = res.title ?? sessionRef.current.title;
       const newSubtitle = res.subtitle ?? sessionRef.current.subtitle;
       const newState = unavailable ? "UNAVAILABLE" : (res.state ?? sessionRef.current.state);
       const newUpdatedAt = res.updatedAt ?? sessionRef.current.updatedAt;
-      const newTerminal = res.terminalReason ?? null;
-      const newLimit = res.underlyingLimit ?? null;
+      const newTerminal = unavailable ? "UNAVAILABLE" : (res.terminalReason ?? null);
+      const newLimit = unavailable ? null : (res.underlyingLimit ?? null);
 
       applySessionState(
         {
@@ -346,10 +445,10 @@ export function useExploreCategory(
           movies: newMovies,
           openedAt: sessionRef.current.openedAt || Date.now(),
         },
-        Boolean(newSessionId),
+        Boolean(newSessionId) && !unavailable,
       );
     },
-    [store, applySessionState],
+    [store, storageKey, applySessionState],
   );
 
   const applyPageResponseRef = useRef(applyPageResponse);
@@ -385,13 +484,7 @@ export function useExploreCategory(
       if (reqId !== activeReqId.current) return;
       setLoading(false);
       setLastFailedAction("initial");
-      if (isSnapshotUnavailable(sessionRef.current.state, sessionRef.current.updatedAt)) {
-        // Q12: Snapshots older than 7 days become unavailable even after failure
-        sessionRef.current.movies = [];
-        sessionRef.current.state = "UNAVAILABLE";
-        setMovies([]);
-        setState("UNAVAILABLE");
-      }
+      checkFreshness();
       handleApiErrorRef.current(err, "Could not load discovery. Retry.");
     } finally {
       if (reqId === activeReqId.current) {
@@ -434,7 +527,7 @@ export function useExploreCategory(
           const sameUser = parsed.userId === currentUserId;
           const sameControls = parsed.sortBy === sortBy && parsed.minRating === minRating;
 
-          if (sameUser && sameControls && parsed.sessionId) {
+          if (sameUser && sameControls && (parsed.sessionId !== undefined || Boolean(parsed.timestamp))) {
             restored = true;
             if (parsed.confirmedSavedIds) {
               parsed.confirmedSavedIds.forEach((id) => confirmedSavedIdsRef.current.add(id));
@@ -540,38 +633,45 @@ export function useExploreCategory(
     };
   }, [mediaType, category, sortBy, minRating, currentUserId, storageKey, applySessionState, fetchInitialPage]);
 
-  // Window focus listener: sync latest library state from backend and prune saved cards (DR04, Q9)
+  // Window focus & visibility listener: recheck 7-day snapshot age throughout mounted session (Q12)
+  // and sync latest library state from backend to prune saved cards (DR04, Q9)
   useEffect(() => {
-    const handleFocus = () => {
+    const handleFocusOrSync = () => {
+      if (!checkFreshness()) return;
       if (store.currentUser) {
         void store.refreshLibrary();
       }
-      setMovies((prev) => {
-        const filtered = filterLibraryMoviesRef.current(prev);
-        if (filtered.length !== prev.length) {
-          sessionRef.current.movies = filtered;
-          persistSessionSnapshotRef.current({ movies: filtered });
-          return filtered;
-        }
-        return prev;
-      });
+      setMovies((prev) => pruneAndTransitionLibraryMovies(prev, filterLibraryMoviesRef.current(prev)));
     };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [store]);
+    window.addEventListener("focus", handleFocusOrSync);
+    document.addEventListener("visibilitychange", handleFocusOrSync);
+
+    // Q12: Enforce 7-day maximum age throughout the mounted session via timer
+    let timer: number | undefined;
+    if (updatedAt) {
+      const parsedTime = Date.parse(updatedAt);
+      if (!Number.isNaN(parsedTime)) {
+        const remaining = 7 * 24 * 60 * 60 * 1000 - (Date.now() - parsedTime);
+        if (remaining > 0 && remaining <= 2147483647) {
+          timer = window.setTimeout(handleFocusOrSync, remaining + 50);
+        } else if (remaining <= 0) {
+          handleFocusOrSync();
+        }
+      }
+    }
+
+    return () => {
+      window.removeEventListener("focus", handleFocusOrSync);
+      document.removeEventListener("visibilitychange", handleFocusOrSync);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [store, pruneAndTransitionLibraryMovies, updatedAt, checkFreshness]);
 
   // Immediately prune visible cards whenever confirmed library entries update in store (e.g. cross-tab/refresh)
   useEffect(() => {
-    setMovies((prev) => {
-      const filtered = filterLibraryMovies(prev);
-      if (filtered.length !== prev.length) {
-        sessionRef.current.movies = filtered;
-        persistSessionSnapshotRef.current({ movies: filtered });
-        return filtered;
-      }
-      return prev;
-    });
-  }, [filterLibraryMovies]);
+    if (!checkFreshness()) return;
+    setMovies((prev) => pruneAndTransitionLibraryMovies(prev, filterLibraryMovies(prev)));
+  }, [filterLibraryMovies, pruneAndTransitionLibraryMovies, checkFreshness]);
 
   // Save scroll position into sessionStorage on scroll
   useEffect(() => {
@@ -623,13 +723,7 @@ export function useExploreCategory(
     } catch (err: unknown) {
       if (reqId !== activeReqId.current) return;
       setLastFailedAction("loadMore");
-      if (isSnapshotUnavailable(sessionRef.current.state, sessionRef.current.updatedAt)) {
-        // Q12: Snapshots older than 7 days become unavailable even after failure
-        sessionRef.current.movies = [];
-        sessionRef.current.state = "UNAVAILABLE";
-        setMovies([]);
-        setState("UNAVAILABLE");
-      }
+      checkFreshness();
       handleApiErrorRef.current(err, "Could not load more items. Retry.");
     } finally {
       setLoadingMore(false);
@@ -637,7 +731,7 @@ export function useExploreCategory(
         pendingRef.current = false;
       }
     }
-  }, [mediaType, category, sortBy, minRating, lastFailedAction, store.libraryError]);
+  }, [mediaType, category, sortBy, minRating, lastFailedAction, store.libraryError, checkFreshness]);
 
   // Refresh discovery action with active generation checking (DR06)
   const refresh = useCallback(async () => {
@@ -669,17 +763,7 @@ export function useExploreCategory(
     } catch (err: unknown) {
       if (reqId !== activeReqId.current) return;
       setLastFailedAction("refresh");
-      if (isSnapshotUnavailable(sessionRef.current.state, sessionRef.current.updatedAt)) {
-        sessionRef.current.movies = [];
-        sessionRef.current.state = "UNAVAILABLE";
-        setMovies([]);
-        setState("UNAVAILABLE");
-        try {
-          sessionStorage.removeItem(storageKey);
-        } catch {
-          /* ignore */
-        }
-      }
+      checkFreshness();
       handleApiErrorRef.current(err, "Could not refresh discovery. Retry.");
     } finally {
       setRefreshing(false);
@@ -704,19 +788,15 @@ export function useExploreCategory(
     }
   }, [sessionExpired, lastFailedAction, refresh, loadMore, fetchInitialPage]);
 
-  // Explicit single card removal after confirmed save (DR04, Spec Finding 10)
-  const removeMovie = useCallback((movieId: string) => {
-    confirmedSavedIdsRef.current.add(movieId);
-    setMovies((prev) => {
-      const updated = prev.filter((m) => m.id !== movieId);
-      const newTotal = Math.max(0, sessionRef.current.totalEligibleInPool - 1);
-      sessionRef.current.movies = updated;
-      sessionRef.current.totalEligibleInPool = newTotal;
-      setTotalEligibleInPool(newTotal);
-      persistSessionSnapshotRef.current({ movies: updated, totalEligibleInPool: newTotal });
-      return updated;
-    });
-  }, []);
+  // Explicit single card removal after confirmed save (DR04, Spec Finding 10, Standards Finding)
+  const removeMovie = useCallback(
+    (movieId: string) => {
+      if (!checkFreshness()) return;
+      confirmedSavedIdsRef.current.add(movieId);
+      setMovies((prev) => pruneAndTransitionLibraryMovies(prev, prev.filter((m) => m.id !== movieId)));
+    },
+    [pruneAndTransitionLibraryMovies, checkFreshness],
+  );
 
   return {
     movies,
