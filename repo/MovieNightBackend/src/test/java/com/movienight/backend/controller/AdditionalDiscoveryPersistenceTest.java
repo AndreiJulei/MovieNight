@@ -100,9 +100,11 @@ class AdditionalDiscoveryPersistenceTest {
                 return List.of(movie(1000 + page, "Movie " + page, 7.5, 1000, 10, yesterday));
             }
             if ("vote_count.desc".equals(sort)) {
-                // Returns 10 pages as well, 2 on page 1 to make total > 20
+                // Returns 10 pages as well. Page 1 includes an overlapping candidate (1001) that also appeared in vote_average.desc
                 if (page == 1) {
-                    return List.of(movie(2098, "Vote Count Movie 98", 7.0, 2000, 10, yesterday),
+                    return List.of(
+                            movie(1001, "Page 1 Movie (Duplicate in vote_count stream)", 8.0, 1000, 10, yesterday),
+                            movie(2098, "Vote Count Movie 98", 7.0, 2000, 10, yesterday),
                             movie(2099, "Vote Count Movie 99", 7.0, 2000, 10, yesterday));
                 }
                 return List.of(movie(2000 + page, "Vote Count Movie " + page, 7.0, 2000, 10, yesterday));
@@ -120,6 +122,11 @@ class AdditionalDiscoveryPersistenceTest {
         // Verified that 10 pages per source were fetched (10 for vote_average + 10 for vote_count = 20 total)
         assertThat(pageFetches.get()).isEqualTo(20);
 
+        // Overlapping candidate 1001 appears exactly once in the published database cache (deduplicated across streams)
+        long count1001InCache = cache.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.TOP_RATED)
+                .stream().filter(e -> e.getTmdbId() == 1001L).count();
+        assertThat(count1001InCache).isEqualTo(1);
+
         // Fetch category page 1
         var result = mvc.perform(get("/api/movies/explore/movies/top-rated").header("Authorization", token))
                 .andExpect(status().isOk())
@@ -127,6 +134,7 @@ class AdditionalDiscoveryPersistenceTest {
                 .andExpect(jsonPath("$.movies[0].title").value("Page 10 Strong Candidate"))
                 .andExpect(jsonPath("$.sessionId").isNotEmpty())
                 .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.movies[?(@.tmdbId==1001)]", hasSize(1))) // Overlapping candidate appears once in results
                 .andReturn();
     }
 
@@ -462,6 +470,44 @@ class AdditionalDiscoveryPersistenceTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.movies[0].title").value("Apple"))
                 .andExpect(jsonPath("$.movies[1].title").value("Low Rated"));
+
+        // 3b. Sort by TMDB audience rating (descending: 8.5 Zebra, 7.0 Apple, 6.0 Banana, 5.5 Low Rated)
+        mvc.perform(get("/api/movies/explore/movies/top-rated")
+                .param("sessionId", sessionId)
+                .param("sortBy", "rating")
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies[0].title").value("Zebra"))
+                .andExpect(jsonPath("$.movies[1].title").value("Apple"))
+                .andExpect(jsonPath("$.movies[2].title").value("Banana"))
+                .andExpect(jsonPath("$.movies[3].title").value("Low Rated"));
+
+        // 3c. Whole-pool sorting across batches (cursor=0, limit=2 returns first 2 sorted items; cursor=2 returns next 2)
+        mvc.perform(get("/api/movies/explore/movies/top-rated")
+                .param("sessionId", sessionId)
+                .param("sortBy", "title")
+                .param("cursor", "0")
+                .param("limit", "2")
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies", hasSize(2)))
+                .andExpect(jsonPath("$.movies[0].title").value("Apple"))
+                .andExpect(jsonPath("$.movies[1].title").value("Banana"))
+                .andExpect(jsonPath("$.cursor").value(2))
+                .andExpect(jsonPath("$.hasMore").value(true));
+
+        mvc.perform(get("/api/movies/explore/movies/top-rated")
+                .param("sessionId", sessionId)
+                .param("sortBy", "title")
+                .param("cursor", "2")
+                .param("limit", "2")
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies", hasSize(2)))
+                .andExpect(jsonPath("$.movies[0].title").value("Low Rated"))
+                .andExpect(jsonPath("$.movies[1].title").value("Zebra"))
+                .andExpect(jsonPath("$.cursor").value(4))
+                .andExpect(jsonPath("$.hasMore").value(false));
 
         // 4. Filter minRating=6 (excludes "Low Rated" 5.5)
         mvc.perform(get("/api/movies/explore/movies/top-rated")
