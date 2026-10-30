@@ -8,10 +8,17 @@ import {
   type ReactNode,
 } from "react";
 
+export type NavigateOptions = {
+  replace?: boolean;
+  preserveScroll?: boolean;
+  state?: Record<string, any>;
+};
+
 type RouterState = {
   path: string; // pathname only, e.g. "/movies"
   search: string; // raw query string, e.g. "?status=watchlist"
-  navigate: (to: string, opts?: { replace?: boolean }) => void;
+  state?: Record<string, any>;
+  navigate: (to: string, opts?: NavigateOptions) => void;
 };
 
 const RouterContext = createContext<RouterState | null>(null);
@@ -23,16 +30,29 @@ const RouterContext = createContext<RouterState | null>(null);
  */
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [loc, setLoc] = useState("/");
+  const [navState, setNavState] = useState<Record<string, any> | undefined>(undefined);
 
-  const navigate = useCallback((to: string) => {
+  const navigate = useCallback((to: string, opts?: NavigateOptions) => {
     setLoc(to);
-    if (typeof window !== "undefined") window.scrollTo(0, 0);
+    setNavState(opts?.state);
+    if (typeof window !== "undefined") {
+      if (!opts?.preserveScroll) {
+        window.scrollTo(0, 0);
+      }
+      if (!opts?.state?.fromDetails) {
+        try {
+          sessionStorage.removeItem("details_return_target");
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   }, []);
 
   const value = useMemo(() => {
     const [path, query = ""] = loc.split("?");
-    return { path, search: query ? `?${query}` : "", navigate };
-  }, [loc, navigate]);
+    return { path, search: query ? `?${query}` : "", state: navState, navigate };
+  }, [loc, navState, navigate]);
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }

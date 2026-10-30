@@ -18,6 +18,11 @@ export interface SuggestionRow {
   id: string;
   title: string;
   movies: Movie[];
+  subtitle?: string;
+  state?: string;
+  updatedAt?: string;
+  hasMore?: boolean;
+  totalEligibleInPool?: number;
 }
 
 /**
@@ -47,6 +52,17 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
     return () => { active = false; };
   }, [key, mediaType]);
 
+  // Window focus listener: sync latest library state from backend to update shelf exclusions (DR04, Q9)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (store.currentUser) {
+        void store.refreshLibrary();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [store]);
+
   const current = state?.key === key ? state : null;
   const readAgain = () => {
     if (pending.current) return;
@@ -70,11 +86,30 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
         error: error instanceof Error ? error.message : "Could not refresh discovery. Retry.", pending: false, failedCategory: category });
     }).finally(() => { if (latest.current === key) pending.current = false; });
   };
-  return { rows: useMemo(() => current?.data?.categories.map(category => ({ ...category,
-      movies: category.movies.map(item => mapApiMovie(item, store)) })) ?? [], [current, store]),
-    error: current?.error ?? null, loading: !current, pending: current?.pending ?? false,
+  return {
+    rows: useMemo(
+      () =>
+        current?.data?.categories.map((category) => ({
+          ...category,
+          hasMore: category.hasMore,
+          totalEligibleInPool: category.totalEligibleInPool,
+          movies: category.movies
+            .map((item) => mapApiMovie(item, store))
+            .filter((m) => {
+              if (!store.currentUser?.id) return true;
+              const entry = store.entryFor(store.currentUser.id, m.id);
+              return !entry || (entry.status !== "watchlist" && entry.status !== "watched");
+            }),
+        })) ?? [],
+      [current, store],
+    ),
+    error: current?.error ?? null,
+    loading: !current,
+    pending: current?.pending ?? false,
     failedCategory: current?.failedCategory ?? null,
-    reload: readAgain, refresh };
+    reload: readAgain,
+    refresh,
+  };
 }
 
 export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; voteCount?: number; reason?: string; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {

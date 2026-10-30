@@ -99,8 +99,23 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
+      let body: any = null;
+      try {
+        body = await res.json();
+      } catch {
+        /* ignore non-json error responses */
+      }
+      if (res.status === 410) {
+        const message = body?.message || "Discovery session expired. Refresh discovery to continue.";
+        const err = new Error(message);
+        (err as any).status = 410;
+        throw err;
+      }
       if (res.status === 401 || res.status === 403) {
         throw new Error("Your session could not be verified. Sign in again and retry.");
+      }
+      if (body?.message) {
+        throw new Error(body.message);
       }
       throw new Error("The server could not confirm the request. Please try again.");
     }
@@ -315,6 +330,32 @@ export const moviesApi = {
     return response;
   },
 
+  /**
+   * Fetch paginated Explore category items with pinned session and server sorting/filtering.
+   */
+  async getExploreCategoryPage(
+    mediaType: string,
+    category: string,
+    params?: {
+      sessionId?: string;
+      cursor?: number;
+      limit?: number;
+      sortBy?: string;
+      minRating?: number;
+    }
+  ): Promise<ApiExploreCategoryPageResponse> {
+    const query = new URLSearchParams();
+    if (params?.sessionId) query.set("sessionId", params.sessionId);
+    if (params?.cursor != null) query.set("cursor", String(params.cursor));
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.sortBy) query.set("sortBy", params.sortBy);
+    if (params?.minRating != null) query.set("minRating", String(params.minRating));
+
+    const qs = query.toString();
+    const url = `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}/${encodeURIComponent(category)}${qs ? `?${qs}` : ""}`;
+    return libraryRequest<ApiExploreCategoryPageResponse>(url);
+  },
+
   async refreshExploreCategory(mediaType: string, category: string): Promise<ApiSuggestionsResponse> {
     const response = await libraryRequest<ApiSuggestionsResponse>(
       `${API_BASE}/api/suggestions/explore/${encodeURIComponent(mediaType)}/${encodeURIComponent(category)}/refresh`,
@@ -363,9 +404,26 @@ export interface ApiSuggestionCategory {
   id: string;
   title: string;
   movies: ApiSuggestionMovieItem[];
+  hasMore?: boolean;
+  totalEligibleInPool?: number;
 }
 
 export interface ApiSuggestionsResponse {
   categories: ApiSuggestionCategory[];
 }
 
+export interface ApiExploreCategoryPageResponse {
+  sessionId?: string;
+  mediaType: string;
+  category: string;
+  title: string;
+  subtitle: string;
+  state: "READY" | "STALE" | "UNAVAILABLE" | "EMPTY" | string;
+  updatedAt?: string;
+  movies: ApiSuggestionMovieItem[];
+  cursor?: number;
+  hasMore: boolean;
+  terminalReason?: string | null;
+  underlyingLimit?: string | null;
+  totalEligibleInPool?: number;
+}

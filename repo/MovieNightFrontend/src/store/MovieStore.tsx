@@ -182,6 +182,25 @@ function fromLibraryResponse(item: ApiUserMovieEntryResponse, userId: string) {
   return { movie, entry };
 }
 
+function purgeStoredExploreSessions() {
+  if (typeof window === "undefined") return;
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (
+        k &&
+        (k.startsWith("explore_session_") ||
+          k === "details_return_target" ||
+          k === "last_movie_referrer")
+      ) {
+        sessionStorage.removeItem(k);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -216,7 +235,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           sessionStorage.removeItem(AUTH_KEY);
           return null;
         }
-        return u;
+        return { ...u, id: String(u.id) };
       }
       const raw = sessionStorage.getItem(AUTH_KEY);
       if (raw && (raw === "u1" || raw === '"u1"')) {
@@ -237,8 +256,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const libraryRevision = useRef(0);
   const authGeneration = useRef(0);
   const refreshSequence = useRef(0);
-  const activeUser = useRef(currentUser?.id);
-  activeUser.current = currentUser?.id;
+  const activeUser = useRef<string | undefined>(currentUser ? String(currentUser.id) : undefined);
+  activeUser.current = currentUser ? String(currentUser.id) : undefined;
 
   const isWatchlistSaving = useCallback((movieId: string) => {
     return pendingWatchlist.has(`${authGeneration.current}:${currentUser?.id}:${movieId}`);
@@ -311,6 +330,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         email: res.user.email,
         password: "",
       };
+      if (activeUser.current !== u.id) {
+        purgeStoredExploreSessions();
+      }
       authGeneration.current += 1;
       refreshSequence.current += 1;
       activeUser.current = u.id;
@@ -347,6 +369,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
           email: loginRes.user.email,
           password: "",
         };
+        if (activeUser.current !== u.id) {
+          purgeStoredExploreSessions();
+        }
         authGeneration.current += 1;
         refreshSequence.current += 1;
         activeUser.current = u.id;
@@ -377,6 +402,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(AUTH_KEY);
     sessionStorage.removeItem("movienight_current_user");
     localStorage.removeItem("movienight_current_user");
+    purgeStoredExploreSessions();
   }, [resetLists]);
 
   const checkName = useCallback<StoreValue["checkName"]>(

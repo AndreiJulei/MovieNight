@@ -1,8 +1,6 @@
 # Additional discovery results
 
-Status: Q1–Q13 agreed on 2026-10-28; consolidated contract awaiting final
-shared-understanding confirmation. No application implementation is authorized
-by this specification review.
+Status: Implemented; local Ticket 3 verification updated on 2026-10-30.
 Roadmap: 9c (Additional discovery results). Product requirements: P18/P19;
 preserve P01/P09/P11/P12/P16/P17/P20 and privacy.
 GitHub issue: not published.
@@ -208,17 +206,61 @@ providers, critic enrichment and hosted readiness claims.
 
 ## Validation
 
-Documentation and source inspection only. No Feature 013 implementation exists,
-and no application checks have been run for this specification task. Historical
-Feature 012 evidence does not validate Feature 013 behavior or close its recorded
-PostgreSQL/browser verification gaps.
-
-The review updated only this pre-existing untracked feature draft. Documentation
-checks cover Q1–Q13 agreement coverage, preserved DR01–DR06 IDs, relative Markdown
-links and whitespace in the complete untracked file. No glossary/ADR, roadmap,
-product contract or application files changed. No tracker operation, commit,
-push or merge ran.
+Implementation verified against all DR01–DR06 acceptance criteria on 2026-10-29 at
+revision `12efac7` plus working tree changes on `feat/013-additional-discovery-results`
+through focused integration tests, full backend test suite, strict TypeScript checks,
+production Vite build, and Chrome browser testing at 1440×900 and 390×844 viewports.
 
 | Acceptance ID | Result | Check / evidence |
 | --- | --- | --- |
-| DR01–DR06 | Not run | Agreed specification; implementation and verification pending. |
+| DR01 | Passed | Verified 20-item boundaries, sequential batch append without scroll disturbance across all 12 Explore categories, short final batch, and shelf preview links via `AdditionalDiscoveryPersistenceTest.categoryPaginationBatchesAndLoadMoreMakesNoProviderCalls` and `additional-discovery.cjs`. Confirmed saves do not auto-fill gaps. |
+| DR02 | Passed | Verified de-duplication across overlapping provider streams, typed identity `(tmdbId, mediaType)` isolation, and mutually exclusive TV/anime classification fixed within pinned pools via `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`. |
+| DR03 | Passed | Verified 10-page candidate bounds per source (Top Rated combines 10 `vote_average.desc` + 10 `vote_count.desc`), stronger candidates on later pages ranked before disclosure, 30-minute pinned pool session isolation unaffected by background refreshes, and zero provider calls during Load more via `AdditionalDiscoveryPersistenceTest.pinnedSessionIsIsolatedFromScheduledRefresh`, `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`, and `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`. |
+| DR04 | Passed | Verified dynamic server-side exclusion of authenticated user's current watchlist and watched titles using typed identity on both Explore routes and category views, immediate card removal on confirmed save success without auto-filling gaps, library removal restoring eligibility on reset via `AdditionalDiscoveryPersistenceTest.ownerLibraryDynamicExclusionsAndRemovals`, `AdditionalDiscoveryPersistenceTest.sessionOwnershipAndRouteMismatchEnforcement`, and `additional-discovery.cjs`. Shelf previews recheck on tab focus via `useSuggestions.ts`. |
+| DR05 | Passed | Verified distinct terminal states (`SELECTION_LIMIT_REACHED`, `PROVIDER_EXHAUSTED`, `NO_MATCHING_UNSAVED_TITLES`), session expiration 410 Gone with refresh recovery, usable results retained on failure, 7-day unavailable snapshot bounds, and sequential retry without skips or duplicates via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates`, `AdditionalDiscoveryPersistenceTest.lostOrExpiredSessionReturns410Gone`, `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`, and `additional-discovery.cjs`. |
+| DR06 | Passed | Verified whole-pool server-side sorting (Title, Year, TMDB audience rating) and filtering (TMDB audience 6+/10) before batching, default restoring category ranking, destination-scoped details return, and scroll restoration via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates` and `additional-discovery.cjs`. |
+
+### Commands and observed results
+
+- Backend regression & new tests: `./mvnw test` executed **143 tests, 0 failures, 0 errors, 2 skipped** (live provider opt-in smoke tests).
+- Focused integration suite: `./mvnw test -Dtest=AdditionalDiscoveryPersistenceTest,MeaningfulDiscoveryPersistenceTest,SuggestionControllerTest` executed **14 tests, 0 failures, 0 errors**.
+- Frontend verification:
+  - `npx tsc --noEmit` in `repo/MovieNightFrontend` passed with 0 errors.
+  - `npm run build` in `repo/MovieNightFrontend` passed production Vite build.
+  - Playwright browser test: `MOVIENIGHT_PLAYWRIGHT_MODULE=/Users/juv/.npm/_npx/9833c18b2d85bc59/node_modules/playwright node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs` passed with Chrome 156 at 1440×900 and 390×844 viewports.
+- Git & Diff cleanliness: `git status --short` verified only expected scoped changes; no database migration was needed as sessions and publication metadata are kept in-memory.
+
+### Ticket 3 lifetime regression — 2026-10-30
+
+Tested revision: `12efac7` plus the reviewed frontend working tree on
+`feat/013-additional-discovery-results`. The acceptance contract is unchanged.
+Q6/DR03/DR05/DR06 require failed Refresh to preserve the original pool's opening
+time; only a successful replacement starts a new lifetime.
+
+The [browser fixture](../../../repo/MovieNightFrontend/tests/browser/additional-discovery.cjs)
+now advances the browser clock to minute 29, fails Refresh, successfully loads
+another batch, then returns from details at minute 31. It verifies that the same
+loaded titles remain, no replacement request occurs, Load more is unavailable,
+and Refresh discovery is offered. It also verifies that successful Refresh
+starts a fresh lifetime that survives details-and-back. The regression failed
+at the expired-session message before the fix and passed afterward at both
+1440×900 and 390×844 in Chrome 156.
+
+Checks run for this update:
+
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed; existing Vite config-loader and chunk-size warnings remain.
+- `node --check repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`: passed.
+- The Playwright command above: all Feature 013 browser checks passed at both sizes.
+- `git diff --check`: passed.
+- Backend full suite: `./mvnw -DargLine=-javaagent:/Users/juv/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar test`
+  passed with 146 tests, 0 failures, 0 errors, 2 opt-in live-provider skips.
+  The plain run failed on Mockito initialization; the agent-assisted sandbox run
+  failed on two local socket restrictions. The final run used the documented
+  Mockito agent with permission for local fixture servers to bind.
+
+The browser checks use controlled API responses; they do not certify live
+providers, hosted behavior, or account switching between two real accounts.
+Sorted-control restoration is exercised on desktop; the lifetime regression
+runs on desktop and mobile. Standards and Spec review found no remaining
+actionable issue in the lifetime fix.

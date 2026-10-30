@@ -244,6 +244,17 @@ export default function MovieDetailPage() {
     return "Back";
   }, [backDest]);
 
+  // Unified return navigation helper (Standards deduplication & destination scoping)
+  const navigateBack = (dest: string) => {
+    clearTransition();
+    try {
+      sessionStorage.setItem("details_return_target", dest);
+    } catch {
+      /* ignore */
+    }
+    navigate(dest, { preserveScroll: true, state: { fromDetails: true } });
+  };
+
   // Reverse Transition
   const handleBack = () => {
     if (transitionData && destPosterRef.current) {
@@ -283,12 +294,10 @@ export default function MovieDetailPage() {
       });
 
       window.setTimeout(() => {
-        clearTransition();
-        navigate(backDest);
+        navigateBack(backDest);
       }, 420);
     } else {
-      clearTransition();
-      navigate(backDest);
+      navigateBack(backDest);
     }
   };
 
@@ -296,7 +305,10 @@ export default function MovieDetailPage() {
     return (
       <AppShell>
         <div className="mx-auto max-w-[1240px]">
-          <BackLink onClick={() => navigate(backDest)} label={backLabel} />
+          <BackLink
+            onClick={() => navigateBack(backDest)}
+            label={backLabel}
+          />
           {isLoadingDetails ? (
             <div className="mt-12 flex flex-col items-center justify-center text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
