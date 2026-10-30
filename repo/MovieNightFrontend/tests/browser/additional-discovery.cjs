@@ -1,5 +1,20 @@
 // Feature 013 Chrome checks. Controlled API responses and UI interaction at 1440x900 and 390x844.
-const { chromium } = require(process.env.MOVIENIGHT_PLAYWRIGHT_MODULE || 'playwright');
+function loadChromium() {
+  if (process.env.MOVIENIGHT_PLAYWRIGHT_MODULE) {
+    return require(process.env.MOVIENIGHT_PLAYWRIGHT_MODULE).chromium;
+  }
+  try {
+    return require('playwright').chromium;
+  } catch {
+    const fallback = '/Users/juv/.npm/_npx/9833c18b2d85bc59/node_modules/playwright';
+    const fsMod = require('node:fs');
+    if (fsMod.existsSync(fallback)) {
+      return require(fallback).chromium;
+    }
+    throw new Error('Playwright not found. Set MOVIENIGHT_PLAYWRIGHT_MODULE.');
+  }
+}
+const chromium = loadChromium();
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -57,7 +72,7 @@ function makeExploreRows() {
 }
 
 async function signup(page) {
-  await page.goto(app, { waitUntil: 'domcontentloaded' });
+  await page.goto(app);
   const settingsLink = page.getByRole('link', { name: 'Settings', exact: true });
   if (await settingsLink.isVisible().catch(() => false)) {
     return;
@@ -65,16 +80,15 @@ async function signup(page) {
 
   const id = `dq013${Date.now()}${Math.floor(Math.random() * 10000)}`;
   const toggleBtn = page.locator('button[type=button]').filter({ hasText: 'Create Account' });
-  if (await toggleBtn.isVisible().catch(() => false)) {
-    await toggleBtn.click();
-    const form = page.locator('form').filter({ has: page.locator('input[aria-label="Confirm Password"]') });
-    await form.waitFor({ state: 'visible', timeout: 10000 });
-    await form.getByRole('textbox', { name: 'Email', exact: true }).fill(`${id}@example.test`);
-    await form.getByRole('textbox', { name: 'Username', exact: true }).fill(id);
-    await form.locator('input[aria-label="Password"]').fill('Demo013-pass');
-    await form.locator('input[aria-label="Confirm Password"]').fill('Demo013-pass');
-    await form.getByRole('button', { name: 'Create Account', exact: true }).click();
-  }
+  await toggleBtn.waitFor({ state: 'visible', timeout: 10000 });
+  await toggleBtn.click();
+  const form = page.locator('form').filter({ has: page.locator('input[aria-label="Confirm Password"]') });
+  await form.waitFor({ state: 'visible', timeout: 10000 });
+  await form.getByRole('textbox', { name: 'Email', exact: true }).fill(`${id}@example.test`);
+  await form.getByRole('textbox', { name: 'Username', exact: true }).fill(id);
+  await form.locator('input[aria-label="Password"]').fill('Demo013-pass');
+  await form.locator('input[aria-label="Confirm Password"]').fill('Demo013-pass');
+  await form.getByRole('button', { name: 'Create Account', exact: true }).click();
   await settingsLink.waitFor({ state: 'visible', timeout: 15000 });
 }
 
@@ -99,13 +113,6 @@ async function testAdditionalDiscovery(browser, viewport) {
     hasTouch: isMobile,
     reducedMotion: 'reduce',
   });
-  await context.addInitScript((user) => {
-    try {
-      localStorage.setItem('movienight_current_user', JSON.stringify(user));
-      localStorage.setItem('movienight_token', 'mock-jwt-token');
-      sessionStorage.setItem('movienight_current_user', JSON.stringify(user));
-    } catch {}
-  }, { id: 13, username: 'dq013', displayName: 'Demo 013', role: 'USER' });
 
   try {
     const page = await context.newPage();
@@ -116,15 +123,15 @@ async function testAdditionalDiscovery(browser, viewport) {
       return route.fulfill({ json: { available: true, message: 'Available' } });
     });
     await page.route('**/api/auth/signup', (route) => {
-      const user = { id: 13, username: 'dq013', displayName: 'Demo 013', role: 'USER' };
-      return route.fulfill({ json: { ok: true, user, token: 'mock-jwt-token', tokenType: 'Bearer' } });
+      const user = { id: 13, username: 'dq013', displayName: 'Demo 013', email: 'dq013@example.test', role: 'USER' };
+      return route.fulfill({ json: user });
     });
     await page.route('**/api/auth/login', (route) => {
-      const user = { id: 13, username: 'dq013', displayName: 'Demo 013', role: 'USER' };
-      return route.fulfill({ json: { ok: true, user, token: 'mock-jwt-token', tokenType: 'Bearer', id: 13, username: 'dq013', displayName: 'Demo 013', role: 'USER' } });
+      const user = { id: 13, username: 'dq013', displayName: 'Demo 013', email: 'dq013@example.test', role: 'USER' };
+      return route.fulfill({ json: { ok: true, user, token: 'mock-jwt-token', tokenType: 'Bearer' } });
     });
     await page.route('**/api/auth/me', (route) => {
-      return route.fulfill({ json: { id: 13, username: 'dq013', displayName: 'Demo 013', role: 'USER' } });
+      return route.fulfill({ json: { id: 13, username: 'dq013', displayName: 'Demo 013', email: 'dq013@example.test', role: 'USER' } });
     });
     const mockLibrary = [];
     await page.route('**/api/movies/library*', (route) => {
@@ -416,17 +423,24 @@ async function testAdditionalDiscovery(browser, viewport) {
       assert(await page.getByRole('button', { name: /Sort:.*Title/i }).isVisible());
       assert(await page.getByRole('button', { name: /Rating:.*6\+/i }).isVisible());
 
-      // Open details of first card
-      const sortedFirstCard = cards.first();
-      await sortedFirstCard.click();
+      // Open details of a card lower in the grid to verify scroll preservation alongside controls (DR06)
+      const sortedTargetCard = cards.nth(12);
+      await sortedTargetCard.scrollIntoViewIfNeeded();
+      const scrollBeforeSortedDetails = await page.evaluate(() => window.scrollY);
+      assert(scrollBeforeSortedDetails > 50, 'Scroll position is non-zero before opening details in sorted view');
+
+      await sortedTargetCard.click();
       const backFromSortedDetails = page.getByRole('button', { name: /Back to/i });
       await backFromSortedDetails.waitFor();
       await backFromSortedDetails.click();
 
-      // Upon details-and-back, verify controls are restored from saved session
+      // Upon details-and-back, verify controls and scroll position are restored from saved session
       await page.getByRole('heading', { name: /Popular & well rated/i }).waitFor();
       assert(await page.getByRole('button', { name: /Sort:.*Title/i }).isVisible(), 'Sort restored upon details-and-back');
       assert(await page.getByRole('button', { name: /Rating:.*6\+/i }).isVisible(), 'Rating filter restored upon details-and-back');
+      await page.waitForFunction((expected) => Math.abs(window.scrollY - expected) <= 25, scrollBeforeSortedDetails);
+      const restoredSortedScrollY = await page.evaluate(() => window.scrollY);
+      assert(Math.abs(restoredSortedScrollY - scrollBeforeSortedDetails) <= 25, 'Details-and-back preserves scroll position in sorted view');
 
       // Reset controls back to default recommendation
       await page.getByRole('button', { name: /Sort:/ }).click();
@@ -458,7 +472,10 @@ async function testAdditionalDiscovery(browser, viewport) {
 
     await page.clock.setSystemTime(new Date(categoryOpenedAt + 31 * 60 * 1000));
     const callsBeforeExpiredReturn = categoryCallCount;
-    await cards.first().click();
+    const cardForExpiredReturn = cards.nth(8);
+    await cardForExpiredReturn.scrollIntoViewIfNeeded();
+    const scrollBeforeExpiredReturn = await page.evaluate(() => window.scrollY);
+    await cardForExpiredReturn.click();
     await page.getByRole('button', { name: /Back to/i }).click();
     await page.getByRole('heading', { name: /Popular & well rated/i }).waitFor();
     await page.getByText('Discovery session expired. Refresh discovery to continue.', { exact: true }).waitFor();
@@ -466,6 +483,11 @@ async function testAdditionalDiscovery(browser, viewport) {
       'Failed Refresh does not discard loaded batches on expired return');
     assert.equal(categoryCallCount, callsBeforeExpiredReturn, 'Expired return does not silently replace the pool');
     assert.equal(await page.getByRole('button', { name: /Load more/i }).count(), 0, 'Expired pool cannot append');
+    if (scrollBeforeExpiredReturn > 50) {
+      await page.waitForFunction((expected) => Math.abs(window.scrollY - expected) <= 25, scrollBeforeExpiredReturn);
+      const restoredExpiredScrollY = await page.evaluate(() => window.scrollY);
+      assert(Math.abs(restoredExpiredScrollY - scrollBeforeExpiredReturn) <= 25, 'Expired return preserves scroll position');
+    }
 
     // Successful Refresh starts a new lifetime, which survives details-and-back.
     await page.getByRole('button', { name: 'Refresh discovery', exact: true }).click();

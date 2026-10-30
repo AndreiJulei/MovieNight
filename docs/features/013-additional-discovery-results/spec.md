@@ -1,6 +1,6 @@
 # Additional discovery results
 
-Status: Implemented; local Ticket 4 verification updated on 2026-10-30.
+Status: Implemented; local Ticket 5 verification updated on 2026-10-30.
 Roadmap: 9c (Additional discovery results). Product requirements: P18/P19;
 preserve P01/P09/P11/P12/P16/P17/P20 and privacy.
 GitHub issue: not published.
@@ -206,29 +206,38 @@ providers, critic enrichment and hosted readiness claims.
 
 ## Validation
 
-Implementation verified against all DR01–DR06 acceptance criteria on 2026-10-29 at
-revision `12efac7` plus working tree changes on `feat/013-additional-discovery-results`
-through focused integration tests, full backend test suite, strict TypeScript checks,
-production Vite build, and Chrome browser testing at 1440×900 and 390×844 viewports.
+Implementation verified against acceptance criteria DR01–DR06 on 2026-10-30 on
+branch `feat/013-additional-discovery-results` through focused integration tests, full
+backend test suite (`./mvnw test`), strict TypeScript checks (`npx tsc --noEmit`),
+production Vite build (`npm run build`), and Chrome browser testing at 1440×900 and
+390×844 viewports (`node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`).
+Direct test execution exercised selected movie category routes (`popular`, `top-rated`,
+`upcoming`, `airing`); see verified boundaries below for explicit route coverage and
+untested TV/anime routes.
 
 | Acceptance ID | Result | Check / evidence |
 | --- | --- | --- |
-| DR01 | Passed | Verified 20-item boundaries, sequential batch append without scroll disturbance across all 12 Explore categories, short final batch, and shelf preview links via `AdditionalDiscoveryPersistenceTest.categoryPaginationBatchesAndLoadMoreMakesNoProviderCalls` and `additional-discovery.cjs`. Confirmed saves do not auto-fill gaps. |
-| DR02 | Passed | Verified de-duplication across overlapping provider streams, typed identity `(tmdbId, mediaType)` isolation, and mutually exclusive TV/anime classification fixed within pinned pools via `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`. |
-| DR03 | Passed | Verified 10-page candidate bounds per source (Top Rated combines 10 `vote_average.desc` + 10 `vote_count.desc`), stronger candidates on later pages ranked before disclosure, 30-minute pinned pool session isolation unaffected by background refreshes, and zero provider calls during Load more via `AdditionalDiscoveryPersistenceTest.pinnedSessionIsIsolatedFromScheduledRefresh`, `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`, and `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`. |
-| DR04 | Passed | Verified dynamic server-side exclusion of authenticated user's current watchlist and watched titles using typed identity on both Explore routes and category views, immediate card removal on confirmed save success without auto-filling gaps, library removal restoring eligibility on reset via `AdditionalDiscoveryPersistenceTest.ownerLibraryDynamicExclusionsAndRemovals`, `AdditionalDiscoveryPersistenceTest.sessionOwnershipAndRouteMismatchEnforcement`, and `additional-discovery.cjs`. Shelf previews recheck on tab focus via `useSuggestions.ts`. |
-| DR05 | Passed | Verified distinct terminal states (`SELECTION_LIMIT_REACHED`, `PROVIDER_EXHAUSTED`, `NO_MATCHING_UNSAVED_TITLES`), session expiration 410 Gone with refresh recovery, usable results retained on failure, 7-day unavailable snapshot bounds, and sequential retry without skips or duplicates via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates`, `AdditionalDiscoveryPersistenceTest.lostOrExpiredSessionReturns410Gone`, `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`, and `additional-discovery.cjs`. |
-| DR06 | Passed | Verified whole-pool server-side sorting (Title, Year, TMDB audience rating) and filtering (TMDB audience 6+/10) before batching, default restoring category ranking, destination-scoped details return, and scroll restoration via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates` and `additional-discovery.cjs`. |
+| DR01 | Passed | Verified 20-item initial and subsequent batch boundaries, cursor-based pagination, short final batch, and zero provider calls during Load more via `AdditionalDiscoveryPersistenceTest.categoryPaginationBatchesAndLoadMoreMakesNoProviderCalls` (tested on `movies/popular`, which exercises the shared category pagination pipeline across all Explore categories). Sequential batch append, shelf preview navigation, scroll position preservation across Load more, and immediate card removal without auto-filling gaps verified in Chrome via `additional-discovery.cjs`. |
+| DR02 | Passed | Verified de-duplication across overlapping provider streams (stream candidate appearing in both `vote_average.desc` and `vote_count.desc` collapsed to single entry in cache and category results), 10-page bounds, and stronger candidates on later pages ranked before disclosure via `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`. Typed identity `(tmdbId, mediaType)` isolation and mutually exclusive TV/Anime classification carry forward from `SuggestionServiceTest` and `MeaningfulDiscoveryPersistenceTest`. |
+| DR03 | Passed | Verified 10-page candidate bounds per source (Top Rated combines 10 `vote_average.desc` + 10 `vote_count.desc` pages), stronger candidates on later pages ranked before disclosure, zero provider calls during Load more, and 30-minute pinned pool session isolation unaffected by background refreshes via `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`, `AdditionalDiscoveryPersistenceTest.categoryPaginationBatchesAndLoadMoreMakesNoProviderCalls`, `AdditionalDiscoveryPersistenceTest.pinnedSessionIsIsolatedFromScheduledRefresh`, and `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`. |
+| DR04 | Passed | Verified dynamic server-side exclusion of authenticated user's current watchlist and watched titles using typed identity on Explore routes, immediate card removal on confirmed save success without auto-filling gaps, and library removal restoring eligibility on reset via `AdditionalDiscoveryPersistenceTest.ownerLibraryDynamicExclusionsAndRemovals` and `AdditionalDiscoveryPersistenceTest.sessionOwnershipAndRouteMismatchEnforcement`. In-browser immediate card removal, cross-tab window focus library sync, and shelf preview focus recheck verified in `additional-discovery.cjs`. |
+| DR05 | Passed | Verified distinct terminal states (`SELECTION_LIMIT_REACHED`, `PROVIDER_EXHAUSTED`, `NO_MATCHING_UNSAVED_TITLES`), unknown provenance preservation on legacy snapshots without falsely claiming exhaustion, session expiration 410 Gone with refresh recovery, usable results retained on failure, 7-day unavailable snapshot bounds, and sequential retry without skips or duplicates via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates`, `AdditionalDiscoveryPersistenceTest.legacySnapshotPreservesUnknownProvenanceWithoutFalselyClaimingExhaustion`, `AdditionalDiscoveryPersistenceTest.lostOrExpiredSessionReturns410Gone`, `AdditionalDiscoveryPersistenceTest.sessionExpiresAfter30MinutesReturns410Gone`, and `additional-discovery.cjs`. |
+| DR06 | Passed | Verified whole-pool server-side sorting (Title, Year, TMDB audience rating), pagination across batches under active sort controls (cursor=0 limit=2, then cursor=2 limit=2), and filtering (TMDB audience 6+/10) before batching, default restoring category ranking, destination-scoped details return, and scroll restoration via `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates` and `additional-discovery.cjs` (verifying scroll position preservation across pure details-and-back in sorted views, details-and-back with watchlist saves, and expired session returns). |
 
 ### Commands and observed results
 
-- Backend regression & new tests: `./mvnw test` executed **143 tests, 0 failures, 0 errors, 2 skipped** (live provider opt-in smoke tests).
-- Focused integration suite: `./mvnw test -Dtest=AdditionalDiscoveryPersistenceTest,MeaningfulDiscoveryPersistenceTest,SuggestionControllerTest` executed **14 tests, 0 failures, 0 errors**.
+- Backend regression & new tests: `./mvnw test` executed **147 tests, 0 failures, 0 errors, 2 skipped** (live provider opt-in smoke tests).
+- Focused integration suite: `./mvnw test -Dtest=AdditionalDiscoveryPersistenceTest,MeaningfulDiscoveryPersistenceTest,SuggestionControllerTest` executed **18 tests, 0 failures, 0 errors**.
 - Frontend verification:
   - `npx tsc --noEmit` in `repo/MovieNightFrontend` passed with 0 errors.
   - `npm run build` in `repo/MovieNightFrontend` passed production Vite build.
-  - Playwright browser test: `MOVIENIGHT_PLAYWRIGHT_MODULE=/Users/juv/.npm/_npx/9833c18b2d85bc59/node_modules/playwright node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs` passed with Chrome 156 at 1440×900 and 390×844 viewports.
-- Git & Diff cleanliness: `git status --short` verified only expected scoped changes; no database migration was needed as sessions and publication metadata are kept in-memory.
+  - Playwright browser test: `node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs` passed with Chrome 156 at 1440×900 and 390×844 viewports.
+- Template restoration: `docs/templates/feature-spec.md` restored from base revision prior to commit `a3e06ecb48ba7cc7e00697942540e816b7078df0`.
+- Verified boundaries and practical limitations:
+  - Category pipeline and route coverage boundary: All 12 Explore categories (`popular`, `top-rated`, `newest`, `upcoming`, `airing` across Movie, TV Series, and Anime TV) share the same underlying `ExploreSessionManager` / `SuggestionService` category pagination and ranking engine. Focused persistence tests explicitly executed backend routes for `movies/popular` and `movies/top-rated` with mock TMDB provider fixtures. Browser tests in `additional-discovery.cjs` exercised `movies/popular`, `movies/top-rated`, `movies/upcoming`, and `movies/airing` with controlled API fixtures. Direct per-route verification was NOT executed for TV Series (`/api/movies/explore/tv/*`), Anime TV (`/api/movies/explore/anime/*`), or backend `movies/newest` and `movies/upcoming` endpoints; their behavior relies on the verified shared `ExploreSessionManager` implementation rather than independent per-category test runs.
+  - Provider boundaries: Controlled test fixtures do not certify live third-party TMDB provider uptime, rate limiting, or network volatility.
+  - Storage & persistence boundary: Backend `DiscoverySnapshot` metadata records and `CachedMovieList` candidate pools use JPA persistence in the database (H2 in tests, PostgreSQL in production). Pinned discovery sessions (`ExploreSessionManager.activeSessions`) and publication metadata provenance are kept in-memory on the backend for their 30-minute lifetime. In the client, browser snapshots are cached in `sessionStorage` (`explore_session_<mediaType>_<category>`) to support rapid details-and-back and tab restoration. As specified in DR05/Q13, in-memory backend sessions are not restored across server restarts, though JPA snapshot tables and client sessionStorage remain intact.
+- Git & Diff cleanliness: `git status --short` verified only expected scoped changes; no database migration was needed as existing `discovery_snapshots` and `cached_movie_list` JPA tables were reused without schema alterations.
 
 ### Ticket 3 lifetime regression — 2026-10-30
 
@@ -317,3 +326,47 @@ Checks run for Ticket 4:
 - Playwright browser test: `MOVIENIGHT_PLAYWRIGHT_MODULE=/Users/juv/.npm/_npx/9833c18b2d85bc59/node_modules/playwright node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`:
   passed with Chrome 156 at 1440×900 and 390×844 viewports.
 - `git diff --check`: passed with 0 whitespace issues.
+
+### Ticket 5 verification, browser tests, spec validation table, and template restoration — 2026-10-30
+
+Tested revision: `dc6a6d0` plus the Ticket 5 working tree on `feat/013-additional-discovery-results`.
+
+Scope and verification:
+- Standards Finding P3 (Restoring Deleted Template): Restored `docs/templates/feature-spec.md`
+  from base revision prior to erroneous deletion in commit `a3e06ecb48ba7cc7e00697942540e816b7078df0`.
+- Browser Test Fixes (`additional-discovery.cjs`):
+  - Fixed user authentication/signup setup: removed `context.addInitScript` which bypassed the
+    UI signup flow and caused storage conflicts on logout/navigation; updated `/api/auth/signup`
+    and `/api/auth/login` mocks to return proper user DTO formats, allowing authentic signup form
+    execution through the UI.
+  - Added explicit assertions verifying scroll position preservation during details-and-back navigation
+    across multiple scenarios: pure details-and-back in sorted views, details-and-back with confirmed watchlist
+    saves, and details-and-back on expired sessions.
+  - Added robust Playwright module loader in `additional-discovery.cjs` allowing execution via
+    standard `node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs`.
+- Spec Validation Integrity & Additional Test Coverage:
+  - In `AdditionalDiscoveryPersistenceTest.tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages`,
+    added an overlapping candidate item across `vote_average.desc` and `vote_count.desc` streams to strictly
+    verify that duplicates are collapsed to a single entry in the database cache and category results.
+  - In `AdditionalDiscoveryPersistenceTest.serverSideSortAndFiltersWithTerminalStates`, added explicit coverage
+    for `sortBy=rating` (TMDB audience rating descending) and verified that whole-pool server-side sorting
+    paginates accurately across multiple batches (`cursor=0 limit=2` and `cursor=2 limit=2`).
+  - Updated validation table to map acceptance IDs strictly to actual test methods in
+    `AdditionalDiscoveryPersistenceTest.java` (including `legacySnapshotPreservesUnknownProvenanceWithoutFalselyClaimingExhaustion`)
+    and `additional-discovery.cjs`.
+  - Clarified verified boundaries: explicitly identified that direct test execution covered selected movie
+    routes (`movies/popular`, `movies/top-rated`, `movies/upcoming`, and `movies/airing`), while TV Series
+    (`tv/*`), Anime TV (`anime/*`), and remaining movie routes rely on the verified shared `ExploreSessionManager`
+    pipeline and were not directly executed per-route.
+  - Accurately distinguished persistence mechanisms: clarified that backend `DiscoverySnapshot` and `CachedMovieList`
+    are persisted in the database via JPA, pinned discovery sessions (`ExploreSessionManager`) and publication
+    provenance metadata are in-memory with a 30-minute lifetime, and browser snapshots are cached in client `sessionStorage`.
+
+Checks run for Ticket 5:
+- Backend test suite: `cd repo/MovieNightBackend && ./mvnw -q test` passed (147 tests, 0 failures, 0 errors, 2 skipped).
+- Focused backend suite: `cd repo/MovieNightBackend && ./mvnw test -Dtest=AdditionalDiscoveryPersistenceTest,MeaningfulDiscoveryPersistenceTest,SuggestionControllerTest` passed (18 tests, 0 failures, 0 errors).
+- TypeScript check: `cd repo/MovieNightFrontend && npx tsc --noEmit` passed with 0 errors.
+- Frontend build: `cd repo/MovieNightFrontend && npm run build` passed production build.
+- Browser test: `node repo/MovieNightFrontend/tests/browser/additional-discovery.cjs` passed with Chrome 156 at 1440×900 and 390×844 viewports.
+- Template check: `git status --short docs/templates/feature-spec.md` verified clean restoration.
+- Spec diff check: `git diff docs/features/013-additional-discovery-results/spec.md`.
