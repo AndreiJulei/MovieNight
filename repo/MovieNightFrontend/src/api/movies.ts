@@ -79,6 +79,28 @@ export interface ApiFriendRatingResponse {
   watchedAt?: string;
 }
 
+import {
+  boundedRead,
+  type BoundedReadOptions,
+  isAbortError,
+  isTransientError,
+  parseRetryAfter,
+  RequestTimeoutError,
+  setDefaultScopeResolver,
+} from "./boundedRead";
+
+setDefaultScopeResolver(() => authApi.getToken());
+
+export {
+  boundedRead,
+  type BoundedReadOptions,
+  isAbortError,
+  isTransientError,
+  parseRetryAfter,
+  RequestTimeoutError,
+  setDefaultScopeResolver,
+};
+
 function getAuthHeaders(): HeadersInit {
   const token = authApi.getToken();
   const headers: Record<string, string> = {
@@ -95,8 +117,11 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
   try {
     const res = await fetch(url, {
       ...init,
-      headers: getAuthHeaders(),
-      signal: AbortSignal.timeout(15000),
+      headers: {
+        ...getAuthHeaders(),
+        ...(init.headers || {}),
+      },
+      signal: init.signal ?? AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       let body: any = null;
@@ -105,6 +130,7 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
       } catch {
         /* ignore non-json error responses */
       }
+      const retryAfter = res.headers.get("Retry-After");
       if (res.status === 410) {
         const message = body?.message || "Discovery session expired. Refresh discovery to continue.";
         const err = new Error(message);
@@ -112,20 +138,25 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
         throw err;
       }
       if (res.status === 401 || res.status === 403) {
-        throw new Error("Your session could not be verified. Sign in again and retry.");
+        const err = new Error("Your session could not be verified. Sign in again and retry.");
+        (err as any).status = res.status;
+        throw err;
       }
-      if (body?.message) {
-        throw new Error(body.message);
+      const message = body?.message || `The server returned status ${res.status}. Please try again.`;
+      const err = new Error(message);
+      (err as any).status = res.status;
+      if (retryAfter) {
+        (err as any).retryAfter = retryAfter;
       }
-      throw new Error("The server could not confirm the request. Please try again.");
+      throw err;
     }
     return await res.json() as T;
   } catch (err) {
     if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
-      throw new Error("Confirmation timed out. Reload your library or try again.");
+      throw err;
     }
     if (err instanceof TypeError) {
-      throw new Error("Could not confirm the request. Check your connection and try again.");
+      throw err;
     }
     throw err;
   }
@@ -134,7 +165,7 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
 function confirmedWatchedEntry(entry: ApiUserMovieEntryResponse, rating: number | null) {
   if (!entry?.id || !entry.movie?.id || !entry.movie.title || entry.status !== "WATCHED" ||
       (entry.personalRating ?? null) !== rating) {
-    throw new Error("Could not confirm watched history. Reload your library or try again.");
+    throw new Error("Could not confirm watched history. Try again.");
   }
   return entry;
 }
@@ -143,26 +174,42 @@ export const moviesApi = {
   /**
    * Live movie search (searches local database first, then TMDB).
    */
-  async search(query: string): Promise<ApiMovieResponse[]> {
-    if (!query.trim()) return [];
-    const response = await libraryRequest<ApiMovieResponse[]>(`${API_BASE}/api/movies/search?query=${encodeURIComponent(query.trim())}`);
-    if (!Array.isArray(response)) throw new Error("Invalid search response. Retry.");
-    return response;
+  async search(query: string, options?: BoundedReadOptions): Promise<ApiMovieResponse[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const actionKey = `search:${q.toLowerCase()}`;
+    return boundedRead(actionKey, async (signal) => {
+      const response = await libraryRequest<ApiMovieResponse[]>(
+        `${API_BASE}/api/movies/search?query=${encodeURIComponent(q)}`,
+        { signal },
+      );
+      if (!Array.isArray(response)) throw new Error("Invalid search response. Retry.");
+      return response;
+    }, options);
   },
 
   /**
    * Get or fetch full media details by TMDB ID (enriched with OMDb ratings).
    */
-  async getByTmdbId(tmdbId: number, mediaType?: string): Promise<ApiMovieResponse | null> {
+  async getByTmdbId(tmdbId: number, mediaType?: string, options?: BoundedReadOptions): Promise<ApiMovieResponse | null> {
     if (!mediaType) throw new Error("Explicit title resource type is required.");
-    return libraryRequest<ApiMovieResponse>(`${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`);
+    const actionKey = `getByTmdbId:${mediaType.toUpperCase()}:${tmdbId}`;
+    return boundedRead(actionKey, (signal) => {
+      return libraryRequest<ApiMovieResponse>(
+        `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
+        { signal },
+      );
+    }, options);
   },
 
   /**
    * Get movie details by database primary key ID.
    */
-  async getById(id: number): Promise<ApiMovieResponse | null> {
-    return libraryRequest<ApiMovieResponse>(`${API_BASE}/api/movies/${id}`);
+  async getById(id: number, options?: BoundedReadOptions): Promise<ApiMovieResponse | null> {
+    const actionKey = `getById:${id}`;
+    return boundedRead(actionKey, (signal) => {
+      return libraryRequest<ApiMovieResponse>(`${API_BASE}/api/movies/${id}`, { signal });
+    }, options);
   },
 
   /**
@@ -177,7 +224,7 @@ export const moviesApi = {
     return entries;
   },
 
-  /** Save explicitly; a rejected request never becomes a successful null result. */
+  /** Save explicitly; a rejected request never becomes a successful null result. Never auto-retried. */
   async saveWatchlist(req: ApiAddMovieRequest): Promise<ApiUserMovieEntryResponse> {
     const entry = await libraryRequest<ApiUserMovieEntryResponse>(`${API_BASE}/api/movies/library`, {
       method: "POST",
@@ -186,7 +233,7 @@ export const moviesApi = {
     if (!entry?.id || !entry.movie?.title ||
         (entry.movie.tmdbId == null && entry.movie.id == null) ||
         !["WATCHLIST", "WATCHED"].includes(entry.status)) {
-      throw new Error("Could not confirm the saved entry. Reload your library or try again.");
+      throw new Error("Could not confirm the saved entry. Try again.");
     }
     return entry;
   },
@@ -234,18 +281,27 @@ export const moviesApi = {
   async getFriendsRatings(
     movieId: number | string,
     friendIds: (number | string)[],
+    options?: BoundedReadOptions,
   ): Promise<ApiFriendRatingResponse[]> {
     if (!friendIds || friendIds.length === 0) return [];
     const numericIds = friendIds.map((id) => Number(id)).filter((id) => Number.isSafeInteger(id) && id > 0);
     if (numericIds.length === 0) return [];
-    const res = await fetch(
-      `${API_BASE}/api/movies/${movieId}/friends-ratings?friendIds=${numericIds.join(",")}`,
-      { headers: getAuthHeaders(), signal: AbortSignal.timeout(15000) },
-    );
-    if (!res.ok) throw new Error("Could not load friend ratings. Retry or sign in again.");
-    const ratings = await res.json();
-    if (!Array.isArray(ratings)) throw new Error("Could not read friend ratings. Retry.");
-    return ratings;
+    const sortedIds = [...numericIds].sort((a, b) => a - b).join(",");
+    const actionKey = `getFriendsRatings:${movieId}:${sortedIds}`;
+    return boundedRead(actionKey, async (signal) => {
+      const res = await fetch(
+        `${API_BASE}/api/movies/${movieId}/friends-ratings?friendIds=${sortedIds}`,
+        { headers: getAuthHeaders(), signal },
+      );
+      if (!res.ok) {
+        const err = new Error("Could not load friend ratings. Retry or sign in again.");
+        (err as any).status = res.status;
+        throw err;
+      }
+      const ratings = await res.json();
+      if (!Array.isArray(ratings)) throw new Error("Could not read friend ratings. Retry.");
+      return ratings;
+    }, options);
   },
 
   /**
@@ -324,10 +380,20 @@ export const moviesApi = {
   /**
    * Fetch discover catalog shelves for a specific media type (movies, tv, anime).
    */
-  async getExploreMedia(mediaType: string): Promise<ApiSuggestionsResponse | null> {
-    const response = await libraryRequest<ApiSuggestionsResponse>(`${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`);
-    if (!Array.isArray(response?.categories)) throw new Error("Invalid discovery response. Retry.");
-    return response;
+  async getExploreMedia(mediaType: string, options?: BoundedReadOptions): Promise<ApiSuggestionsResponse | null> {
+    const actionKey = `getExploreMedia:${mediaType.toLowerCase()}`;
+    const effectiveOptions: BoundedReadOptions = {
+      ...options,
+      userScope: options?.userScope ?? authApi.getToken() ?? "anon",
+    };
+    return boundedRead(actionKey, async (signal) => {
+      const response = await libraryRequest<ApiSuggestionsResponse>(
+        `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`,
+        { signal },
+      );
+      if (!Array.isArray(response?.categories)) throw new Error("Invalid discovery response. Retry.");
+      return response;
+    }, effectiveOptions);
   },
 
   /**
@@ -342,7 +408,8 @@ export const moviesApi = {
       limit?: number;
       sortBy?: string;
       minRating?: number;
-    }
+    },
+    options?: BoundedReadOptions,
   ): Promise<ApiExploreCategoryPageResponse> {
     const query = new URLSearchParams();
     if (params?.sessionId) query.set("sessionId", params.sessionId);
@@ -353,7 +420,12 @@ export const moviesApi = {
 
     const qs = query.toString();
     const url = `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}/${encodeURIComponent(category)}${qs ? `?${qs}` : ""}`;
-    return libraryRequest<ApiExploreCategoryPageResponse>(url);
+    const actionKey = `getExploreCategoryPage:${mediaType.toLowerCase()}:${category.toLowerCase()}:${qs}`;
+    const effectiveOptions: BoundedReadOptions = {
+      ...options,
+      userScope: options?.userScope ?? authApi.getToken() ?? "anon",
+    };
+    return boundedRead(actionKey, (signal) => libraryRequest<ApiExploreCategoryPageResponse>(url, { signal }), effectiveOptions);
   },
 
   async refreshExploreCategory(mediaType: string, category: string): Promise<ApiSuggestionsResponse> {
