@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useRouter, useQuery } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
-import { moviesApi, type ApiMovieResponse } from "../api/movies";
+import { moviesApi, isAbortError, type ApiMovieResponse } from "../api/movies";
 import type { Movie, CastMember, MediaType } from "../store/data";
 import AppShell from "../components/AppShell";
 import PixelPoster from "../components/PixelPoster";
@@ -51,7 +51,7 @@ export default function MovieDetailPage() {
   const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setDetailsError(null);
     setIsLoadingDetails(true);
     void (async () => {
@@ -61,9 +61,15 @@ export default function MovieDetailPage() {
           throw new Error("Title link has conflicting resource types. Reopen the title from discovery.");
         }
         const res = identity.providerId != null
-          ? await moviesApi.getByTmdbId(identity.providerId, identity.category!)
-          : await moviesApi.getById(identity.catalogId!);
-        if (!active) return;
+          ? await moviesApi.getByTmdbId(identity.providerId, identity.category!, {
+              signal: controller.signal,
+              userScope: user?.id,
+            })
+          : await moviesApi.getById(identity.catalogId!, {
+              signal: controller.signal,
+              userScope: user?.id,
+            });
+        if (controller.signal.aborted) return;
         if (!res || !res.title || !res.mediaType) throw new Error("Could not confirm title details. Retry.");
         const enriched: Movie = {
           id: titleId(res.tmdbId, res.mediaType, res.id), catalogMovieId: res.id,
@@ -81,16 +87,120 @@ export default function MovieDetailPage() {
         }
         setMovie({ key: requestedId, movie: enriched }); store.upsertMovie(enriched);
       } catch (error) {
-        if (active) setDetailsError(error instanceof Error ? error.message : "Could not load details. Retry.");
-      } finally { if (active) setIsLoadingDetails(false); }
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setDetailsError(error instanceof Error ? error.message : "Could not load details. Retry.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingDetails(false);
+      }
     })();
-    return () => { active = false; };
+    return () => {
+      controller.abort();
+    };
   }, [requestedId, typeParam, user?.id, detailsRetry, store.upsertMovie]);
+
+  // Bounded enrichment & backfill check: if initial core response is missing critic ratings
+  // or missing core metadata (overview, trailer, cast/director from incomplete cached summary),
+  // poll at most 2 times (1.5s, 3.5s) to receive asynchronous OMDb enrichment or backend backfill
+  // without blocking core render.
+  const isMissingRatings = movie ? movie.imdb == null && movie.rt == null : false;
+  const isMissingOverview = movie ? !movie.overview || movie.overview.trim() === "" : false;
+  const isMissingTrailer = movie ? !movie.trailerKey : false;
+  const isMissingCredits = movie ? (!movie.cast || movie.cast.length === 0) && !movie.director : false;
+  const isMissingMetadata = isMissingRatings || isMissingOverview || isMissingTrailer || isMissingCredits;
+
+  useEffect(() => {
+    if (!movie || !isMissingMetadata) return;
+    const identity = parseTitleId(requestedId);
+    if (identity.providerId == null && movie.catalogMovieId == null) return;
+
+    const controller = new AbortController();
+    let attempt = 0;
+    const delays = [1500, 3500];
+    let timerId: number | undefined;
+
+    const checkMetadata = async () => {
+      if (controller.signal.aborted) return;
+      try {
+        const res = identity.providerId != null
+          ? await moviesApi.getByTmdbId(identity.providerId, identity.category || movie.mediaType, {
+              signal: controller.signal,
+              userScope: user?.id,
+            })
+          : await moviesApi.getById(movie.catalogMovieId!, {
+              signal: controller.signal,
+              userScope: user?.id,
+            });
+        if (controller.signal.aborted) return;
+        if (res) {
+          let hasNewData = false;
+          setMovie((prev) => {
+            if (!prev || prev.key !== requestedId) return prev;
+            const updated: Movie = { ...prev.movie };
+
+            if (res.imdbRating != null && prev.movie.imdb == null) {
+              updated.imdb = res.imdbRating;
+              hasNewData = true;
+            }
+            if (res.rottenTomatoesRating != null && prev.movie.rt == null) {
+              updated.rt = res.rottenTomatoesRating;
+              hasNewData = true;
+            }
+            if (res.overview && (!prev.movie.overview || prev.movie.overview.trim() === "")) {
+              updated.overview = res.overview;
+              hasNewData = true;
+            }
+            if (res.trailerKey && !prev.movie.trailerKey) {
+              updated.trailerKey = res.trailerKey;
+              hasNewData = true;
+            }
+            if (res.director && !prev.movie.director) {
+              updated.director = res.director;
+              hasNewData = true;
+            }
+            if (res.castMembers && (!prev.movie.cast || prev.movie.cast.length === 0)) {
+              updated.cast = res.castMembers.split(",").map((s) => ({ name: s.trim(), role: "Cast" })).filter((c) => Boolean(c.name));
+              hasNewData = true;
+            }
+
+            if (hasNewData) {
+              store.upsertMovie(updated);
+              return { key: requestedId, movie: updated };
+            }
+            return prev;
+          });
+
+          // If everything is now complete, we can stop polling early
+          if (hasNewData) {
+            const hasRatings = res.imdbRating != null || res.rottenTomatoesRating != null;
+            const hasOverview = Boolean(res.overview);
+            const hasTrailer = Boolean(res.trailerKey);
+            if (hasRatings && hasOverview && hasTrailer) {
+              return;
+            }
+          }
+        }
+      } catch {
+        // Enrichment check failure is non-fatal to open detail page
+      }
+
+      attempt++;
+      if (attempt < delays.length && !controller.signal.aborted) {
+        timerId = window.setTimeout(checkMetadata, delays[attempt]);
+      }
+    };
+
+    timerId = window.setTimeout(checkMetadata, delays[0]);
+    return () => {
+      controller.abort();
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [movie?.id, isMissingMetadata, requestedId, user?.id, store.upsertMovie]);
 
   useEffect(() => {
     const movieIdParam = params?.id;
     if (!movieIdParam) return;
-    let active = true;
+    const controller = new AbortController();
 
     setFriendReviews([]);
     setIsLoadingFriends(false);
@@ -106,9 +216,12 @@ export default function MovieDetailPage() {
       if (friendIds.length > 0 && currentMovieId != null) {
         setIsLoadingFriends(true);
         moviesApi
-          .getFriendsRatings(currentMovieId, friendIds)
+          .getFriendsRatings(currentMovieId, friendIds, {
+            signal: controller.signal,
+            userScope: user.id,
+          })
           .then((backendRatings) => {
-            if (!active) return;
+            if (controller.signal.aborted) return;
             if (backendRatings) {
               const liveRatings: FriendReview[] = backendRatings.map((br) => ({
                 userId: br.userId,
@@ -120,15 +233,19 @@ export default function MovieDetailPage() {
               setFriendReviews(liveRatings);
             }
           })
-          .catch((err) => { if (active) setFriendError(err instanceof Error ? err.message : "Could not load ratings. Retry."); })
+          .catch((err) => {
+            if (!controller.signal.aborted && !isAbortError(err)) {
+              setFriendError(err instanceof Error ? err.message : "Could not load ratings. Retry.");
+            }
+          })
           .finally(() => {
-            if (active) setIsLoadingFriends(false);
+            if (!controller.signal.aborted) setIsLoadingFriends(false);
           });
       }
     }
 
     return () => {
-      active = false;
+      controller.abort();
     };
   }, [requestedId, movie?.catalogMovieId, user, store.friendsOf, friendRetry]);
 
@@ -315,8 +432,15 @@ export default function MovieDetailPage() {
               <p className="mt-4 text-sm text-text-muted">Loading movie details...</p>
             </div>
           ) : (
-            <div role="alert" className="mt-8 text-text-muted">{detailsError ?? "That title could not be found."}
-              <button className="ml-3 underline" onClick={() => setDetailsRetry(r => r + 1)}>Retry details</button>
+            <div role="alert" className="mt-8 flex items-center gap-3 text-text-muted">
+              <span>{detailsError ?? "That title could not be found."}</span>
+              <button
+                type="button"
+                className="font-medium text-accent underline hover:text-white focus-visible:outline-2 focus-visible:outline-accent"
+                onClick={() => setDetailsRetry(r => r + 1)}
+              >
+                Retry details
+              </button>
             </div>
           )}
         </div>
@@ -330,8 +454,18 @@ export default function MovieDetailPage() {
 
   return (
     <AppShell>
-      {detailsError && <div role="alert" className="mb-4 text-danger">{detailsError}
-        <button className="ml-3 underline" onClick={() => setDetailsRetry(r => r + 1)}>Retry details</button></div>}
+      {detailsError && (
+        <div role="alert" className="mb-4 flex items-center gap-3 text-danger">
+          <span>{detailsError}</span>
+          <button
+            type="button"
+            className="font-medium text-accent underline hover:text-white focus-visible:outline-2 focus-visible:outline-accent"
+            onClick={() => setDetailsRetry(r => r + 1)}
+          >
+            Retry details
+          </button>
+        </div>
+      )}
       {/* Centered Movie Detail Container */}
       <div className="mx-auto max-w-[1240px]">
         {/* Floating Hero Poster Clone */}

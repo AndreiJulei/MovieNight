@@ -134,22 +134,12 @@ function ExploreCategoryGridView({
           <button
             type="button"
             disabled={category.loadingMore || category.refreshing || category.loading}
-            onClick={category.sessionExpired ? category.refresh : category.retry}
+            onClick={category.retry}
             className="text-sm font-semibold text-accent underline hover:text-white disabled:opacity-50"
           >
-            {category.sessionExpired ? "Refresh discovery" : "Retry"}
+            Retry
           </button>
         </div>
-      )}
-      {!category.error && (
-        <button
-          type="button"
-          disabled={category.loading || category.refreshing}
-          onClick={category.refresh}
-          className="mb-4 text-sm text-accent underline disabled:opacity-50"
-        >
-          {category.sessionExpired ? "Refresh discovery" : "Refresh discovery"}
-        </button>
       )}
 
       {category.state === "STALE" && (
@@ -214,21 +204,45 @@ function ExploreCategoryGridView({
             showAddButton={false}
           />
 
-          <MovieGrid
-            movies={category.movies}
-            compact={viewMode === "compact"}
-            empty={
-              category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
-                ? "All titles in this category are already in your watchlist or watched history."
-                : category.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
-                ? "No matching unsaved titles."
-                : "No titles found in this category."
-            }
-            referrerOverride={`/explore/${type}/${rowId}`}
-            showAddToWatchlist
-            onAddToWatchlist={handleAddToWatchlist}
-            userHasMovie={userHasMovie}
-          />
+          {category.segments.length > 1 ? (
+            <div className="space-y-8">
+              {category.segments.map((segment) => (
+                <div key={segment.id} className="space-y-3">
+                  {segment.label && (
+                    <div className="flex items-center gap-3 pt-4 pb-1">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-accent">{segment.label}</span>
+                      <div className="h-px flex-1 bg-white/10" />
+                    </div>
+                  )}
+                  <MovieGrid
+                    movies={segment.movies}
+                    compact={viewMode === "compact"}
+                    empty="No titles found in this segment."
+                    referrerOverride={`/explore/${type}/${rowId}`}
+                    showAddToWatchlist
+                    onAddToWatchlist={handleAddToWatchlist}
+                    userHasMovie={userHasMovie}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <MovieGrid
+              movies={category.movies}
+              compact={viewMode === "compact"}
+              empty={
+                category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
+                  ? "All titles in this category are already in your watchlist or watched history."
+                  : category.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
+                  ? "No matching unsaved titles."
+                  : "No titles found in this category."
+              }
+              referrerOverride={`/explore/${type}/${rowId}`}
+              showAddToWatchlist
+              onAddToWatchlist={handleAddToWatchlist}
+              userHasMovie={userHasMovie}
+            />
+          )}
 
           {/* DR01: Load more action */}
           {category.hasMore && (
@@ -406,7 +420,16 @@ export default function ExploreContentPage() {
                 {row.state === "UNAVAILABLE" && <p role="alert" className="mt-1 text-xs text-danger">Unavailable · try refreshing</p>}
                 {row.state === "EMPTY" && <p className="mt-1 text-xs text-text-muted">No titles met this shelf's criteria.</p>}
               </div>
-              <button type="button" disabled={explore.loading || explore.pending} onClick={() => explore.refresh(row.id)} className="text-xs font-semibold text-accent underline disabled:opacity-50">Refresh</button>
+              {explore.failedCategory === row.id && (
+                <button
+                  type="button"
+                  disabled={explore.loading || explore.pending}
+                  onClick={() => explore.refresh(row.id)}
+                  className="text-xs font-semibold text-accent underline hover:text-white disabled:opacity-50"
+                >
+                  Retry shelf
+                </button>
+              )}
               {(row.movies.length > 4 || row.hasMore) && (
                 <Link
                   to={`/explore/${type}/${row.id}`}

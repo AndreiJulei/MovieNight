@@ -5,6 +5,21 @@ import { mapApiMovie } from "./useSuggestions";
 import type { Movie } from "../store/data";
 import type { SortBy, MinRating } from "../components/TopBar";
 
+export interface CategorySegment {
+  id: string;
+  generation: number;
+  label?: string;
+  movies: Movie[];
+  updatedAt?: string;
+  state?: string;
+  openedAt?: number;
+}
+
+export function getTypedMovieKey(m: { tmdbId?: number; mediaType?: string }): string {
+  const type = (m.mediaType || "MOVIE").toUpperCase();
+  return `${type}:${m.tmdbId}`;
+}
+
 interface StoredCategorySession {
   userId?: string;
   sessionId: string | null;
@@ -18,11 +33,13 @@ interface StoredCategorySession {
   terminalReason?: string | null;
   underlyingLimit?: string | null;
   movies: Movie[];
+  segments?: CategorySegment[];
   confirmedSavedIds?: string[];
   scrollY: number;
   timestamp: number;
   sortBy: SortBy;
   minRating: MinRating;
+  generation?: number;
 }
 
 interface SessionRefState {
@@ -37,7 +54,10 @@ interface SessionRefState {
   terminalReason?: string | null;
   underlyingLimit?: string | null;
   movies: Movie[];
+  segments: CategorySegment[];
   openedAt?: number;
+  isRenewal?: boolean;
+  generation: number;
 }
 
 export function isDetailsReturnFor(expectedPath: string): boolean {
@@ -145,6 +165,7 @@ export function useExploreCategory(
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [totalEligibleInPool, setTotalEligibleInPool] = useState<number>(0);
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [segments, setSegments] = useState<CategorySegment[]>([]);
   const [title, setTitle] = useState<string>("");
   const [subtitle, setSubtitle] = useState<string>("");
   const [state, setState] = useState<string>("READY");
@@ -179,7 +200,9 @@ export function useExploreCategory(
     terminalReason: null,
     underlyingLimit: null,
     movies: [],
+    segments: [],
     openedAt: undefined,
+    generation: 0,
   });
 
   // Check if a title is in confirmed library state or was confirmed saved in this session
@@ -245,11 +268,13 @@ export function useExploreCategory(
           terminalReason: current.terminalReason,
           underlyingLimit: current.underlyingLimit,
           movies: current.movies,
+          segments: current.segments,
           confirmedSavedIds: Array.from(confirmedSavedIdsRef.current),
           scrollY: window.scrollY,
           timestamp: current.openedAt || Date.now(),
           sortBy,
           minRating,
+          generation: current.generation,
           ...overrides,
         };
         sessionStorage.setItem(storageKey, JSON.stringify(payload));
@@ -331,6 +356,7 @@ export function useExploreCategory(
       setTerminalReason(nextState.terminalReason ?? null);
       setUnderlyingLimit(nextState.underlyingLimit ?? null);
       setMovies(nextState.movies);
+      setSegments(nextState.segments ?? (nextState.movies.length > 0 ? [{ id: "initial", generation: 0, movies: nextState.movies }] : []));
 
       // Spec Finding 4: Storage purge requirement — remove from sessionStorage on UNAVAILABLE
       if (
@@ -356,11 +382,21 @@ export function useExploreCategory(
     if (targetMovies.length === prevMovies.length) {
       return prevMovies;
     }
+    const targetSet = new Set(targetMovies.map((m) => m.id));
+    const nextSegments = (sessionRef.current.segments || [])
+      .map((seg) => ({
+        ...seg,
+        movies: seg.movies.filter((m) => targetSet.has(m.id)),
+      }))
+      .filter((seg) => seg.movies.length > 0);
+
     const removedCount = prevMovies.length - targetMovies.length;
     const newTotal = Math.max(0, sessionRef.current.totalEligibleInPool - removedCount);
     sessionRef.current.movies = targetMovies;
+    sessionRef.current.segments = nextSegments;
     sessionRef.current.totalEligibleInPool = newTotal;
     setTotalEligibleInPool(newTotal);
+    setSegments(nextSegments);
 
     if (!sessionRef.current.hasMore && targetMovies.length === 0) {
       let currentLimit = sessionRef.current.underlyingLimit ?? null;
@@ -380,6 +416,7 @@ export function useExploreCategory(
 
     persistSessionSnapshotRef.current({
       movies: targetMovies,
+      segments: nextSegments,
       totalEligibleInPool: newTotal,
       terminalReason: sessionRef.current.terminalReason,
       underlyingLimit: sessionRef.current.underlyingLimit,
@@ -396,9 +433,11 @@ export function useExploreCategory(
       const unavailable =
         res.state === "UNAVAILABLE" || isSnapshotUnavailable(res.state, res.updatedAt);
       let newMovies: Movie[];
+      let newSegments: CategorySegment[];
+
       if (unavailable) {
-        // Q12: Unusable snapshot older than 7 days cannot retain cards
         newMovies = [];
+        newSegments = [];
         if (typeof window !== "undefined") {
           try {
             sessionStorage.removeItem(storageKey);
@@ -407,11 +446,66 @@ export function useExploreCategory(
           }
         }
       } else if (mode === "append") {
-        const seen = new Set(sessionRef.current.movies.map((m) => m.id));
-        const added = filtered.filter((m) => !seen.has(m.id));
+        const seen = new Set(sessionRef.current.movies.map((m) => getTypedMovieKey(m)));
+        const added = filtered.filter((m) => !seen.has(getTypedMovieKey(m)));
         newMovies = [...sessionRef.current.movies, ...added];
+        const existingSegments = sessionRef.current.segments.length > 0
+          ? sessionRef.current.segments
+          : (sessionRef.current.movies.length > 0
+              ? [{ id: "initial", generation: 0, movies: sessionRef.current.movies, updatedAt: sessionRef.current.updatedAt, state: sessionRef.current.state, openedAt: sessionRef.current.openedAt }]
+              : []);
+
+        const currentGen = sessionRef.current.generation || 0;
+        if (added.length > 0) {
+          const lastSeg = existingSegments[existingSegments.length - 1];
+          if (currentGen > 0 && (!lastSeg || lastSeg.generation !== currentGen)) {
+            // Spec 5: Start a new labelled segment for results from renewed generation
+            const renewalSeg: CategorySegment = {
+              id: `renewed-gen-${currentGen}-${Date.now()}`,
+              generation: currentGen,
+              label: "Renewed Results",
+              movies: added,
+              updatedAt: res.updatedAt,
+              state: res.state,
+              openedAt: Date.now(),
+            };
+            newSegments = [...existingSegments, renewalSeg];
+          } else if (existingSegments.length > 0) {
+            const lastIdx = existingSegments.length - 1;
+            const updatedLast: CategorySegment = {
+              ...existingSegments[lastIdx],
+              movies: [...existingSegments[lastIdx].movies, ...added],
+            };
+            newSegments = [...existingSegments.slice(0, lastIdx), updatedLast];
+          } else {
+            newSegments = [{ id: "initial", generation: 0, movies: added, updatedAt: res.updatedAt, state: res.state, openedAt: Date.now() }];
+          }
+        } else {
+          newSegments = existingSegments;
+        }
       } else {
         newMovies = filtered;
+        newSegments = filtered.length > 0
+          ? [{ id: "initial", generation: 0, movies: filtered, updatedAt: res.updatedAt, state: res.state, openedAt: sessionRef.current.openedAt || Date.now() }]
+          : [];
+      }
+
+      // Spec 2: Recompute freshness across all retained generations/segments
+      let aggregateState: string;
+      let aggregateUpdatedAt: string | undefined;
+
+      if (unavailable) {
+        aggregateState = "UNAVAILABLE";
+        aggregateUpdatedAt = res.updatedAt;
+      } else {
+        const isAnyStale = newSegments.some(
+          (s) => s.state === "STALE" || (s.updatedAt && (Date.now() - Date.parse(s.updatedAt) > 24 * 3600 * 1000))
+        );
+        aggregateState = isAnyStale ? "STALE" : (res.state ?? sessionRef.current.state);
+        aggregateUpdatedAt = newSegments
+          .map((s) => s.updatedAt)
+          .filter((u): u is string => Boolean(u))
+          .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? (res.updatedAt ?? sessionRef.current.updatedAt);
       }
 
       const newSessionId = unavailable ? null : (res.sessionId ?? sessionRef.current.sessionId);
@@ -425,8 +519,6 @@ export function useExploreCategory(
             : filtered.length));
       const newTitle = res.title ?? sessionRef.current.title;
       const newSubtitle = res.subtitle ?? sessionRef.current.subtitle;
-      const newState = unavailable ? "UNAVAILABLE" : (res.state ?? sessionRef.current.state);
-      const newUpdatedAt = res.updatedAt ?? sessionRef.current.updatedAt;
       const newTerminal = unavailable ? "UNAVAILABLE" : (res.terminalReason ?? null);
       const newLimit = unavailable ? null : (res.underlyingLimit ?? null);
 
@@ -438,12 +530,14 @@ export function useExploreCategory(
           totalEligibleInPool: newTotal,
           title: newTitle,
           subtitle: newSubtitle,
-          state: newState,
-          updatedAt: newUpdatedAt,
+          state: aggregateState,
+          updatedAt: aggregateUpdatedAt,
           terminalReason: newTerminal,
           underlyingLimit: newLimit,
           movies: newMovies,
+          segments: newSegments,
           openedAt: sessionRef.current.openedAt || Date.now(),
+          generation: sessionRef.current.generation || 0,
         },
         Boolean(newSessionId) && !unavailable,
       );
@@ -465,16 +559,22 @@ export function useExploreCategory(
     const existingSessionId = sessionRef.current.sessionId || undefined;
     if (!existingSessionId || !sessionRef.current.openedAt) {
       sessionRef.current.openedAt = Date.now();
+      sessionRef.current.generation = 0;
     }
 
     try {
-      const res = await moviesApi.getExploreCategoryPage(mediaType, category, {
-        sessionId: existingSessionId,
-        cursor: 0,
-        limit: 20,
-        sortBy,
-        minRating,
-      });
+      const res = await moviesApi.getExploreCategoryPage(
+        mediaType,
+        category,
+        {
+          sessionId: existingSessionId,
+          cursor: 0,
+          limit: 20,
+          sortBy,
+          minRating,
+        },
+        { userScope: currentUserId ?? undefined },
+      );
       if (reqId !== activeReqId.current) return;
       applyPageResponseRef.current(res, "replace");
       setLoading(false);
@@ -541,21 +641,52 @@ export function useExploreCategory(
 
             sessionRef.current.openedAt = parsed.timestamp;
 
+            // LR06: Filter segment contents using the same eligible identities as the flat movie array
+            const eligibleMovieIds = new Set(filteredMovies.map((m) => m.id));
+            let restoredSegments: CategorySegment[] = [];
+            if (!unavailable) {
+              if (parsed.segments && parsed.segments.length > 0) {
+                restoredSegments = parsed.segments
+                  .map((s) => ({
+                    ...s,
+                    generation: s.generation ?? 0,
+                    movies: filterLibraryMoviesRef.current(s.movies).filter((m) => eligibleMovieIds.has(m.id)),
+                  }))
+                  .filter((s) => s.movies.length > 0);
+              }
+              if (restoredSegments.length === 0 && filteredMovies.length > 0) {
+                restoredSegments = [{ id: "initial", generation: 0, movies: filteredMovies }];
+              }
+            }
+
+            const removedCount = parsed.movies.length - filteredMovies.length;
+            const adjustedTotal = Math.max(0, parsed.totalEligibleInPool - removedCount);
+            let restoredTerminal = parsed.terminalReason ?? null;
+            let restoredLimit = parsed.underlyingLimit ?? null;
+            if (!parsed.hasMore && filteredMovies.length === 0) {
+              restoredTerminal = "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY";
+            }
+
+            const restoredGen = parsed.generation ?? Math.max(0, ...restoredSegments.map((s) => s.generation));
+            sessionRef.current.generation = restoredGen;
+
             if (isFresh) {
               applySessionState(
                 {
                   sessionId: parsed.sessionId,
                   cursor: parsed.cursor,
                   hasMore: parsed.hasMore,
-                  totalEligibleInPool: parsed.totalEligibleInPool,
+                  totalEligibleInPool: adjustedTotal,
                   title: parsed.title,
                   subtitle: parsed.subtitle,
                   state: unavailable ? "UNAVAILABLE" : parsed.state,
                   updatedAt: parsed.updatedAt,
-                  terminalReason: parsed.terminalReason ?? null,
-                  underlyingLimit: parsed.underlyingLimit ?? null,
+                  terminalReason: restoredTerminal,
+                  underlyingLimit: restoredLimit,
                   movies: filteredMovies,
+                  segments: restoredSegments,
                   openedAt: parsed.timestamp,
+                  generation: restoredGen,
                 },
                 false,
               );
@@ -565,29 +696,31 @@ export function useExploreCategory(
               setSessionExpired(false);
               setLastFailedAction(null);
             } else {
-              // Q6 / User Feedback: After expiration, Back retains usable loaded results and offers Refresh discovery,
-              // rather than silently replacing the pool
+              // LR05 / Q6: Restored session past 30 minutes retains visible cards.
+              // SessionId is cleared to trigger automatic renewal on next Load more.
               applySessionState(
                 {
                   sessionId: null, // Pinned session expired on server (30 min lifetime)
                   cursor: parsed.cursor,
-                  hasMore: false, // Cannot append to an expired session without refreshing
-                  totalEligibleInPool: parsed.totalEligibleInPool,
+                  hasMore: parsed.hasMore, // Retain hasMore so Load more is not stranded!
+                  totalEligibleInPool: adjustedTotal,
                   title: parsed.title,
                   subtitle: parsed.subtitle,
                   state: unavailable ? "UNAVAILABLE" : parsed.state,
                   updatedAt: parsed.updatedAt,
-                  terminalReason: parsed.terminalReason ?? null,
-                  underlyingLimit: parsed.underlyingLimit ?? null,
+                  terminalReason: restoredTerminal,
+                  underlyingLimit: restoredLimit,
                   movies: filteredMovies,
+                  segments: restoredSegments,
                   openedAt: parsed.timestamp,
+                  generation: restoredGen,
                 },
                 false,
               );
 
               setLoading(false);
-              setSessionExpired(true);
-              setError("Discovery session expired. Refresh discovery to continue.");
+              setSessionExpired(false);
+              setError(null);
               setLastFailedAction(null);
             }
 
@@ -692,10 +825,124 @@ export function useExploreCategory(
     return () => window.removeEventListener("scroll", handleScroll);
   }, [storageKey, currentUserId]);
 
-  // Load more action with active generation checking (DR06)
+  // LR05: Automatic session renewal loop on 410 or expired session
+  const renewSession = useCallback(async (reqId: number) => {
+    let consecutiveDuplicates = 0;
+    let renewalSessionId: string | null = null;
+    let renewalCursor = 0;
+    let renewalHasMore = true;
+    const newDistinctMovies: Movie[] = [];
+    let lastResponse: ApiExploreCategoryPageResponse | null = null;
+
+    const nextGen = (sessionRef.current.generation || 0) + 1;
+    sessionRef.current.generation = nextGen;
+
+    const existingKeys = new Set(
+      sessionRef.current.movies.map((m) => getTypedMovieKey(m)),
+    );
+
+    while (consecutiveDuplicates < 3 && renewalHasMore) {
+      const res = await moviesApi.getExploreCategoryPage(
+        mediaType,
+        category,
+        {
+          sessionId: renewalSessionId || undefined,
+          cursor: renewalCursor,
+          limit: 20,
+          sortBy,
+          minRating,
+        },
+        { userScope: currentUserId ?? undefined },
+      );
+
+      if (reqId !== activeReqId.current) return;
+      lastResponse = res;
+      renewalSessionId = res.sessionId ?? null;
+      renewalCursor = res.cursor ?? (renewalCursor + 20);
+      renewalHasMore = res.hasMore;
+
+      const mapped = (res.movies ?? []).map((m) => mapApiMovie(m, store));
+      const filtered = filterLibraryMoviesRef.current(mapped);
+
+      const distinct = filtered.filter((m) => {
+        const key = getTypedMovieKey(m);
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+
+      if (distinct.length > 0) {
+        newDistinctMovies.push(...distinct);
+        consecutiveDuplicates = 0;
+        break;
+      } else {
+        consecutiveDuplicates++;
+      }
+    }
+
+    if (reqId !== activeReqId.current) return;
+
+    const prevMovies = sessionRef.current.movies;
+    const prevSegments = sessionRef.current.segments.length > 0
+      ? sessionRef.current.segments
+      : (prevMovies.length > 0
+          ? [{ id: "initial", generation: 0, movies: prevMovies, updatedAt: sessionRef.current.updatedAt, state: sessionRef.current.state, openedAt: sessionRef.current.openedAt }]
+          : []);
+
+    let nextSegments = prevSegments;
+    let nextMovies = prevMovies;
+
+    if (newDistinctMovies.length > 0) {
+      const renewalSegment: CategorySegment = {
+        id: `renewed-gen-${nextGen}-${Date.now()}`,
+        generation: nextGen,
+        label: "Renewed Results",
+        movies: newDistinctMovies,
+        updatedAt: lastResponse?.updatedAt,
+        state: lastResponse?.state,
+        openedAt: Date.now(),
+      };
+      nextSegments = [...prevSegments, renewalSegment];
+      nextMovies = [...prevMovies, ...newDistinctMovies];
+    }
+
+    // Spec 5: Retain freshness bounds per generation.
+    // Retained segments preserve their own updatedAt and state.
+    // Top-level state reflects STALE if any segment is stale.
+    const isAnyStale = nextSegments.some(
+      (s) => s.state === "STALE" || (s.updatedAt && (Date.now() - Date.parse(s.updatedAt) > 24 * 3600 * 1000))
+    );
+    const topState = isAnyStale ? "STALE" : (lastResponse?.state ?? sessionRef.current.state);
+    const oldestUpdatedAt = nextSegments
+      .map((s) => s.updatedAt)
+      .filter((u): u is string => Boolean(u))
+      .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? (lastResponse?.updatedAt ?? sessionRef.current.updatedAt);
+
+    applySessionState(
+      {
+        sessionId: renewalSessionId,
+        cursor: renewalCursor,
+        hasMore: renewalHasMore,
+        totalEligibleInPool: Math.max(sessionRef.current.totalEligibleInPool, nextMovies.length),
+        title: lastResponse?.title ?? sessionRef.current.title,
+        subtitle: lastResponse?.subtitle ?? sessionRef.current.subtitle,
+        state: topState,
+        updatedAt: oldestUpdatedAt,
+        terminalReason: renewalHasMore ? null : (lastResponse?.terminalReason ?? sessionRef.current.terminalReason),
+        underlyingLimit: lastResponse?.underlyingLimit ?? sessionRef.current.underlyingLimit,
+        movies: nextMovies,
+        segments: nextSegments,
+        openedAt: sessionRef.current.openedAt || Date.now(),
+        isRenewal: true,
+        generation: nextGen,
+      },
+      Boolean(renewalSessionId),
+    );
+  }, [mediaType, category, sortBy, minRating, store, applySessionState, currentUserId]);
+
+  // Load more action with active generation checking (DR06) and automatic session renewal (LR05)
   const loadMore = useCallback(async () => {
-    const sid = sessionRef.current.sessionId;
-    if (pendingRef.current || !sessionRef.current.hasMore || !sid) return;
+    if (pendingRef.current || !sessionRef.current.hasMore) return;
 
     // Q11: Must retry failed replacement first before appending
     if (lastFailedAction === "initial") return;
@@ -708,20 +955,62 @@ export function useExploreCategory(
     setLoadingMore(true);
     setError(null);
 
+    const sid = sessionRef.current.sessionId;
+    if (!sid) {
+      try {
+        await renewSession(reqId);
+        setLastFailedAction(null);
+      } catch (err: unknown) {
+        if (reqId === activeReqId.current) {
+          setLastFailedAction("loadMore");
+          checkFreshness();
+          handleApiErrorRef.current(err, "Could not renew discovery results. Retry.");
+        }
+      } finally {
+        setLoadingMore(false);
+        if (reqId === activeReqId.current) {
+          pendingRef.current = false;
+        }
+      }
+      return;
+    }
+
     try {
-      const res = await moviesApi.getExploreCategoryPage(mediaType, category, {
-        sessionId: sid,
-        cursor: sessionRef.current.cursor,
-        limit: 20,
-        sortBy,
-        minRating,
-      });
+      const res = await moviesApi.getExploreCategoryPage(
+        mediaType,
+        category,
+        {
+          sessionId: sid,
+          cursor: sessionRef.current.cursor,
+          limit: 20,
+          sortBy,
+          minRating,
+        },
+        { userScope: currentUserId ?? undefined },
+      );
 
       if (reqId !== activeReqId.current) return;
       applyPageResponseRef.current(res, "append");
       setLastFailedAction(null);
     } catch (err: unknown) {
       if (reqId !== activeReqId.current) return;
+      const is410 =
+        (err as any)?.status === 410 ||
+        (err instanceof Error && (err.message.includes("410") || err.message.toLowerCase().includes("session expired")));
+      if (is410) {
+        // LR05: Automatic renewal on 410 without stranding or routine Refresh
+        try {
+          await renewSession(reqId);
+          setLastFailedAction(null);
+          return;
+        } catch (renewErr: unknown) {
+          if (reqId !== activeReqId.current) return;
+          setLastFailedAction("loadMore");
+          checkFreshness();
+          handleApiErrorRef.current(renewErr, "Could not renew discovery results. Retry.");
+          return;
+        }
+      }
       setLastFailedAction("loadMore");
       checkFreshness();
       handleApiErrorRef.current(err, "Could not load more items. Retry.");
@@ -731,7 +1020,7 @@ export function useExploreCategory(
         pendingRef.current = false;
       }
     }
-  }, [mediaType, category, sortBy, minRating, lastFailedAction, store.libraryError, checkFreshness]);
+  }, [mediaType, category, sortBy, minRating, lastFailedAction, store.libraryError, checkFreshness, renewSession, currentUserId]);
 
   // Refresh discovery action with active generation checking (DR06)
   const refresh = useCallback(async () => {
@@ -747,13 +1036,19 @@ export function useExploreCategory(
       await moviesApi.refreshExploreCategory(mediaType, category);
       if (reqId !== activeReqId.current) return;
 
+      sessionRef.current.generation = 0;
       // Start new pool session
-      const res = await moviesApi.getExploreCategoryPage(mediaType, category, {
-        cursor: 0,
-        limit: 20,
-        sortBy,
-        minRating,
-      });
+      const res = await moviesApi.getExploreCategoryPage(
+        mediaType,
+        category,
+        {
+          cursor: 0,
+          limit: 20,
+          sortBy,
+          minRating,
+        },
+        { userScope: currentUserId ?? undefined },
+      );
 
       if (reqId !== activeReqId.current) return;
       sessionRef.current.openedAt = Date.now();
@@ -771,22 +1066,17 @@ export function useExploreCategory(
         pendingRef.current = false;
       }
     }
-  }, [mediaType, category, sortBy, minRating, storageKey]);
+  }, [mediaType, category, sortBy, minRating, currentUserId]);
 
-  // Retry failed action without skipping or duplicating items (DR05, Q11)
+  // Retry failed action without skipping or duplicating items (DR05, Q11, Spec 7)
+  // Strictly read-only GET; never calls refresh() or POSTs provider rebuild
   const retry = useCallback(async () => {
-    if (sessionExpired) {
-      await refresh();
-      return;
-    }
     if (lastFailedAction === "loadMore") {
       await loadMore();
-    } else if (lastFailedAction === "refresh") {
-      await refresh();
     } else {
       await fetchInitialPage();
     }
-  }, [sessionExpired, lastFailedAction, refresh, loadMore, fetchInitialPage]);
+  }, [lastFailedAction, loadMore, fetchInitialPage]);
 
   // Explicit single card removal after confirmed save (DR04, Spec Finding 10, Standards Finding)
   const removeMovie = useCallback(
@@ -800,6 +1090,7 @@ export function useExploreCategory(
 
   return {
     movies,
+    segments: (segments.length > 0 ? segments : (movies.length > 0 ? [{ id: "initial", generation: 0, movies }] : [])) as CategorySegment[],
     sessionId,
     cursor,
     hasMore,

@@ -45,14 +45,14 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
   useEffect(() => {
     let active = true;
     pending.current = false;
-    void moviesApi.getExploreMedia(mediaType).then(data => {
+    void moviesApi.getExploreMedia(mediaType, { userScope: store.currentUser?.id }).then(data => {
       if (active && latest.current === key) setState({ key, data: recalculateFreshness(data), error: null, pending: false, failedCategory: null });
     }).catch(error => {
       if (active && latest.current === key) setState({ key, data: null,
         error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null });
     });
     return () => { active = false; };
-  }, [key, mediaType]);
+  }, [key, mediaType, store.currentUser?.id]);
 
   // Window focus & visibility listener + expiration timer: sync latest library state from backend
   // and continuously enforce 7-day snapshot maximum age while mounted (DR04, Q9, Q12)
@@ -110,13 +110,13 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
     if (pending.current) return;
     pending.current = true;
     setState((prev) => ({ key, data: prev?.data ?? null, error: null, pending: true, failedCategory: null }));
-    void moviesApi.getExploreMedia(mediaType).then(data => {
+    void moviesApi.getExploreMedia(mediaType, { userScope: store.currentUser?.id }).then(data => {
       if (latest.current === key) setState({ key, data: recalculateFreshness(data), error: null, pending: false, failedCategory: null });
     }).catch(error => {
       if (latest.current === key) setState((prev) => ({ key, data: recalculateFreshness(prev?.data ?? null),
         error: error instanceof Error ? error.message : "Could not load discovery. Retry.", pending: false, failedCategory: null }));
     }).finally(() => { if (latest.current === key) pending.current = false; });
-  }, [key, mediaType]);
+  }, [key, mediaType, store.currentUser?.id]);
   const refresh = (category: string) => {
     if (pending.current || !current?.data) return;
     pending.current = true;
