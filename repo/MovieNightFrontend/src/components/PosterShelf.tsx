@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useId, type MouseEvent } from "react";
 import type { Movie } from "../store/data";
-import { ratingEvidence } from "./ratingEvidence";
+import { formatExploreMetadata } from "./ratingEvidence";
+import { ExplorePosterOverlay } from "./ExplorePosterOverlay";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "./PosterTransitionContext";
@@ -71,30 +72,39 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
         .shelf-card + .shelf-card {
           margin-left: -32px;
         }
-        .shelf-card:hover {
+        .shelf-card:hover,
+        .shelf-card:focus-visible {
           transform: scale(1.18) translateY(-12px);
           z-index: 50;
           box-shadow: 0 24px 48px rgba(0, 0, 0, 0.96);
           border-color: rgba(255, 255, 255, 0.45);
         }
-        .shelf-card:hover + .shelf-card {
+        .shelf-card:hover .shelf-poster-overlay,
+        .shelf-card:focus-visible .shelf-poster-overlay {
+          opacity: 1 !important;
+        }
+        .shelf-card:hover + .shelf-card,
+        .shelf-card:focus-visible + .shelf-card {
           transform: scale(1.09) translateY(-6px);
           z-index: 40;
           box-shadow: 0 14px 30px rgba(0, 0, 0, 0.85);
           border-color: rgba(255, 255, 255, 0.25);
         }
-        .shelf-card:hover + .shelf-card + .shelf-card {
+        .shelf-card:hover + .shelf-card + .shelf-card,
+        .shelf-card:focus-visible + .shelf-card + .shelf-card {
           transform: scale(1.04) translateY(-2px);
           z-index: 30;
           box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
         }
-        .shelf-card:has(+ .shelf-card:hover) {
+        .shelf-card:has(+ .shelf-card:hover),
+        .shelf-card:has(+ .shelf-card:focus-visible) {
           transform: scale(1.09) translateY(-6px);
           z-index: 40;
           box-shadow: 0 14px 30px rgba(0, 0, 0, 0.85);
           border-color: rgba(255, 255, 255, 0.25);
         }
-        .shelf-card:has(+ .shelf-card + .shelf-card:hover) {
+        .shelf-card:has(+ .shelf-card + .shelf-card:hover),
+        .shelf-card:has(+ .shelf-card + .shelf-card:focus-visible) {
           transform: scale(1.04) translateY(-2px);
           z-index: 30;
           box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
@@ -199,6 +209,7 @@ function ShelfPoster({
   };
 
   const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
+  const metadata = formatExploreMetadata(movie);
 
   return (
     <a
@@ -207,8 +218,8 @@ function ShelfPoster({
       onClick={handleClick}
       title={movie.title}
       aria-label={movie.title}
-      aria-describedby={ratingEvidence(movie) ? ratingId : undefined}
-      className="shelf-card group/poster relative shrink-0 h-[252px] w-[168px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none select-none"
+      aria-describedby={metadata ? ratingId : undefined}
+      className="shelf-card group/poster relative shrink-0 h-[252px] w-[168px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 select-none"
     >
       {/* Poster image */}
       {movie.posterUrl ? (
@@ -220,37 +231,15 @@ function ShelfPoster({
           draggable={false}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-surface p-3">
+        <div className="missing-poster-fallback flex h-full w-full items-center justify-center bg-surface p-3">
           <span className="text-center text-xs font-medium text-text-muted line-clamp-3">
             {movie.title}
           </span>
         </div>
       )}
 
-      {ratingEvidence(movie) && <span id={ratingId}
-        className="absolute bottom-2 left-2 right-2 rounded bg-[#05070d]/90 px-2 py-1 text-center text-[10px] font-semibold text-white shadow-sm">
-        {movie.tmdbRating != null ? `TMDB ${movie.tmdbRating.toFixed(1)}/10`
-          : movie.imdb != null ? `IMDb ${movie.imdb.toFixed(1)}/10`
-          : `Critics ${movie.rt}% approval`}
-      </span>}
-
-      {/* Hover detail overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/95 via-[#05070d]/60 to-transparent opacity-0 group-hover/poster:opacity-100 group-focus-visible/poster:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3.5 pointer-events-none">
-        <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2 drop-shadow-sm">
-          {movie.title}
-        </h4>
-        <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
-          <span>{movie.year}</span>
-          {ratingEvidence(movie) && (
-            <span className="nums font-semibold text-accent">
-              {ratingEvidence(movie)}
-            </span>
-          )}
-        </div>
-        <span className="mt-1.5 text-[11px] font-semibold text-accent">
-          View details →
-        </span>
-      </div>
+      {/* Hover/focus detail overlay: revealed on pointer hover or keyboard focus */}
+      <ExplorePosterOverlay movie={movie} ratingId={ratingId} className="shelf-poster-overlay" />
     </a>
   );
 }

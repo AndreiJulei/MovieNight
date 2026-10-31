@@ -1,10 +1,11 @@
-import { useRef, type MouseEvent } from "react";
+import { useId, useRef, type MouseEvent } from "react";
 import type { Movie } from "../store/data";
 import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "./PosterTransitionContext";
 import PixelPoster from "./PixelPoster";
-import { ratingEvidence } from "./ratingEvidence";
+import { ratingEvidence, formatExploreMetadata } from "./ratingEvidence";
+import { ExplorePosterOverlay } from "./ExplorePosterOverlay";
 
 export function Poster({ movie }: { movie: Movie }) {
   if (movie.posterUrl) {
@@ -33,11 +34,14 @@ export function MovieCard({
   movie,
   referrerOverride,
   compact,
+  explorePresentation = false,
 }: {
   movie: Movie;
   referrerOverride?: string;
   compact?: boolean;
+  explorePresentation?: boolean;
 }) {
+  const ratingId = useId();
   const posterRef = useRef<HTMLDivElement>(null);
   const { startTransition } = usePosterTransition();
   const { navigate, path, search } = useRouter();
@@ -79,14 +83,16 @@ export function MovieCard({
   };
 
   const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
+  const hasExploreMetadata = explorePresentation && Boolean(formatExploreMetadata(movie));
 
   return (
     <a
       href={targetUrl}
       onClick={handleClick}
       title={movie.year == null ? movie.title : `${movie.title} (${movie.year})`}
-      className="group block cursor-pointer focus:outline-none"
+      className="group block cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 rounded-lg"
       aria-label={movie.title}
+      aria-describedby={hasExploreMetadata ? ratingId : undefined}
     >
       <div
         ref={posterRef}
@@ -97,6 +103,10 @@ export function MovieCard({
         <div className="aspect-[2/3] w-full overflow-hidden bg-surface">
           <Poster movie={movie} />
         </div>
+
+        {explorePresentation && (
+          <ExplorePosterOverlay movie={movie} ratingId={ratingId} />
+        )}
       </div>
 
       {!compact && (
@@ -104,11 +114,15 @@ export function MovieCard({
           <h3 className="max-w-full truncate text-[14px] font-semibold text-text-primary transition-colors group-hover:text-white">
             {movie.title}
           </h3>
-          <p className="nums mt-0.5 text-xs text-text-muted">
-            {movie.year}
-            {ratingEvidence(movie) ? ` · ${ratingEvidence(movie)}` : ""}
-          </p>
-          {movie.reason && <p className="mt-1 text-xs text-text-muted line-clamp-2">{movie.reason}</p>}
+          {!explorePresentation && (
+            <>
+              <p className="nums mt-0.5 text-xs text-text-muted">
+                {movie.year}
+                {ratingEvidence(movie) ? ` · ${ratingEvidence(movie)}` : ""}
+              </p>
+              {movie.reason && <p className="mt-1 text-xs text-text-muted line-clamp-2">{movie.reason}</p>}
+            </>
+          )}
         </div>
       )}
     </a>
@@ -123,6 +137,7 @@ export default function MovieGrid({
   onAddToWatchlist,
   userHasMovie,
   compact = false,
+  explorePresentation = false,
 }: {
   movies: Movie[];
   empty?: string;
@@ -131,6 +146,7 @@ export default function MovieGrid({
   onAddToWatchlist?: (movieId: string, movie?: Movie) => void;
   userHasMovie?: (movieId: string) => boolean;
   compact?: boolean;
+  explorePresentation?: boolean;
 }) {
   const store = useStore();
   if (movies.length === 0) {
@@ -144,14 +160,23 @@ export default function MovieGrid({
   }
 
   const gridClasses = compact
-    ? "grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10"
-    : "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6";
+    ? explorePresentation
+      ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))] gap-1.5 sm:gap-2"
+      : "grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10"
+    : explorePresentation
+      ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))] gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+      : "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6";
 
   return (
     <div className={gridClasses}>
       {movies.map((m) => (
         <div key={m.id} className="relative">
-          <MovieCard movie={m} referrerOverride={referrerOverride} compact={compact} />
+          <MovieCard
+            movie={m}
+            referrerOverride={referrerOverride}
+            compact={compact}
+            explorePresentation={explorePresentation}
+          />
           {showAddToWatchlist && onAddToWatchlist && userHasMovie && !userHasMovie(m.id) && (
             <button
               type="button"

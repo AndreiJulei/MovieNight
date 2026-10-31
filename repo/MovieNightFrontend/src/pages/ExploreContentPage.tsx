@@ -217,6 +217,7 @@ function ExploreCategoryGridView({
                   <MovieGrid
                     movies={segment.movies}
                     compact={viewMode === "compact"}
+                    explorePresentation
                     empty="No titles found in this segment."
                     referrerOverride={`/explore/${type}/${rowId}`}
                     showAddToWatchlist
@@ -230,6 +231,7 @@ function ExploreCategoryGridView({
             <MovieGrid
               movies={category.movies}
               compact={viewMode === "compact"}
+              explorePresentation
               empty={
                 category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
                   ? "All titles in this category are already in your watchlist or watched history."
