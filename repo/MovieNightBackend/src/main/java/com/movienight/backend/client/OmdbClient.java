@@ -33,7 +33,10 @@ public class OmdbClient {
         }
         this.apiKey = cleaned;
         this.baseUrl = baseUrl;
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);
+        factory.setReadTimeout(3000);
+        this.restClient = RestClient.builder().requestFactory(factory).baseUrl(baseUrl).build();
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.movienight.backend.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
@@ -21,7 +23,11 @@ public class GlobalExceptionHandler {
         body.put("status", ex.getStatusCode().value());
         body.put("error", ex.getReason() != null ? ex.getReason() : ex.getStatusCode().toString());
         body.put("message", ex.getReason() != null ? ex.getReason() : "Request failed");
-        return ResponseEntity.status(ex.getStatusCode()).body(body);
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(ex.getStatusCode());
+        if (ex.getHeaders() != null && !ex.getHeaders().isEmpty()) {
+            builder.headers(ex.getHeaders());
+        }
+        return builder.body(body);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -71,8 +77,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalStateException(IllegalStateException ex) {
+        log.warn("Provider or state error: {}", ex.getMessage());
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
+        body.put("error", "Service Unavailable");
+        body.put("message", ex.getMessage() != null && !ex.getMessage().isBlank() ? ex.getMessage() : "External provider request failed. Retry.");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+        log.error("Unhandled server exception: {}", ex.getClass().getSimpleName());
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());

@@ -38,6 +38,12 @@ class MovieCatalogLookupServiceTest {
     @Mock
     private com.movienight.backend.repository.CachedMovieListRepository cachedMovieListRepository;
 
+    @Mock
+    private CatalogPersistenceService catalogPersistenceService;
+
+    @Mock
+    private java.util.concurrent.Executor catalogEnrichmentExecutor;
+
     @InjectMocks
     private MovieCatalogLookupService lookupService;
 
@@ -127,16 +133,22 @@ class MovieCatalogLookupServiceTest {
         when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L)).thenReturn(Optional.empty());
         when(tmdbClient.getMovieDetails(283995L)).thenReturn(Optional.of(tmdbResponse));
         when(omdbClient.isConfigured()).thenReturn(true);
+        when(catalogPersistenceService.saveIfAbsent(any(Movie.class), eq(com.movienight.backend.model.ResourceType.MOVIE), eq(283995L)))
+                .thenReturn(localMovie);
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(catalogEnrichmentExecutor).execute(any(Runnable.class));
         when(omdbClient.getMovieRatings("tt3896198")).thenReturn(Optional.of(omdbResponse));
         when(omdbClient.extractImdbRating(omdbResponse)).thenReturn(7.6);
         when(omdbClient.extractRottenTomatoesScore(omdbResponse)).thenReturn(85);
-        when(movieRepository.save(any(Movie.class))).thenReturn(localMovie);
 
         Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
 
         assertNotNull(result);
         assertEquals("Guardians of the Galaxy Vol. 2", result.getTitle());
-        verify(movieRepository).save(any(Movie.class));
+        verify(catalogPersistenceService).saveIfAbsent(any(Movie.class), eq(com.movienight.backend.model.ResourceType.MOVIE), eq(283995L));
+        verify(catalogPersistenceService).updateRatings(eq(1L), eq(7.6), eq(85));
     }
 
     @Test
@@ -182,7 +194,8 @@ class MovieCatalogLookupServiceTest {
 
         when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.TV, 1396L)).thenReturn(Optional.empty());
         when(tmdbClient.getTvDetails(1396L)).thenReturn(Optional.of(tvDetails));
-        when(movieRepository.save(any(Movie.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(catalogPersistenceService.saveIfAbsent(any(Movie.class), eq(com.movienight.backend.model.ResourceType.TV), eq(1396L)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         Movie result = lookupService.getOrFetchMovie(1396L, "TV");
 

@@ -138,9 +138,19 @@ public class TmdbClient {
             return Optional.of(response);
         } catch (org.springframework.web.client.RestClientResponseException e) {
             if (e.getStatusCode().value() == 404) return Optional.empty();
-            throw new IllegalStateException("Provider details request failed. Retry.");
+            if (e.getStatusCode().value() == 429) {
+                String retryAfter = e.getResponseHeaders() != null
+                        ? e.getResponseHeaders().getFirst(org.springframework.http.HttpHeaders.RETRY_AFTER) : null;
+                throw new com.movienight.backend.exception.RateLimitResponseStatusException(
+                        "Provider rate limit exceeded. Retry later.", retryAfter);
+            }
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "External provider unavailable. Retry.");
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Provider details request failed. Retry.");
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Provider details request failed. Retry.");
         }
     }
 
@@ -167,9 +177,19 @@ public class TmdbClient {
             return Optional.of(response);
         } catch (org.springframework.web.client.RestClientResponseException e) {
             if (e.getStatusCode().value() == 404) return Optional.empty();
-            throw new IllegalStateException("Provider details request failed. Retry.");
+            if (e.getStatusCode().value() == 429) {
+                String retryAfter = e.getResponseHeaders() != null
+                        ? e.getResponseHeaders().getFirst(org.springframework.http.HttpHeaders.RETRY_AFTER) : null;
+                throw new com.movienight.backend.exception.RateLimitResponseStatusException(
+                        "Provider rate limit exceeded. Retry later.", retryAfter);
+            }
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "External provider unavailable. Retry.");
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Provider details request failed. Retry.");
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Provider details request failed. Retry.");
         }
     }
 
