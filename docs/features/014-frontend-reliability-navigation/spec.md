@@ -147,3 +147,76 @@ Implemented GitHub issue [#1: Title loading and automatic recovery](https://gith
 #### 5. Remaining Limitations & Exclusions
 - Scope is strictly bounded to Issue #1. Excludes visual badge compacting (#2), persistent link underlining (#3), browser history / back-navigation integration (#4), search input focus rectangle (#5), and same-network phone validation setup (#6).
 - Live external network provider calls require opt-in environment keys (`MN_LIVE_PROVIDER_SMOKE=true`, `MN_TMDB_KEY`, `MN_OMDB_KEY`). Controlled mock fixtures govern all standard test runs.
+
+### Issue #2 Implementation and Validation Evidence (2026-10-31)
+
+Contract: [GitHub #2: Simplify Explore posters to year and one compact score on hover or focus](https://github.com/AndreiJulei/MovieNight/issues/2).
+
+Tested revision: base `392b07f794b21c9727b0a251b831c34b879ca803` on
+`feat/014-frontend-reliability-navigation`, with uncommitted changes in
+`src/components/PosterShelf.tsx`, `src/components/MovieGrid.tsx`,
+`src/components/ExplorePosterOverlay.tsx`, `src/components/ratingEvidence.ts`,
+`src/pages/ExploreContentPage.tsx`, `tests/unit/compact-rating.test.cjs`, and
+`tests/browser/issue-2-compact-explore.cjs` (paths relative to the frontend).
+This record accompanies those changes; integration is pending human review.
+
+#### Implementation and review repairs
+
+- Explore shelves and both category grid views use a shared `ExplorePosterOverlay`.
+  Posters have no rating badge at rest; title names and missing-poster fallbacks
+  remain available. Library consumers retain their existing presentation.
+- Hover or keyboard focus reveals year and one compact source-labelled score:
+  valid IMDb first, otherwise valid TMDB. Finite scores must be within 0–10;
+  genuine zero survives. Missing year/score is omitted without separators.
+  Rotten Tomatoes remains separate critic approval on details.
+- Explore compact grids and phone regular grids use columns with a 160px minimum (bounded by available
+  container width), preserving enough space for the full metadata line rather
+  than clipping it. Library grids retain their original column counts.
+- Keyboard tests use Shift+Tab/Tab to enter each tested card, assert
+  `:focus-visible`, a nontransparent outline at least 2px wide, and revealed
+  metadata. The former assertion accepted a missing outline and has been removed.
+- Regular-grid checks compare every metadata line’s rendered scroll/client width
+  before switching views; a failing 320px regression reproduced clipping before
+  the regular-grid fix. Compact-card checks compare those widths under hover and
+  focus, including phone keyboard focus. The shared overlay removes duplicated
+  shelf/grid markup; its metadata also supplies the accessible description.
+
+#### Verification
+
+Commands run from `repo/MovieNightFrontend/` on 2026-10-31:
+
+- `node --test tests/unit/*.test.cjs`: **28 passed**, including 14 compact-rating
+  tests and 14 bounded-read regression tests.
+- `./node_modules/.bin/tsc --noEmit`: passed.
+- `npm run build`: passed. Vite reports its existing native-config compatibility
+  and bundle-size warnings.
+- `node tests/browser/issue-2-compact-explore.cjs`: passed in Chrome 156 at
+  **1440×900, 1024×768, 768×1024, 390×844, and 320×640**.
+- `git diff --check`: passed.
+
+| Acceptance | Result and observable boundary |
+| --- | --- |
+| PM01 | Passed: shelf/grid overlays hidden at rest, accessible title and missing-poster fallback checked. |
+| PM02 | Passed: compact IMDb preference and TMDB fallback on hover; regular/compact grid metadata revealed with actual keyboard navigation. |
+| PM03 | Passed: critic-only, unrated, zero, unknown year, and out-of-range preferred-score fixtures; unit cases cover both bounds and provider fallback. |
+| PM04 | Passed: fixture details retain separate IMDb, TMDB audience and Rotten Tomatoes approval; no provider integration or per-card request added. |
+| PM05 | Passed: single-tap details navigation, visible keyboard outline, full compact metadata fit and no document overflow at tested widths. |
+
+Desktop and phone screenshots were inspected together. Compact focus screenshots
+are written to `/private/tmp/issue-2-browser/issue-2-compact-<width>.png` by the
+browser script. The Impeccable mechanical detector could not run:
+`Error: bundled detector not found.` Manual screenshot inspection and browser
+assertions supplied the available visual verification.
+
+Final two-axis review: **Standards 0 findings; Spec 0 remaining findings**.
+The regular-grid phone concern raised during review was reproduced, fixed and
+confirmed by the final five-viewport browser run.
+
+#### Limitations and exclusions
+
+Browser checks use mocked API/auth responses and Chrome device emulation. They
+do not certify real provider responses, persistence, physical phones, deployment,
+or other browser engines. No backend suite or unrelated browser suites were run
+for this presentation-only change. Tickets #3–#6, ranking, filters and personal
+ratings remain outside this slice. `roadmap.md` and `.vscode/settings.json` are
+pre-existing changes outside the proposed Issue #2 commit scope.
