@@ -241,7 +241,7 @@ export default function HomePage() {
                       </span>
                       <Link
                         to="/suggestions/for-you"
-                        className="group/link flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+                        className="prose-link text-link group/link flex items-center gap-1 text-xs font-semibold"
                       >
                         <span>View all</span>
                         <span className="transition-transform group-hover/link:translate-x-0.5">→</span>
@@ -249,11 +249,9 @@ export default function HomePage() {
                     </div>
 
                     {/* Larger, unboxed overlapping poster collage (custom list style) */}
-                    <div
-                      onClick={() => navigate("/suggestions/for-you")}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === "Enter" && navigate("/suggestions/for-you")}
+                    <Link
+                      to="/suggestions/for-you"
+                      aria-label="View all personal movie picks"
                       className="group/preview cursor-pointer pt-1"
                     >
                       <div className="flex -space-x-5 sm:-space-x-6 overflow-hidden py-2">
@@ -287,7 +285,7 @@ export default function HomePage() {
                           </div>
                         )}
                       </div>
-                    </div>
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -302,7 +300,7 @@ export default function HomePage() {
             {friendSuggestions.loading ? <p role="status" className="mt-2 text-sm text-text-muted">Loading friend suggestions…</p> :
               friendSuggestions.error ? <p role="alert" className="mt-2 text-sm text-danger">{friendSuggestions.error}</p> :
               <p className="mt-2 text-sm text-text-muted">No eligible movies from accepted friends yet. Accept a friendship or return after friends add ratings or watchlist plans.</p>}
-            <Link to="/suggestions/friends" className="mt-4 inline-block text-sm text-accent hover:underline">View friend suggestions</Link>
+            <Link to="/suggestions/friends" className="prose-link text-link mt-4 inline-block text-sm">View friend suggestions</Link>
           </section>
         )}
         {topFriendMovie && (
@@ -449,7 +447,7 @@ export default function HomePage() {
                       </span>
                       <Link
                         to="/suggestions/friends"
-                        className="group/link flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+                        className="prose-link text-link group/link flex items-center gap-1 text-xs font-semibold"
                       >
                         <span>View all</span>
                         <span className="transition-transform group-hover/link:translate-x-0.5">→</span>
@@ -457,11 +455,9 @@ export default function HomePage() {
                     </div>
 
                     {/* Larger, unboxed overlapping poster collage (custom list style) */}
-                    <div
-                      onClick={() => navigate("/suggestions/friends")}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === "Enter" && navigate("/suggestions/friends")}
+                    <Link
+                      to="/suggestions/friends"
+                      aria-label="View all friend suggestions"
                       className="group/preview cursor-pointer pt-1"
                     >
                       <div className="flex -space-x-5 sm:-space-x-6 overflow-hidden py-2">
@@ -495,7 +491,7 @@ export default function HomePage() {
                           </div>
                         )}
                       </div>
-                    </div>
+                    </Link>
                   </div>
                 </div>
               </div>

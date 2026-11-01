@@ -170,7 +170,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
           {listsLoading && <p role="status" className="p-1 text-sm text-text-muted">Loading your lists…</p>}
           {(error || listsError) && <p role="alert" className="p-1 text-sm text-red-300">{error || listsError}</p>}
           <button type="button" disabled={busy} onClick={() => { setError(null); void refreshLists(); }}
-            className="mb-2 px-1 text-sm text-accent underline underline-offset-4 disabled:opacity-40">Reload lists</button>
+            className="quiet-action mb-2 min-h-8 text-sm text-text-primary disabled:opacity-40">Reload lists</button>
           {/* Checklist */}
           {userLists.length > 0 ? (
             <div className="max-h-48 space-y-1 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>

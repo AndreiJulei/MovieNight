@@ -32,7 +32,7 @@ export default function NavRail({
   orientation: "horizontal" | "vertical";
 }) {
   const { currentUser } = useStore();
-  const { path, search, navigate } = useRouter();
+  const { path, search } = useRouter();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [desktopExploreOpen, setDesktopExploreOpen] = useState(false);
@@ -102,6 +102,7 @@ export default function NavRail({
                         <button
                           type="button"
                           role="menuitem"
+                          aria-expanded={mobileExploreOpen}
                           onClick={() => setMobileExploreOpen((o) => !o)}
                           className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-all ${
                             path.startsWith("/explore")
@@ -118,12 +119,13 @@ export default function NavRail({
                         {mobileExploreOpen && (
                           <div className="ml-3 space-y-1.5 border-l border-white/10 pl-3">
                             {EXPLORE_OPTIONS.map((sub) => (
-                              <button
+                              <Link
                                 key={sub.to}
-                                type="button"
+                                to={sub.to}
+                                role="menuitem"
+                                aria-current={path === sub.to ? "page" : undefined}
                                 onClick={() => {
                                   setMenuOpen(false);
-                                  navigate(sub.to);
                                 }}
                                 className={`flex h-10 w-full items-center rounded-lg border px-3 text-left text-[13px] font-medium transition-all ${
                                   path === sub.to
@@ -132,7 +134,7 @@ export default function NavRail({
                                 }`}
                               >
                                 {sub.label}
-                              </button>
+                              </Link>
                             ))}
                           </div>
                         )}
@@ -141,13 +143,13 @@ export default function NavRail({
                   }
 
                   return (
-                    <button
+                    <Link
                       key={item.key}
-                      type="button"
+                      to={item.to}
                       role="menuitem"
+                      aria-current={active ? "page" : undefined}
                       onClick={() => {
                         setMenuOpen(false);
-                        navigate(item.to);
                       }}
                       className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-all ${
                         active
@@ -156,7 +158,7 @@ export default function NavRail({
                       }`}
                     >
                       <span>{item.label}</span>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>
@@ -168,8 +170,10 @@ export default function NavRail({
         <nav className="fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t border-white/[0.08] bg-[#05070d]/90 px-2 backdrop-blur-lg lg:hidden">
           <Link
             to="/"
+            aria-label="Home"
+            aria-current={path === "/" || path === "/home" ? "page" : undefined}
             className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              path === "/" || path === "/home" ? "text-accent" : "text-text-muted hover:text-white"
+              path === "/" || path === "/home" ? "bg-accent/20 text-white" : "text-text-muted hover:bg-white/[0.06] hover:text-white"
             }`}
             title="Home"
           >
@@ -206,8 +210,9 @@ export default function NavRail({
           {/* Settings */}
           <Link
             to="/settings"
+            aria-current={path.startsWith("/settings") ? "page" : undefined}
             className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              path.startsWith("/settings") ? "text-accent" : "text-text-muted hover:text-white"
+              path.startsWith("/settings") ? "bg-accent/20 text-white" : "text-text-muted hover:bg-white/[0.06] hover:text-white"
             }`}
             title="Settings"
             aria-label="Settings"
@@ -227,6 +232,7 @@ export default function NavRail({
         {/* Wordmark Logo (Routes to Home '/') */}
         <Link
           to="/"
+          aria-current={path === "/" || path === "/home" ? "page" : undefined}
           className="flex items-baseline gap-1 text-[16px] font-bold tracking-tight text-white transition-opacity hover:opacity-90 select-none mr-1"
           title="Movie Night Home"
         >
@@ -297,8 +303,9 @@ export default function NavRail({
                             <div className="ml-3 mt-2 space-y-1 border-l border-white/10 pl-2">
                               {EXPLORE_OPTIONS.map((category) => (
                                 <Link key={category.to} to={category.to} role="menuitem"
+                                  aria-current={path === category.to ? "page" : undefined}
                                   onClick={() => { setMenuOpen(false); setDesktopExploreOpen(false); }}
-                                  className="flex items-center rounded-lg px-3 py-2 text-sm text-text-primary hover:bg-white/[0.06]">
+                                  className={`flex items-center rounded-lg px-3 py-2 text-sm hover:bg-white/[0.06] ${path === category.to ? "bg-accent/15 font-semibold text-white" : "text-text-primary"}`}>
                                   {category.label}
                                 </Link>
                               ))}
@@ -313,6 +320,7 @@ export default function NavRail({
                         key={item.key}
                         to={item.to}
                         role="menuitem"
+                        aria-current={active ? "page" : undefined}
                         onClick={() => {
                           setMenuOpen(false);
                           setDesktopExploreOpen(false);
@@ -343,6 +351,7 @@ export default function NavRail({
       <div className="ml-auto flex items-center gap-2">
         <Link
           to="/settings"
+          aria-current={path.startsWith("/settings") ? "page" : undefined}
           className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-all cursor-pointer ${
             path.startsWith("/settings")
               ? "border-accent/40 bg-white/[0.1] text-white"

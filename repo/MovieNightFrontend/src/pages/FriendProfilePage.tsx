@@ -116,7 +116,7 @@ export default function FriendProfilePage() {
   if (loading || error || !profile) {
     return (
       <AppShell>
-        <Link to="/friends" className="text-sm text-text-muted">
+        <Link to="/friends" className="prose-link text-sm text-text-muted">
           ← Back to Friends
         </Link>
         {loading ? (
@@ -177,7 +177,7 @@ export default function FriendProfilePage() {
       <div className="flex items-center justify-between">
         <Link
           to="/friends"
-          className="text-sm text-text-muted transition-colors hover:text-white"
+          className="prose-link text-sm text-text-muted transition-colors hover:text-white"
         >
           ← Back to Friends
         </Link>

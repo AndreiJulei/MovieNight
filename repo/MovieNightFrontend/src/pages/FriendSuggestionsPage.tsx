@@ -46,7 +46,7 @@ export default function FriendSuggestionsPage() {
             )}
           </section>
         ))}
-        <Link to="/friends" className="inline-block text-sm text-accent hover:underline">Manage friendships</Link>
+        <Link to="/friends" className="prose-link text-link inline-block text-sm">Manage friendships</Link>
       </div>}
     </AppShell>
   );

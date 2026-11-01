@@ -13,6 +13,8 @@ colors:
   text-muted: "#7c869c"
   accent: "#4f46e5"
   accent-hover: "#4338ca"
+  link: "#818cf8"
+  link-hover: "#a5b4fc"
   success: "#22c55e"
   danger: "#f0888c"
 typography:
@@ -47,6 +49,7 @@ Three core surfaces with three distinct jobs:
 - **Text Primary (`#e5e9f0`)**: High contrast, crisp readable white/neutral.
 - **Text Muted (`#7c869c`)**: Subtle secondary metadata, dates, genre tags.
 - **Accent (`#4f46e5`)**: Electric indigo used sparingly for active states, CTA highlights, and primary markers.
+- **Link Text (`#818cf8`)**: Accessible indigo text for small links and inline actions, meeting WCAG AA 4.5:1 contrast against dark backgrounds.
 
 ## Typography
 - **Primary Typeface**: Inter (weights 400, 500, 600, 700).

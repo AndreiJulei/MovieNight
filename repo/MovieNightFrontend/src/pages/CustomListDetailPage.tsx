@@ -103,10 +103,10 @@ export default function CustomListDetailPage() {
           <p role={store.listsError ? "alert" : "status"} className="text-base text-text-muted">
             {store.listsLoading ? "Loading your lists…" : store.listsError || "List not found."}
           </p>
-          {store.listsError && <button type="button" onClick={() => void store.refreshLists()} className="mt-4 text-sm text-accent underline">Reload lists</button>}
+          {store.listsError && <button type="button" onClick={() => void store.refreshLists()} className="quiet-action mt-4 text-sm text-text-primary">Reload lists</button>}
           <Link
             to="/lists"
-            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline"
+            className="prose-link text-link mt-4 inline-flex items-center gap-1.5 text-xs font-semibold"
           >
             ← Back to Lists
           </Link>
@@ -120,7 +120,7 @@ export default function CustomListDetailPage() {
       <div className="mb-4">
         <Link
           to="/lists"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
+          className="prose-link inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
         >
           ← Back to Lists
         </Link>
@@ -156,7 +156,7 @@ export default function CustomListDetailPage() {
       ) : <button type="button" disabled={busy} onClick={() => { setTitle(list.title); setRenaming(true); setError(null); }}
         className="mb-4 rounded-lg border border-white/10 bg-surface-raised px-3 py-2 text-sm text-text-primary">Rename list</button>}
       {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
-      <button type="button" disabled={busy} onClick={() => { setError(null); void store.refreshLists(); }} className="mb-4 ml-3 text-sm text-accent underline underline-offset-4 disabled:opacity-40">Reload lists</button>
+      <button type="button" disabled={busy} onClick={() => { setError(null); void store.refreshLists(); }} className="quiet-action mb-4 ml-3 text-sm text-text-primary">Reload lists</button>
 
       {/* Peer filter cluster */}
       <TopBar

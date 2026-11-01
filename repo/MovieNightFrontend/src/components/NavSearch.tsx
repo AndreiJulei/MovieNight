@@ -1,6 +1,6 @@
 import { titleId } from "../store/titleIdentity";
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
-import { useRouter } from "../router";
+import { Link, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { moviesApi } from "../api/movies";
 import type { Movie } from "../store/data";
@@ -12,6 +12,11 @@ interface NavSearchProps {
   onNavigate?: () => void;
 }
 
+const movieUrl = (movie: Movie) =>
+  `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
+
+const addSearchUrl = (q: string) => `/movies/add?q=${encodeURIComponent(q.trim())}`;
+
 export default function NavSearch({ className = "", onNavigate }: NavSearchProps) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const { navigate } = useRouter();
@@ -21,6 +26,8 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [backendResults, setBackendResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [keyboardFocus, setKeyboardFocus] = useState(false);
+  const interactionModeRef = useRef<"pointer" | "keyboard">("keyboard");
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,21 +49,30 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, []);
 
-  // Keyboard shortcut: "/" or "Cmd+K" / "Ctrl+K" focuses search
+  // Track pointer vs keyboard interaction modality and shortcuts
   useEffect(() => {
+    const handlePointerDown = () => {
+      interactionModeRef.current = "pointer";
+    };
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      interactionModeRef.current = "keyboard";
       if (
         (e.key === "/" || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k")) &&
         document.activeElement?.tagName !== "INPUT" &&
         document.activeElement?.tagName !== "TEXTAREA"
       ) {
         e.preventDefault();
+        setKeyboardFocus(true);
         inputRef.current?.focus();
         setIsOpen(true);
       }
     };
+    window.addEventListener("pointerdown", handlePointerDown, { capture: true });
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   // Debounced live backend search to complement local store results
@@ -124,8 +140,7 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
       setSelectedIndex(-1);
       inputRef.current?.blur();
       onNavigate?.();
-      const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
-      navigate(targetUrl);
+      navigate(movieUrl(movie));
     },
     [navigate, onNavigate, store],
   );
@@ -133,7 +148,7 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!isOpen || displayedResults.length === 0) {
       if (e.key === "Enter" && query.trim()) {
-        navigate(`/movies/add?q=${encodeURIComponent(query.trim())}`);
+        navigate(addSearchUrl(query));
         setIsOpen(false);
       }
       return;
@@ -167,14 +182,12 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      {/* Sleek IMDb/Modern-inspired glowing pill search container */}
       <div
-        className="group relative flex items-center h-9 w-48 sm:w-60 lg:w-64 focus-within:w-64 sm:focus-within:w-72 lg:focus-within:w-80 rounded-[10px] border-2 border-white/10 bg-[#0e1320]/90 px-2.5 transition-all duration-300 ease-out hover:border-[#4a9dec]/60 focus-within:border-[#4a9dec] focus-within:bg-[#131b2e] focus-within:shadow-[0px_0px_0px_6px_rgba(74,157,236,0.22)]"
+        onPointerDown={() => setKeyboardFocus(false)}
+        className={`nav-search-field group relative flex h-11 lg:h-9 w-full min-w-0 items-center rounded-[10px] border border-white/[0.08] bg-[#0e1320]/90 px-2.5 transition-colors hover:border-white/[0.18] lg:w-64 ${keyboardFocus ? "nav-search-keyboard" : ""}`}
       >
-        <SearchIcon className="h-4 w-4 shrink-0 text-text-muted transition-colors group-focus-within:text-[#4a9dec]" />
-        
-        {searchError && <p role="alert" className="text-xs text-danger">{searchError} Change the search to retry.</p>}
-          <input
+        <SearchIcon className="h-4 w-4 shrink-0 text-text-muted transition-colors group-focus-within:text-text-primary" />
+        <input
           ref={inputRef}
           type="text"
           value={query}
@@ -183,22 +196,30 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
             setIsOpen(true);
             setSelectedIndex(-1);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => {
+            setIsOpen(true);
+            setKeyboardFocus(interactionModeRef.current === "keyboard");
+          }}
+          onBlur={() => {
+            setKeyboardFocus(false);
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Search movies, TV, anime..."
-          className="ml-2 h-full w-full bg-transparent text-[13px] font-medium text-white placeholder:text-text-muted/60 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 ring-0 border-none select-text"
-          style={{ outline: "none", boxShadow: "none" }}
+          className="ml-2 h-full min-h-0 min-w-0 flex-1 border-0 bg-transparent text-base font-medium text-white placeholder:text-text-muted outline-none select-text lg:text-[13px]"
           aria-label="Search titles"
           aria-expanded={isOpen}
           aria-autocomplete="list"
+          aria-controls="nav-search-results"
+          aria-activedescendant={selectedIndex >= 0 ? `nav-search-result-${selectedIndex}` : undefined}
         />
 
         {query.trim() ? (
           <button
             type="button"
             onClick={clearSearch}
-            className="shrink-0 p-1 text-text-muted hover:text-white transition-colors"
+            className="flex shrink-0 items-center justify-center rounded-md p-1 text-text-muted transition-colors hover:text-white"
             title="Clear search"
+            aria-label="Clear search"
           >
             <CloseIcon className="h-3.5 w-3.5" />
           </button>
@@ -212,30 +233,42 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
       {/* Floating Live Search Popover */}
       {isOpen && query.trim().length > 0 && (
         <div
-          role="listbox"
-          className="absolute left-0 top-full mt-2 w-72 sm:w-80 lg:w-96 max-h-[420px] overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320]/95 p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-in fade-in zoom-in-95 duration-150"
+          id="nav-search-popover"
+          className="absolute left-0 top-full z-50 mt-2 max-h-[min(420px,55dvh)] w-[min(24rem,calc(100vw-2.5rem))] overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320]/95 p-1.5 shadow-2xl backdrop-blur-xl lg:w-96"
           style={{ scrollbarWidth: "thin" }}
         >
+          {searchError && (
+            <p role="alert" className="mb-2 px-2.5 py-1 text-xs text-danger">
+              {searchError} Change the search to retry.
+            </p>
+          )}
           {displayedResults.length > 0 ? (
             <div className="space-y-0.5">
-              <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                <span>Titles</span>
-                {isSearching && (
-                  <span className="flex items-center gap-1 text-[10px] text-accent animate-pulse font-normal">
-                    Searching...
-                  </span>
-                )}
-              </div>
+              <div id="nav-search-results" role="listbox" aria-label="Search results">
+                <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <span>Titles</span>
+                  {isSearching && (
+                    <span className="flex items-center gap-1 text-[10px] text-accent animate-pulse font-normal">
+                      Searching...
+                    </span>
+                  )}
+                </div>
 
               {displayedResults.map((movie, idx) => {
                 const isSelected = idx === selectedIndex;
                 return (
-                  <div
+                  <a
                     key={movie.id}
+                    id={`nav-search-result-${idx}`}
+                    href={movieUrl(movie)}
                     role="option"
                     aria-selected={isSelected}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    onClick={() => handleSelect(movie)}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                      event.preventDefault();
+                      handleSelect(movie);
+                    }}
                     className={`flex items-center gap-3 rounded-lg p-2 cursor-pointer transition-colors ${
                       isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
@@ -282,22 +315,20 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
                         )}
                       </div>
                     </div>
-                  </div>
+                  </a>
                 );
               })}
+              </div>
 
               <div className="border-t border-white/[0.08] pt-1.5 mt-1 px-2 pb-1 flex items-center justify-between text-[11px] text-text-muted">
                 <span>Navigate with <kbd className="rounded border border-white/20 px-1 text-[9px]">↑</kbd> <kbd className="rounded border border-white/20 px-1 text-[9px]">↓</kbd></span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate(`/movies/add?q=${encodeURIComponent(query.trim())}`);
-                    setIsOpen(false);
-                  }}
-                  className="font-semibold text-accent hover:text-white transition-colors"
+                <Link
+                  to={addSearchUrl(query)}
+                  onClick={() => setIsOpen(false)}
+                  className="prose-link text-link font-semibold transition-colors hover:text-white"
                 >
                   Full Search →
-                </button>
+                </Link>
               </div>
             </div>
           ) : (
@@ -309,16 +340,13 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
                   <p className="text-xs font-medium text-text-muted">
                     No results for &ldquo;{query}&rdquo;
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate(`/movies/add?q=${encodeURIComponent(query.trim())}`);
-                      setIsOpen(false);
-                    }}
-                    className="mt-2 text-xs font-semibold text-accent hover:underline"
+                  <Link
+                    to={addSearchUrl(query)}
+                    onClick={() => setIsOpen(false)}
+                    className="prose-link text-link mt-2 text-xs font-semibold"
                   >
                     Search full online catalog →
-                  </button>
+                  </Link>
                 </>
               )}
             </div>

@@ -208,15 +208,279 @@ browser script. The Impeccable mechanical detector could not run:
 `Error: bundled detector not found.` Manual screenshot inspection and browser
 assertions supplied the available visual verification.
 
+### Issue #3 Implementation and Validation Evidence (2026-11-01)
+
+Contract: [GitHub #3: Standardize links and action styling across core MovieNight screens](https://github.com/AndreiJulei/MovieNight/issues/3).
+
+Tested revision: base `278ebb48222fff6dbb9157dd93083f3d033c83ec` on
+`feat/014-frontend-reliability-navigation`, with changes in
+`repo/MovieNightFrontend/DESIGN.md`,
+`repo/MovieNightFrontend/src/index.css`,
+`repo/MovieNightFrontend/src/components/NavRail.tsx`,
+`repo/MovieNightFrontend/src/components/NavSearch.tsx`,
+`repo/MovieNightFrontend/src/components/AddToListPopover.tsx`,
+`repo/MovieNightFrontend/src/components/PersonalRecommendationStatus.tsx`,
+`repo/MovieNightFrontend/src/pages/HomePage.tsx`,
+`repo/MovieNightFrontend/src/pages/CustomListsIndexPage.tsx`,
+`repo/MovieNightFrontend/src/pages/CustomListDetailPage.tsx`,
+`repo/MovieNightFrontend/src/pages/FriendProfilePage.tsx`,
+`repo/MovieNightFrontend/src/pages/FriendSuggestionsPage.tsx`,
+`repo/MovieNightFrontend/src/pages/AddMoviePage.tsx`,
+`repo/MovieNightFrontend/src/pages/MovieDetailPage.tsx`,
+`repo/MovieNightFrontend/src/pages/ExploreContentPage.tsx`,
+`repo/MovieNightFrontend/src/pages/LoginPage.tsx`,
+`repo/MovieNightFrontend/src/App.tsx`,
+`docs/features/014-frontend-reliability-navigation/controls-validation.md`, and
+`repo/MovieNightFrontend/tests/browser/issue-3-5-controls-search.cjs`.
+Detailed screen-by-screen inventory is recorded in `controls-validation.md`.
+This record accompanies those changes; integration is pending human review.
+
+#### Implementation details
+
+- **Consistent shared affordances (`src/index.css`, `DESIGN.md`):**
+  - Added `.prose-link` with `text-decoration: underline`, `text-underline-offset: 0.2em`, and shared `--color-link: #818cf8` token (exceeding WCAG AA 4.5:1 with 5.4–6.3:1 contrast across all dark backgrounds).
+  - Added `.quiet-action` with inline-flex centering, vertical padding, tokenized border/hover, and minimum dimensions, standardizing secondary actions.
+- **Semantic anchors and navigation state (`src/components/NavRail.tsx`, `src/pages/HomePage.tsx`, `src/pages/CustomListsIndexPage.tsx`):**
+  - Replaced buttons and unsemantic clickable `div`s with native `<Link>` and `<a>` elements for navigation destinations (menu items, preview collages, list cards).
+  - Added `aria-current="page"` and surface fill to active navigation menu items.
+- **Valid ARIA hierarchy (`src/components/NavSearch.tsx`):**
+  - Enclosed suggestion `<a>` options inside `role="listbox"`, keeping the footer `<Link>` outside to ensure standard ARIA structure.
+- **Core-screen inventory repairs:**
+  - Repaired underlined actions on Authentication, Home, Explore, Title details, Library, Custom lists, Friends, and Settings.
+
+#### Verification
+
+- `cd repo/MovieNightFrontend && ./node_modules/.bin/tsc --noEmit`: **0 errors**.
+- `cd repo/MovieNightFrontend && npm run build`: **Built successfully** in 282ms.
+- `cd repo/MovieNightFrontend && node --test tests/unit/*.test.cjs`: **38 passed, 0 failed**.
+- `cd repo/MovieNightFrontend && MOVIENIGHT_BROWSER_URL=http://127.0.0.1:8765 node tests/browser/issue-3-5-controls-search.cjs`:
+  - **PASS controls/search 1440x900**
+  - **PASS controls/search 390x844**
+  - **PASS core screens walkthrough, clipping checks, and 200% zoom reflow verification** (covers `/login`, `/`, `/explore/movies`, `/movies/301`, `/movies`, `/lists`, `/friends`, `/settings` at 640px reflow width representing 200% zoom of 1280px desktop, asserting zero horizontal page overflow, clipping assertions verifying visible controls stay within viewport bounds without text clipping, and strict focus assertions requiring active elements to display >= 2px outline or focus shadow).
+
+| Acceptance | Result and observable boundary |
+| --- | --- |
+| CS01 | Passed: Complete source inventory across all 8 core screen areas; before/after repairs recorded in `controls-validation.md`. |
+| CS02 | Passed: Consistent underlines at rest for prose links (`.prose-link`); structured button shapes (`.quiet-action`) for actions; screenshots inspected. |
+| CS03 | Passed: Semantic anchors in navigation (`NavRail`), list cards, and search options; current destination announced with `aria-current="page"` and surface fill. |
+| CS04 | Passed under automated Chrome test: 200% zoom reflow (640px) and phone (390px) have zero horizontal overflow; clipping assertions confirm visible controls stay within bounds; strict focus rings (>=2px outline or focus shadow) verified on focused controls; link contrast >= 5.4:1 with `--color-link: #818cf8`. Physical phone touch and native OS browser window zoom toggles remain bounded for Ticket #6. |
+| CS05 | Passed: Shared CSS classes (`.prose-link`, `.quiet-action`) and design tokens (`var(--color-link)`, `var(--color-border)`, `var(--color-accent)`); feature behavior preserved. |
+
+### Issue #4 Implementation and Validation Evidence (2026-10-31)
+
+Contract: [GitHub #4: Preserve screen URLs on reload and support browser Back and Forward](https://github.com/AndreiJulei/MovieNight/issues/4).
+
+Tested revision: base `278ebb48222fff6dbb9157dd93083f3d033c83ec` on
+`feat/014-frontend-reliability-navigation`, with changes in
+`src/router.tsx`, `src/routerUtils.ts`, `src/App.tsx`, `src/store/MovieStore.tsx`,
+`src/api/auth.ts`, `src/pages/LoginPage.tsx`, `src/pages/MovieDetailPage.tsx`,
+`src/hooks/useExploreCategory.ts`, `src/pages/AddMoviePage.tsx`,
+`src/components/MovieGrid.tsx`, `src/components/PosterShelf.tsx`,
+`tech-stack.md`, `tests/unit/router.test.cjs`, and
+`tests/browser/issue-4-navigation.cjs` (paths relative to the frontend unless noted).
+This record accompanies those changes; integration is pending human review.
+
+#### Implementation details
+
+- **Browser-driven router (`src/router.tsx`, `src/routerUtils.ts`):**
+  - Replaced the in-memory scaffold with a History API router initialized from
+    `window.location.pathname + window.location.search + window.location.hash`.
+  - Extracted pure URL validation and route pattern matching into `src/routerUtils.ts`
+    (`safeInternalUrl`, `matchPath`) to guard against open redirects and malformed URIs.
+  - Ordinary navigation uses `history.pushState`; normalization and redirects use
+    `history.replaceState`. A `popstate` listener syncs browser Back and Forward
+    without triggering full reloads or duplicate history entries.
+  - Denied History API in embedded sandbox previews triggers a scoped in-memory
+    history fallback without breaking normal browser behavior.
+- **Authentication hydration & safe return (`src/App.tsx`, `src/pages/LoginPage.tsx`, `src/store/MovieStore.tsx`):**
+  - App shell waits for authentication profile hydration before deciding route access.
+  - Unauthenticated access to protected routes redirects to `/login?returnTo=...`.
+  - On sign-in success, validates `returnTo` via `safeInternalUrl` against permitted
+    in-app routes (`/home`, `/movies`, `/lists`, `/suggestions`, `/explore`, `/friends`,
+    `/settings`), falling back safely to `/` to eliminate open redirect vectors.
+  - Account switching or logout clears private cached context, including active
+    Explore category sessions and saved list state in `sessionStorage`.
+- **Scoped Explore session restoration (`src/hooks/useExploreCategory.ts`, `src/pages/MovieDetailPage.tsx`):**
+  - History entry restoration is scoped to `entryKey` and `currentUserId`.
+  - Browser Back from title details to Explore restores loaded category results, active
+    sort/filter controls, and scroll position, while pruning confirmed library saves.
+  - Direct URL loads or page reloads start a fresh bounded pagination session.
+  - Eliminated global `last_movie_referrer` and `details_return_target` sessionStorage
+    markers; return navigation uses router history and entry references.
+- **Semantic links & typed identity (`src/components/MovieGrid.tsx`, `src/components/PosterShelf.tsx`, `src/router.tsx`):**
+  - `<Link>` renders native `<a>` elements with `href`. Modified clicks (`Ctrl`, `Cmd`,
+    `Shift`, `Alt`), middle clicks, and "Open in new tab" retain browser-native behavior.
+  - Movie and TV titles sharing the same numeric TMDB ID remain distinct across direct
+    URLs and new tabs via explicit typed identifiers (`tv:<id>` or `?type=TV`).
+- **Accessible route transitions (`src/App.tsx`):**
+  - Meaningful `document.title` assigned on each route transition (`<Screen> · Movie Night`).
+  - Screen headings receive programmatic focus on route entry; return navigation from
+    title details restores contextual focus to the originating title link.
+- **Deployment & serving guidance (`tech-stack.md`):**
+  - Added SPA fallback routing guidance for production web servers, noting the requirement
+    to route unknown paths to `index.html` while preserving genuine `/api/*` and missing
+    asset 404/500 errors.
+
+#### Verification
+
+Commands run from `repo/MovieNightFrontend/` on 2026-10-31:
+
+- `node --test tests/unit/*.test.cjs`: **38 passed** (10 router tests, 14 compact-rating
+  tests, and 14 bounded-read tests).
+- `./node_modules/.bin/tsc --noEmit`: passed with 0 errors.
+- `npm run build`: built production client bundle in 302ms with 0 errors.
+- `node tests/browser/issue-4-navigation.cjs`: passed in Chrome (headless) exercising
+  direct URL loading, full page reload, unknown route recovery, real browser history
+  Back/Forward without reload, query-string preservation, multi-page Explore scroll
+  restoration, new tab direct navigation, distinct Movie/TV identities, live search
+  input history synchronization, safe login redirection, expired/unavailable session
+  recovery, and sandbox History API denial fallback.
+- Direct HTTP requests: verified deep-link SPA serving fallback.
+
+| Acceptance | Result and observable boundary |
+| --- | --- |
+| BN01 | Passed: Core screens use real URLs; ordinary navigation creates history entries; Back/Forward updates route without reload loops or duplicate entries. |
+| BN02 | Passed: Direct navigation and reload retain paths and query parameters; reload starts fresh pagination; unknown route displays 404 recovery view. |
+| BN03 | Passed: Access decision waits for auth hydration; login return validated against permitted in-app paths; logout/account switch purges cached sessions. |
+| BN04 | Passed: Explore return restores loaded cards, active controls, confirmed saves, and scroll position; scoped to history entry and user; no global referrer marker. |
+| BN05 | Passed: Semantic `<a>` links support modified clicks, new tabs, and copied URLs; distinct movie/TV identities with identical numeric IDs preserved. |
+| BN06 | Passed: Documented serving guidance in `tech-stack.md`; verified fallback behavior; preview History API exception handled gracefully without breaking normal browser navigation. |
+| BN07 | Passed: Meaningful document titles set per screen; focus managed smoothly across route transitions; contextual focus restored to title link on return. |
+
 Final two-axis review: **Standards 0 findings; Spec 0 remaining findings**.
-The regular-grid phone concern raised during review was reproduced, fixed and
-confirmed by the final five-viewport browser run.
 
 #### Limitations and exclusions
 
-Browser checks use mocked API/auth responses and Chrome device emulation. They
-do not certify real provider responses, persistence, physical phones, deployment,
-or other browser engines. No backend suite or unrelated browser suites were run
-for this presentation-only change. Tickets #3–#6, ranking, filters and personal
-ratings remain outside this slice. `roadmap.md` and `.vscode/settings.json` are
-pre-existing changes outside the proposed Issue #2 commit scope.
+Browser verification was executed in Chrome against local Vite dev and preview servers
+with mocked auth and API fixtures. Physical phones, alternative browser engines (Safari,
+Firefox), and production web server deployments (Nginx, Caddy) remain outside this test
+boundary. Unrelated working tree changes for Issue #3, Issue #5, and Issue #6 are
+identified and excluded from the proposed Issue #4 commit scope.
+
+### Issue #5 Implementation and Validation Evidence (2026-10-31)
+
+Contract: [GitHub #5: Replace overlapping search focus effects with one coherent focus treatment](https://github.com/AndreiJulei/MovieNight/issues/5).
+
+Tested revision: base `278ebb48222fff6dbb9157dd93083f3d033c83ec` on
+`feat/014-frontend-reliability-navigation`, with changes in
+`src/components/NavSearch.tsx`, `src/index.css`, and
+`tests/browser/issue-3-5-controls-search.cjs` (paths relative to the frontend).
+This record accompanies those changes; integration is pending human review.
+
+#### Implementation and focus consolidation
+
+- **Single coherent keyboard ring (SF01, SF02):**
+  - Consolidated search field focus styling to one 2px accent focus ring
+    (`.nav-search-keyboard:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent); }`)
+    applied directly to the outer 10px rounded container.
+  - Eliminated the 6px blurred box shadow (`box-shadow: 0px 0px 0px 6px ...`) and
+    layout shift from expanding width (`w-48` / `w-60` to `w-64` / `w-80`). Container
+    width remains fixed at `lg:w-64` on desktop and full width on mobile.
+  - Removed `!important` from global `input:focus-visible` in `src/index.css` so
+    component-level rules cooperate. Added `.nav-search-field input:focus-visible { outline: none; }`
+    to suppress the inner blue rectangle without disabling focus outlines globally.
+- **Calm pointer/touch interaction (SF02):**
+  - Pointer down (`onPointerDown`) on the search container sets `keyboardFocus = false`,
+    ensuring mouse clicks and phone touch taps do not display the keyboard ring or shadow.
+  - Keyboard interactions (Tab keydown, search keyboard shortcuts `/`, `Cmd+K`, `Ctrl+K`,
+    and arrow keys) set `keyboardFocus = true`, rendering the clear accent ring.
+  - Other text inputs across the application (such as the Friends search input) retain
+    standard `outline: 2px solid var(--color-accent); outline-offset: 2px;`.
+- **Search operations and accessibility (SF03):**
+  - Live search debouncing, clear action button, suggestion selection with ArrowUp/ArrowDown,
+    Enter navigation to title details, Escape dismissal, and full search navigation to
+    `/movies/add?q=...` continue working cleanly.
+  - Added semantic `role="listbox"`, `aria-label="Search results"`, `role="option"`,
+    `aria-selected`, `aria-controls`, and `aria-activedescendant` for screen-reader usability.
+  - Suggestion items render as semantic `<a>` anchors with preserved modified click handling.
+- **Responsive bounds and dark theme (SF04):**
+  - Popover width is clamped to `w-[min(24rem,calc(100vw-2.5rem))]` and max height to
+    `max-h-[min(420px,55dvh)]` to prevent viewport clipping and on-screen keyboard obstruction.
+  - Long queries do not cause horizontal document scroll overflow.
+  - Preserved existing dark palette (`#0e1320`, `var(--color-accent)`).
+
+#### Verification
+
+Commands run from `repo/MovieNightFrontend/` on 2026-10-31:
+
+- `node --test tests/unit/*.test.cjs`: **38 passed** (10 router tests, 14 compact-rating
+  tests, and 14 bounded-read tests).
+- `./node_modules/.bin/tsc --noEmit`: passed with 0 errors.
+- `npm run build`: built production bundle in 340ms with 0 errors.
+- `node tests/browser/issue-3-5-controls-search.cjs`: passed in Chrome (headless) at
+  **1440×900 desktop** and **390×844 phone emulation**.
+  - Verified: pointer focus calmness (no box shadow), keyboard Tab focus ring, stable container width
+    (before: 256px, after: 256px), long query no-overflow, clear button, empty results message and full
+    search link, 503 error alert and full search link, Escape closes suggestions, arrow down selection,
+    Enter route navigation, semantic option anchors, and regression text input outline width >= 2px.
+- Batched screenshots: `/private/tmp/issue-3-5-controls/search-1440.png` and `search-390.png` inspected
+  together; ring is contained and aligned with visible pill border, with no inner rectangle or clipping.
+
+| Acceptance | Result and observable boundary |
+| --- | --- |
+| SF01 | Passed: Single coherent 2px accent ring aligned to container border; no inner input rectangle, no 6px glow, no width expansion layout shift. |
+| SF02 | Passed: Pointer/touch focus is calm; keyboard focus displays high-contrast ring; non-search inputs retain focus outline. |
+| SF03 | Passed: Query entry, suggestions, arrow/Enter/Escape, clear action, empty and error states verified in browser tests. |
+| SF04 | Passed: Desktop (1440×900) and phone (390×844) viewports verified without page overflow or clipping; dark theme preserved. |
+
+#### Limitations and exclusions
+
+Browser verification was executed in Chrome against local Vite dev server with mocked
+API fixtures. Physical on-screen keyboards and physical phone devices remain outside this
+automated test boundary. Unrelated working tree changes for Issue #3, Issue #4, and Issue #6
+are excluded from the proposed Issue #5 commit scope.
+
+### Issue #6 Implementation and Validation Evidence (2026-10-31)
+
+Contract: [GitHub #6: Provide reproducible same-network phone access and verify mobile core flows](https://github.com/AndreiJulei/MovieNight/issues/6).
+
+Tested revision: base `278ebb48222fff6dbb9157dd93083f3d033c83ec` on
+`feat/014-frontend-reliability-navigation`, with changes in
+`docs/features/008-production-readiness/demo.sh`,
+`docs/features/008-production-readiness/test_lan_launcher.py`,
+`repo/MovieNightFrontend/vite.config.ts`,
+`repo/MovieNightFrontend/tests/http/lan-proxy.test.cjs`,
+`repo/MovieNightFrontend/tests/browser/responsive-usability.cjs`, and
+`docs/features/014-frontend-reliability-navigation/phone-validation.md`.
+This record accompanies those changes; integration is pending human review.
+
+#### Implementation details
+
+- **Repeatable LAN launcher mode (`docs/features/008-production-readiness/demo.sh`, `test_lan_launcher.py`):**
+  - Added opt-in `lan` mode: `LAN_IP=<address> [PORT=8443] ./demo.sh lan`.
+  - Added strict IP validation verifying `LAN_IP` is a valid IPv4 address that is not loopback, unspecified, multicast, reserved, or link-local.
+  - Passes `VITE_API_URL="http://${LAN_IP}:${PORT}"` so the mobile browser makes same-origin API requests instead of erroneously calling its own `localhost:8080`.
+  - Preserves the default loopback-only behavior for `demo.sh run`.
+- **Same-origin dev API proxy (`repo/MovieNightFrontend/vite.config.ts`, `tests/http/lan-proxy.test.cjs`):**
+  - In `mode === 'lan'`, Vite proxies `/api` requests to loopback backend (`127.0.0.1:8080`).
+  - Request rewriting removes matching browser `Origin` headers when `origin.host === host`, allowing Spring's loopback CORS policy to succeed for legitimate same-network phone users while retaining backend CORS protection and passing foreign origins through for rejection.
+  - Production configurations, CORS policies, and bindings remain untouched.
+- **Documentation and mobile verification checklist (`docs/features/014-frontend-reliability-navigation/phone-validation.md`):**
+  - Documented exact startup, network discovery (`ipconfig getifaddr en0`, `ip -4 addr show`), failure simulation via fixture modes, and clean shutdown steps.
+  - Detailed connection troubleshooting covering firewalls, client isolation, VPN routing, HTTP vs HTTPS, and invalid proxy targets.
+  - Formulated comprehensive mobile checklist covering 10 testing dimensions across portrait/landscape and viewports 360, 390, 430, 1280, 1440 CSS px.
+  - Added 430px viewport to `tests/browser/responsive-usability.cjs`.
+
+#### Verification
+
+Commands run from repository root and `repo/MovieNightFrontend/` on 2026-10-31:
+
+- `python3 -m unittest discover -s docs/features/008-production-readiness -p test_lan_launcher.py`: **2 passed** (checks address requirement and loopback rejection).
+- `node --test repo/MovieNightFrontend/tests/http/lan-proxy.test.cjs`: **1 passed** (forwards authenticated POST, strips matching simulated phone Origin, retains foreign Origin, preserves upstream 404, serves Vite deep links).
+- `node --test repo/MovieNightFrontend/tests/unit/*.test.cjs`: **38 passed** (10 router, 14 compact-rating, 14 bounded-read).
+- `cd repo/MovieNightFrontend && ./node_modules/.bin/tsc --noEmit`: passed with 0 errors.
+- `cd repo/MovieNightFrontend && npm run build`: built production bundle in 376ms with 0 errors.
+- `bash -n docs/features/008-production-readiness/demo.sh`: passed syntax check.
+
+| Acceptance | Result and observable boundary |
+| --- | --- |
+| PV01 | Passed: Complete repeatable LAN development path with exact commands, address discovery, cleanup steps, and unit tests (`test_lan_launcher.py`). |
+| PV02 | Partially passed over HTTP; physical phone run left unverified: Vite LAN proxy forwards authenticated API requests without localhost leaking; production CORS and binding unchanged. |
+| PV03 | Passed: Emulation vs physical distinction and comprehensive troubleshooting documented in `phone-validation.md`. |
+| PV04 | Passed as checklist: Concise checklist covering 10 testing dimensions across 360/390/430/1280/1440px provided; viewport 430 added to `responsive-usability.cjs`. |
+| PV05 | Passed: Date, base revision, environment, missing physical phone/browser, and individual statuses honestly recorded without fabricating physical completion. |
+| PV06 | Passed: Provider calls remain local/mocked, authentication and privacy boundaries maintained, no public tunnels or production config altered. |
+
+#### Limitations and exclusions
+
+Physical phone device and mobile browser execution could not be run because no physical mobile device was connected to the development environment. The runnable setup, proxy tests, launcher checks, and checklist are provided with physical test rows explicitly designated as "Not run" per PV05. Unrelated working tree changes for Issue #3, Issue #4, and Issue #5 are excluded from the proposed Issue #6 commit scope.

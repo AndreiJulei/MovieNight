@@ -26,6 +26,6 @@ export default function PersonalRecommendationStatus({ suggestions }: { suggesti
       {states[suggestions.category.state ?? ""] && <p>{states[suggestions.category.state ?? ""]}</p>}
       {suggestions.category.limitations?.map((limitation) => <p key={limitation}>{limitations[limitation]}</p>)}
     </div>}
-    <Link to="/explore/movies" className="inline-block text-accent hover:underline">Explore movies — general discovery</Link>
+    <Link to="/explore/movies" className="prose-link text-link inline-block">Explore movies — general discovery</Link>
   </div>;
 }

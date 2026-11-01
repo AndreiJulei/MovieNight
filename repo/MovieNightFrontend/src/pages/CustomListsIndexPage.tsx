@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type MouseEvent } from "react";
-import { Link, useRouter } from "../router";
+import { Link } from "../router";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "../components/Toast";
 import AppShell from "../components/AppShell";
@@ -7,7 +7,6 @@ import type { CustomList, Movie } from "../store/data";
 
 export default function CustomListsIndexPage() {
   const { currentUser, listsFor, movieById, createList, deleteList, listsLoading, listsError, listsSaving, refreshLists } = useStore();
-  const { navigate } = useRouter();
   const { toast } = useToast();
 
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +95,7 @@ export default function CustomListsIndexPage() {
         {listsLoading && <p role="status" className="mb-4 text-sm text-text-muted">Loading your lists…</p>}
         {(error || listsError) && <p role="alert" className="mb-3 text-sm text-red-300">{error || listsError}</p>}
         <button type="button" disabled={busy} onClick={() => { setError(null); void refreshLists(); }}
-          className="mb-4 text-sm text-accent underline underline-offset-4 disabled:opacity-40">
+          className="quiet-action mb-4 text-sm text-text-primary">
           Reload lists
         </button>
 
@@ -154,14 +153,10 @@ export default function CustomListsIndexPage() {
               return (
                 <div
                   key={list.id}
-                  onClick={() => navigate(`/lists/${list.id}`)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === "Enter") navigate(`/lists/${list.id}`); }}
-                  className="group relative flex flex-col justify-between gap-4 rounded-xl border border-white/[0.08] bg-[#0b1019] p-4 sm:flex-row sm:items-center sm:p-5 transition-all duration-200 hover:border-white/20 hover:bg-[#0e1320] cursor-pointer shadow-sm"
+                  className="group relative flex flex-col justify-between gap-4 rounded-xl border border-white/[0.08] bg-[#0b1019] p-4 sm:flex-row sm:items-center sm:p-5 transition-all duration-200 hover:border-white/20 hover:bg-[#0e1320] shadow-sm"
                 >
                   {/* Left: Overlapping poster collage + List details */}
-                  <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+                  <Link to={`/lists/${list.id}`} aria-label={`Open list ${list.title}`} className="flex min-w-0 flex-1 items-center gap-4 rounded-md sm:gap-5">
                     {/* Poster collage */}
                     <div className="shrink-0">
                       {sampleMovies.length > 0 ? (
@@ -236,12 +231,11 @@ export default function CustomListsIndexPage() {
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </Link>
 
                   {/* Right: Actions */}
                   <div
                     className="flex shrink-0 items-center justify-end sm:pl-4"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     {isConfirming ? (
                       /* Lightweight inline-confirm pattern (not a modal) */
@@ -251,7 +245,7 @@ export default function CustomListsIndexPage() {
                           type="button"
                           disabled={busy}
                           onClick={(e) => handleDelete(list, e)}
-                          className="font-bold text-red-400 hover:underline"
+                          className="quiet-action min-h-8 text-xs font-bold text-red-400"
                         >
                           {listsSaving ? "Saving…" : "Yes, delete"}
                         </button>
@@ -261,7 +255,7 @@ export default function CustomListsIndexPage() {
                             e.stopPropagation();
                             if (!listsSaving) setConfirmDeleteId(null);
                           }}
-                          className="text-text-muted hover:text-white"
+                          className="quiet-action min-h-8 text-xs text-text-muted"
                         >
                           Cancel
                         </button>
