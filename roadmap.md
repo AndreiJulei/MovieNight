@@ -33,6 +33,18 @@ shipping a slice that exposes them.
 
 ## Current work
 
+### Selected follow-up — 2026-10-31
+
+Specify and implement the reported frontend reliability and navigation fixes
+through the [feature 014 record](docs/features/014-frontend-reliability-navigation/spec.md),
+which links the six authoritative GitHub contracts. Start with first-open title
+loading diagnosis and automatic read recovery; refine Explore metadata, links,
+search focus, browser history/reload behavior and same-network phone validation
+as reviewable tickets. Preserve the current visual identity. The accepted expiry
+recovery deliberately replaces the earlier manual Refresh requirement; details
+and test boundaries live in the issues. Ticket publication is not implementation
+or runtime validation. The 2026-10-25 note below records earlier planning context.
+
 Priority update on 2026-10-25, based on local inspection only; no remote fetch.
 The starting branch is `feat/009-durable-storage` at `3fa4c6b` with the feature-010
 spec as an existing untracked file. This is not a new integration or runtime

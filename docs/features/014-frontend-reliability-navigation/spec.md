@@ -349,6 +349,45 @@ Commands run from `repo/MovieNightFrontend/` on 2026-10-31:
 
 Final two-axis review: **Standards 0 findings; Spec 0 remaining findings**.
 
+#### Post-Review Refinements (2026-11-01)
+Refinements following review of Tickets #4, #5, and #6:
+- Search synchronization in `AddMoviePage.tsx` pushes the first nonempty query in an editing session and replaces subsequent edits (`replace: !shouldPush`). Back returns to the previous query context; Forward restores the edited query. This deliberately retains one history entry for the search session (BN01/BN02).
+- Added immediate render of `<ExploreContentPage />` for `path === "/explore"` in `App.tsx`, eliminating blank screen flash before URL normalization to `/explore/movies`.
+- Aligned route title in `App.tsx` for `/movies/add` to "Add title" per `GLOSSARY.md` (Catalog vs Library distinction), mapped `/explore` to "Explore", and removed redundant `text-link` utility from `.prose-link` link.
+- Replaced partial ad-hoc URL check in `MovieDetailPage.tsx` with `safeInternalUrl(previousUrl)`.
+- Renamed `key()` to `generateEntryKey()` in `router.tsx` and cryptic `pp`/`ap` to `patternSegments`/`pathSegments` in `routerUtils.ts`.
+- Expanded `demo.sh check` to discover `test_*.py` so `test_lan_launcher.py` is included in validation (PV01).
+- Filled in actual automated test results for emulated viewports `PV04-C` through `PV04-G` in `phone-validation.md`, corrected desktop viewport to 1280×720 (matching `responsive-usability.cjs`), and explicitly clarified that per-control clipping checks run during 640px zoom reflow while 360/390/430/1280/1440px verify zero page overflow and touch targets (PV04/PV05).
+- Cancelled pending scroll restoration callbacks (`rafId`, `timeoutId`) and cleared active entry key ref on unmount in `useExploreCategory.ts`, preventing quick exits from scrolling subsequent screens (BN04).
+- Coordinated popstate scroll restoration in `router.tsx` with asynchronous content mounting via `MutationObserver` and bounded retry checks against `document.documentElement.scrollHeight`, ensuring shelf pages restore scroll when content renders instead of clamping near zero (BN04).
+
+Follow-up findings implementation (2026-11-01), on base
+`927f0c54286db73ba0a547fe0be4144ad0a16f92` with the existing uncommitted
+working tree:
+
+- `App.tsx` now resolves validation, fallback page titles and rendered pages
+  from one ordered route table. Route precedence and permitted paths are
+  preserved (BN01/BN02).
+- Heading focus runs on initial entry and screen-path transitions; same-screen
+  query push/replace/Back/Forward keeps the current focus (BN07/SF03).
+- The navigation browser regression failed before the fix because query push
+  focused the heading. After the fix, it passed at 1440×900 and 390×844 CSS px,
+  checking initial heading focus, uninterrupted typing across query push and
+  replacement, reload, and query Back/Forward.
+- Actual checks: `node --test tests/unit/*.test.cjs tests/http/*.test.cjs`
+  passed all 39 tests; `./node_modules/.bin/tsc --noEmit` and `npm run build`
+  passed. `node tests/browser/issue-4-navigation.cjs` and
+  `node tests/browser/issue-3-5-controls-search.cjs` passed in headless Chrome
+  with fixture APIs. The latter covers desktop/phone pointer and keyboard
+  controls plus 640 px zoom-reflow checks. These checks do not verify a
+  physical phone, on-screen keyboard, real API persistence or LAN access.
+- Follow-up two-axis review of these three files against their pre-fix
+  snapshots: Standards 0 remaining findings; Spec 0 findings.
+- Vite still reports its native-config and bundle-size warnings. The
+  Impeccable detector was attempted once but could not run (`bundled detector
+  not found`); no detector pass is claimed. No backend change or test run is
+  part of this follow-up.
+
 #### Limitations and exclusions
 
 Browser verification was executed in Chrome against local Vite dev and preview servers
@@ -484,3 +523,28 @@ Commands run from repository root and `repo/MovieNightFrontend/` on 2026-10-31:
 #### Limitations and exclusions
 
 Physical phone device and mobile browser execution could not be run because no physical mobile device was connected to the development environment. The runnable setup, proxy tests, launcher checks, and checklist are provided with physical test rows explicitly designated as "Not run" per PV05. Unrelated working tree changes for Issue #3, Issue #4, and Issue #5 are excluded from the proposed Issue #6 commit scope.
+
+### Delayed Explore shelf restoration follow-up (2026-11-01)
+
+BN04 follow-up on base `927f0c54286db73ba0a547fe0be4144ad0a16f92`,
+including the existing uncommitted working tree. The remaining review finding
+was reproduced: Back lost the saved scroll when shelf content arrived after
+the router's approximately 1.5-second retry window.
+
+- `src/router.tsx` now observes DOM and layout changes until the saved offset
+  is reached. There is no network deadline or polling loop. Observers and
+  scheduled animation frames are cancelled on newer navigation or unmount.
+- `tests/browser/issue-4-navigation.cjs` holds the returning shelf response for
+  2.2 seconds and asserts restoration within 5 CSS pixels. This regression
+  failed before the fix and passed afterward. A second case leaves the pending
+  return for Home and confirms the late response cannot scroll that newer screen.
+- Checks from `repo/MovieNightFrontend/`: `./node_modules/.bin/tsc --noEmit`,
+  `npm run build`, `node --test tests/unit/*.test.cjs` (38 passed), and
+  `MOVIENIGHT_BROWSER_URL=http://127.0.0.1:8765 node tests/browser/issue-4-navigation.cjs`
+  passed. Root `git diff --check` passed. Build retains the existing native-config
+  and bundle-size warnings.
+
+Evidence uses local Vite and headless Chrome with fixture APIs; physical phones,
+real API persistence, and deployed serving remain unverified by this follow-up.
+Only the router, navigation browser test, and this record were changed in this
+follow-up. No commit, push, or merge was performed.
