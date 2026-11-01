@@ -9,7 +9,7 @@ Consult the manifests when versions change.
 | --- | --- | --- |
 | Browser app | React ^19, TypeScript ^5.7, Vite ^8, Tailwind ^4 | `repo/MovieNightFrontend/package.json` |
 | Frontend tools | Node 22, pnpm 10.34.3 | `repo/MovieNightFrontend/.mise.toml` |
-| Navigation | Custom in-memory router; scaffold intentionally omits browser history | Frontend `AGENTS.md`, `CLAUDE.md`, and app shell |
+| Navigation | Custom History API router initialized from the browser URL; guarded routes hydrate the authenticated profile; embedded previews with denied History API use an in-memory fallback | `repo/MovieNightFrontend/src/router.tsx`, `src/App.tsx` |
 | API | Java 21, Spring Boot 4.1.1, Spring MVC | `repo/MovieNightBackend/pom.xml` |
 | Persistence | Spring Data JPA and H2 | Backend manifest and models |
 | Authentication | Spring Security, BCrypt, JWT | Backend security and user service |
@@ -25,6 +25,7 @@ From `repo/MovieNightFrontend/`:
 ```sh
 pnpm exec tsc --noEmit
 pnpm build
+node tests/browser/issue-4-navigation.cjs
 ```
 
 The frontend has a strict TypeScript configuration. Its build runs Vite and does
@@ -34,6 +35,14 @@ standalone [watchlist browser checks](repo/MovieNightFrontend/tests/browser/watc
 with an externally installed Playwright module and Chrome. Its
 [feature record](docs/features/001-reliable-watchlist-save/spec.md) documents the
 setup and recorded results; no package test runner was added.
+Issue #4's [browser checks](repo/MovieNightFrontend/tests/browser/issue-4-navigation.cjs)
+exercise direct URLs, reload, browser history, Explore restoration, and sign-in
+return. Set `MOVIENIGHT_BROWSER_URL` for a nondefault Vite origin and
+`MOVIENIGHT_PLAYWRIGHT_MODULE` when Playwright is installed outside this project.
+The Vite development and preview servers serve the app shell at valid deep URLs;
+the deployment web server must likewise route unknown app paths to `index.html`
+while leaving `/api/*` and missing asset paths as real errors. A successful
+deep-link response must be verified with a direct request before deployment.
 
 From `repo/MovieNightBackend/`:
 

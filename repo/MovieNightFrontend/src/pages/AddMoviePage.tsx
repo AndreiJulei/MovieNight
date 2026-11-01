@@ -20,7 +20,8 @@ export default function AddMoviePage() {
   const { saveWatchlist, error: saveError } = useWatchlistSave();
   const [saving, setSaving] = useState(false);
   const [watchedError, setWatchedError] = useState<string | null>(null);
-  const { navigate } = useRouter();
+  const { navigate, search, action } = useRouter();
+  const urlQuery = new URLSearchParams(search).get("q") ?? "";
 
   const [mode, setMode] = useState<Mode>("search");
   const [selected, setSelected] = useState<Movie | null>(null);
@@ -37,9 +38,32 @@ export default function AddMoviePage() {
   const [posterUrl, setPosterUrl] = useState("");
 
   // search state
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(urlQuery);
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const lastPushedQuery = useRef(urlQuery);
+  const hasPushedForCurrentSearch = useRef(false);
+
+  useEffect(() => {
+    if (action === "pop" || action === "initial") {
+      setQuery(urlQuery);
+      lastPushedQuery.current = urlQuery;
+      hasPushedForCurrentSearch.current = false;
+    }
+  }, [action, urlQuery]);
+  useEffect(() => {
+    if (query === lastPushedQuery.current) return;
+    const timer = window.setTimeout(() => {
+      lastPushedQuery.current = query;
+      const next = new URLSearchParams(search);
+      if (query.trim()) next.set("q", query.trim());
+      else next.delete("q");
+      const shouldPush = !hasPushedForCurrentSearch.current && Boolean(query.trim());
+      hasPushedForCurrentSearch.current = true;
+      navigate(`/movies/add${next.size ? `?${next}` : ""}`, { replace: !shouldPush });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [query, search, navigate]);
 
   // Debounced live search against backend & TMDB
   useEffect(() => {
@@ -280,7 +304,7 @@ export default function AddMoviePage() {
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
-                    className="mt-0.5 text-xs font-semibold text-accent hover:underline"
+                    className="quiet-action mt-0.5 text-xs text-text-primary"
                   >
                     Change selection
                   </button>

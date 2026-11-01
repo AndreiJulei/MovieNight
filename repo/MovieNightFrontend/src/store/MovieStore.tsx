@@ -54,6 +54,9 @@ type FriendshipResult = SaveResult & { warning?: string };
 
 type StoreValue = {
   currentUser: User | null;
+  authHydrated: boolean;
+  authError: string | null;
+  retryAuth: () => void;
   users: User[];
   movies: Movie[];
 
@@ -224,29 +227,41 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     setListsLoading(loading);
   }, []);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const stored = sessionStorage.getItem("movienight_current_user") || localStorage.getItem("movienight_current_user");
-      if (stored) {
-        const u = JSON.parse(stored) as User;
-        if (u.id === "u1" || u.username === "you") {
-          sessionStorage.removeItem("movienight_current_user");
-          localStorage.removeItem("movienight_current_user");
-          sessionStorage.removeItem(AUTH_KEY);
-          return null;
-        }
-        return { ...u, id: String(u.id) };
-      }
-      const raw = sessionStorage.getItem(AUTH_KEY);
-      if (raw && (raw === "u1" || raw === '"u1"')) {
+  const [authHydrated, setAuthHydrated] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authRetry, setAuthRetry] = useState(0);
+  const retryAuth = useCallback(() => { setAuthHydrated(false); setAuthError(null); setAuthRetry((value) => value + 1); }, []);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  useEffect(() => {
+    let active = true;
+    void authApi.currentProfile().then((profile) => {
+      if (!active) return;
+      if (profile) {
+        const previousProfile = sessionStorage.getItem("movienight_current_user") || localStorage.getItem("movienight_current_user");
+        try {
+          if (previousProfile && String(JSON.parse(previousProfile).id) !== String(profile.id)) purgeStoredExploreSessions();
+        } catch { purgeStoredExploreSessions(); }
+        const user: User = {
+          id: String(profile.id), username: profile.username,
+          displayName: profile.displayName, email: profile.email, password: "",
+        };
+        setCurrentUser(user);
+        sessionStorage.setItem("movienight_current_user", JSON.stringify(user));
+      } else {
+        authApi.logout();
         sessionStorage.removeItem(AUTH_KEY);
-        return null;
+        sessionStorage.removeItem("movienight_current_user");
+        localStorage.removeItem("movienight_current_user");
+        purgeStoredExploreSessions();
       }
-    } catch {
-      /* ignore */
-    }
-    return null;
-  });
+    }).catch(() => {
+      if (!active) return;
+      // A profile that could not be verified must not expose cached private data.
+      setCurrentUser(null);
+      setAuthError("Could not verify your session. Check your connection and retry.");
+    }).finally(() => { if (active) setAuthHydrated(true); });
+    return () => { active = false; };
+  }, [authRetry]);
 
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -338,6 +353,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       activeUser.current = u.id;
       libraryRevision.current += 1;
       setEntries([]);
+      setFriendProfiles([]);
+      setInvitations([]);
       resetLists(true);
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
@@ -377,6 +394,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         activeUser.current = u.id;
         libraryRevision.current += 1;
         setEntries([]);
+        setFriendProfiles([]);
+        setInvitations([]);
         resetLists(true);
         setCurrentUser(u);
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
@@ -395,6 +414,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     refreshSequence.current += 1;
     setEntries([]);
     setFriendships([]);
+    setFriendProfiles([]);
+    setInvitations([]);
     resetLists(false);
     localStorage.removeItem("movienight.customLists");
     setLibraryError(null);
@@ -947,6 +968,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreValue>(
     () => ({
       currentUser,
+      authHydrated,
+      authError,
+      retryAuth,
       users,
       movies,
       login,
@@ -993,6 +1017,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       currentUser,
+      authHydrated,
+      authError,
+      retryAuth,
       users,
       movies,
       login,

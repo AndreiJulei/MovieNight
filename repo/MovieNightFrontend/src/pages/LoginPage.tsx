@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { useRouter } from "../router";
+import { safeInternalUrl, useQuery, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import CinematicScene from "../components/login/CinematicScene";
 import { authApi } from "../api/auth";
@@ -16,6 +16,11 @@ const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 export default function LoginPage() {
   const { login, signup, checkName } = useStore();
   const { navigate } = useRouter();
+  const query = useQuery();
+  const requestedReturn = safeInternalUrl(query.get("returnTo"));
+  const returnTo = requestedReturn && requestedReturn !== "/login" &&
+    /^\/(?:home|movies|lists|suggestions|explore|friends|settings)(?:[/?#]|$)/.test(requestedReturn)
+    ? requestedReturn : "/";
 
   // Mode: login, signup, or forgot
   const [mode, setMode] = useState<ViewMode>("login");
@@ -49,14 +54,14 @@ export default function LoginPage() {
 
   const runSuccess = () => {
     if (prefersReduced()) {
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
       return;
     }
     setFading(true);
   };
 
   const handleSequenceFinished = () => {
-    navigate("/", { replace: true });
+    navigate(returnTo, { replace: true });
   };
 
   const validateUsername = async () => {
@@ -475,7 +480,7 @@ export default function LoginPage() {
                           setForgotStep(1);
                           setError(null);
                         }}
-                        className="text-xs text-accent hover:underline transition-colors"
+                        className="quiet-action min-h-8 text-xs text-link transition-colors"
                       >
                         Forgot password?
                       </button>
@@ -513,7 +518,7 @@ export default function LoginPage() {
                       setMode("signup");
                       setError(null);
                     }}
-                    className="font-semibold text-white underline transition-colors hover:text-accent"
+                    className="quiet-action min-h-8 text-sm text-white transition-colors hover:text-accent"
                   >
                     Create Account
                   </button>
@@ -630,7 +635,7 @@ export default function LoginPage() {
                       setMode("login");
                       setError(null);
                     }}
-                    className="font-semibold text-white underline transition-colors hover:text-accent"
+                    className="quiet-action min-h-8 text-sm text-white transition-colors hover:text-accent"
                   >
                     Sign In
                   </button>

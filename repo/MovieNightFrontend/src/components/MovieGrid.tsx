@@ -48,6 +48,7 @@ export function MovieCard({
   const store = useStore();
 
   const handleClick = (e: MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     store.upsertMovie(movie);
     try {
@@ -58,11 +59,6 @@ export function MovieCard({
     if (posterRef.current) {
       const rect = posterRef.current.getBoundingClientRect();
       const ref = referrerOverride ?? `${path}${search}`;
-      try {
-        sessionStorage.setItem("last_movie_referrer", ref);
-      } catch {
-        /* ignore */
-      }
       startTransition({
         movieId: movie.id,
         startRect: {

@@ -1,6 +1,6 @@
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, matchPath, useRouter } from "../router";
+import { Link, matchPath, useRouter, useQuery } from "../router";
 import AppShell from "../components/AppShell";
 import PosterShelf from "../components/PosterShelf";
 import MovieGrid from "../components/MovieGrid";
@@ -9,8 +9,6 @@ import { useStore } from "../store/MovieStore";
 import { useExploreMedia, type SuggestionRow } from "../hooks/useSuggestions";
 import {
   useExploreCategory,
-  isDetailsReturnFor,
-  getStoredCategoryControls,
 } from "../hooks/useExploreCategory";
 import type { Movie, MediaType } from "../store/data";
 
@@ -59,36 +57,12 @@ function ExploreCategoryGridView({
     }
     return "grid";
   });
-  const storageKey = `explore_session_${type}_${rowId}`;
-  const categoryPath = `/explore/${type}/${rowId}`;
-
-  const [sortBy, setSortBy] = useState<SortBy>(() => {
-    if (isDetailsReturnFor(categoryPath)) {
-      const controls = getStoredCategoryControls(storageKey, store.currentUser?.id);
-      if (controls?.sortBy) return controls.sortBy;
-    }
-    return "recommendation";
-  });
-  const [minRating, setMinRating] = useState<MinRating>(() => {
-    if (isDetailsReturnFor(categoryPath)) {
-      const controls = getStoredCategoryControls(storageKey, store.currentUser?.id);
-      if (controls?.minRating != null) return controls.minRating;
-    }
-    return 0;
-  });
-
-  // Reset controls on category or user change (DR06) unless returning from details for this category
-  const prevUserIdRef = useRef(store.currentUser?.id);
-  useEffect(() => {
-    if (prevUserIdRef.current !== store.currentUser?.id) {
-      setSortBy("recommendation");
-      setMinRating(0);
-      prevUserIdRef.current = store.currentUser?.id;
-    } else if (!isDetailsReturnFor(categoryPath)) {
-      setSortBy("recommendation");
-      setMinRating(0);
-    }
-  }, [type, rowId, store.currentUser?.id, categoryPath]);
+  const { navigate } = useRouter();
+  const query = useQuery();
+  const requestedSort = query.get("sort");
+  const sortBy: SortBy = requestedSort === "addedAt" || requestedSort === "title" ||
+    requestedSort === "year" || requestedSort === "rating" ? requestedSort : "recommendation";
+  const minRating: MinRating = query.get("minRating") === "6" ? 6 : 0;
 
   const category = useExploreCategory(type, rowId, sortBy, minRating);
 
@@ -100,10 +74,16 @@ function ExploreCategoryGridView({
   };
 
   const handleFilterChange = (f: Filters) => {
-    setSortBy(f.sortBy);
-    setMinRating(f.minRating);
     setViewMode(f.viewMode);
     localStorage.setItem("app_view_mode", f.viewMode);
+    if (f.sortBy !== sortBy || f.minRating !== minRating) {
+      const next = new URLSearchParams(query);
+      if (f.sortBy === "recommendation") next.delete("sort");
+      else next.set("sort", f.sortBy);
+      if (f.minRating === 0) next.delete("minRating");
+      else next.set("minRating", String(f.minRating));
+      navigate(`/explore/${type}/${rowId}${next.size ? `?${next}` : ""}`);
+    }
   };
 
   const handleAddToWatchlist = async (movieId: string, movie?: Movie) => {
@@ -135,7 +115,7 @@ function ExploreCategoryGridView({
             type="button"
             disabled={category.loadingMore || category.refreshing || category.loading}
             onClick={category.retry}
-            className="text-sm font-semibold text-accent underline hover:text-white disabled:opacity-50"
+            className="quiet-action inline-flex min-h-8 items-center text-sm text-link disabled:opacity-50"
           >
             Retry
           </button>
@@ -154,7 +134,7 @@ function ExploreCategoryGridView({
           <button
             type="button"
             onClick={() => void store.refreshLibrary()}
-            className="text-sm font-semibold text-accent underline hover:text-white"
+            className="quiet-action inline-flex min-h-8 items-center text-sm text-link"
           >
             Retry library sync
           </button>
@@ -380,7 +360,7 @@ export default function ExploreContentPage() {
           <button
             type="button"
             onClick={() => void store.refreshLibrary()}
-            className="text-sm font-semibold text-accent underline hover:text-white"
+            className="quiet-action inline-flex min-h-8 items-center text-sm text-link"
           >
             Retry library sync
           </button>
@@ -391,7 +371,7 @@ export default function ExploreContentPage() {
           type="button"
           disabled={explore.loading || explore.pending}
           onClick={explore.reload}
-          className="mb-4 text-sm text-accent underline disabled:opacity-50"
+          className="quiet-action mb-4 inline-flex min-h-8 items-center text-sm text-link disabled:opacity-50"
         >
           Retry discovery
         </button>
@@ -427,7 +407,7 @@ export default function ExploreContentPage() {
                   type="button"
                   disabled={explore.loading || explore.pending}
                   onClick={() => explore.refresh(row.id)}
-                  className="text-xs font-semibold text-accent underline hover:text-white disabled:opacity-50"
+                  className="quiet-action inline-flex min-h-8 items-center text-xs text-link disabled:opacity-50"
                 >
                   Retry shelf
                 </button>
@@ -435,7 +415,7 @@ export default function ExploreContentPage() {
               {(row.movies.length > 4 || row.hasMore) && (
                 <Link
                   to={`/explore/${type}/${row.id}`}
-                  className="group mt-0.5 flex items-center gap-1 text-xs font-semibold text-accent transition-colors hover:text-white"
+                  className="prose-link text-link group mt-0.5 flex items-center gap-1 text-xs font-semibold transition-colors hover:text-white"
                 >
                   <span>View all</span>
                   <span className="transition-transform group-hover:translate-x-0.5">

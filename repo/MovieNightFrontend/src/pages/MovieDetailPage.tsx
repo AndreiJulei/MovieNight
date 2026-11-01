@@ -2,7 +2,7 @@ import { titleId, parseTitleId, resourceType } from "../store/titleIdentity";
 import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { matchPath, useRouter, useQuery } from "../router";
+import { matchPath, useRouter, useQuery, safeInternalUrl } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
 import { moviesApi, isAbortError, type ApiMovieResponse } from "../api/movies";
@@ -22,7 +22,7 @@ interface FriendReview {
 
 export default function MovieDetailPage() {
   const store = useStore();
-  const { path, navigate } = useRouter();
+  const { path, navigate, previousUrl, back } = useRouter();
   const query = useQuery();
   const typeParam = query.get("type");
   const { transitionData, clearTransition } = usePosterTransition();
@@ -273,17 +273,6 @@ export default function MovieDetailPage() {
     return null;
   });
 
-  // Remember referrer persistently so even refreshes know where we came from
-  useEffect(() => {
-    if (transitionData?.referrer) {
-      try {
-        sessionStorage.setItem("last_movie_referrer", transitionData.referrer);
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [transitionData?.referrer]);
-
   // Entrance Transition
   useEffect(() => {
     if (!hasTransition || isReverse) return;
@@ -336,18 +325,13 @@ export default function MovieDetailPage() {
 
   // Back-navigation destination
   const backDest = useMemo(() => {
-    if (transitionData?.referrer) return transitionData.referrer;
-    try {
-      const stored = sessionStorage.getItem("last_movie_referrer");
-      if (stored) return stored;
-    } catch {
-      /* ignore */
-    }
+    const safePrevious = safeInternalUrl(previousUrl);
+    if (safePrevious) return safePrevious;
     const currentMediaType = (typeParam || movie?.mediaType || "").toUpperCase();
     if (currentMediaType === "TV") return "/explore/tv";
     if (currentMediaType === "ANIME") return "/explore/anime";
     return "/explore/movies";
-  }, [transitionData?.referrer, typeParam, movie?.mediaType]);
+  }, [previousUrl, typeParam, movie?.mediaType]);
 
   const backLabel = useMemo(() => {
     if (backDest.startsWith("/friends/")) return "Back to Friend";
@@ -361,15 +345,10 @@ export default function MovieDetailPage() {
     return "Back";
   }, [backDest]);
 
-  // Unified return navigation helper (Standards deduplication & destination scoping)
   const navigateBack = (dest: string) => {
     clearTransition();
-    try {
-      sessionStorage.setItem("details_return_target", dest);
-    } catch {
-      /* ignore */
-    }
-    navigate(dest, { preserveScroll: true, state: { fromDetails: true } });
+    if (previousUrl === dest) back();
+    else navigate(dest);
   };
 
   // Reverse Transition
@@ -436,7 +415,7 @@ export default function MovieDetailPage() {
               <span>{detailsError ?? "That title could not be found."}</span>
               <button
                 type="button"
-                className="font-medium text-accent underline hover:text-white focus-visible:outline-2 focus-visible:outline-accent"
+                className="quiet-action inline-flex min-h-8 items-center text-sm text-link focus-visible:outline-2 focus-visible:outline-accent"
                 onClick={() => setDetailsRetry(r => r + 1)}
               >
                 Retry details
@@ -459,7 +438,7 @@ export default function MovieDetailPage() {
           <span>{detailsError}</span>
           <button
             type="button"
-            className="font-medium text-accent underline hover:text-white focus-visible:outline-2 focus-visible:outline-accent"
+            className="quiet-action inline-flex min-h-8 items-center text-sm text-link focus-visible:outline-2 focus-visible:outline-accent"
             onClick={() => setDetailsRetry(r => r + 1)}
           >
             Retry details
@@ -786,7 +765,7 @@ export default function MovieDetailPage() {
 
                 {(friendError || store.friendsError) && <div role="alert" className="mt-3 text-sm text-danger">
                   {friendError || store.friendsError}
-                  <button className="ml-3 underline" onClick={() => { void store.refreshFriends(); setFriendRetry((r) => r + 1); }}>Retry ratings</button>
+                  <button className="quiet-action ml-3 min-h-8 text-xs text-link" onClick={() => { void store.refreshFriends(); setFriendRetry((r) => r + 1); }}>Retry ratings</button>
                 </div>}
                 {friendReviews.length > 0 ? (
                   <ul className="mt-4 space-y-3">
@@ -950,14 +929,14 @@ function RemoveLink({
         <button
           type="button"
           onClick={onRemove}
-          className="font-bold text-red-400 hover:underline"
+          className="quiet-action min-h-8 text-red-400"
         >
           Yes, remove
         </button>
         <button
           type="button"
           onClick={() => setConfirm(false)}
-          className="text-text-muted hover:text-white"
+          className="quiet-action min-h-8 text-text-muted"
         >
           Cancel
         </button>
@@ -968,7 +947,7 @@ function RemoveLink({
     <button
       type="button"
       onClick={() => setConfirm(true)}
-      className="mt-4 block text-xs text-text-muted transition-colors hover:text-red-400 hover:underline"
+      className="quiet-action mt-4 min-h-8 text-xs text-text-muted transition-colors hover:text-red-400"
     >
       Remove from list
     </button>
@@ -1016,7 +995,7 @@ function DescriptionBox({
         className="w-full resize-none rounded-xl border border-white/10 bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none transition-all"
       />
       {pending && <p role="status" className="text-xs text-text-muted">Saving notes…</p>}
-      {error && <p role="alert" className="text-xs text-danger">{error} <button onClick={saveNotes} disabled={pending} className="underline">Retry notes</button></p>}
+      {error && <p role="alert" className="text-xs text-danger">{error} <button onClick={saveNotes} disabled={pending} className="quiet-action min-h-8 text-link">Retry notes</button></p>}
     </div>
   );
 }

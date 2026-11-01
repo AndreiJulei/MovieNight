@@ -27,6 +27,19 @@ export interface CheckNameApiResponse {
 }
 
 export const authApi = {
+  async currentProfile(): Promise<ApiUser | null> {
+    const token = this.getToken();
+    if (!token) return null;
+    const response = await fetch(`${API_BASE}/api/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) throw new Error("Session verification is temporarily unavailable.");
+    const profile = await response.json() as ApiUser;
+    if (profile?.id == null || !profile.username) throw new Error("Invalid session profile.");
+    return profile;
+  },
   /**
    * Check if a display name is unique and valid on the backend.
    */

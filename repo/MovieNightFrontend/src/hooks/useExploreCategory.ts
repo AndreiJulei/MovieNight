@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useStore } from "../store/MovieStore";
+import { useRouter } from "../router";
 import { moviesApi, type ApiExploreCategoryPageResponse } from "../api/movies";
 import { mapApiMovie } from "./useSuggestions";
 import type { Movie } from "../store/data";
@@ -60,29 +61,6 @@ interface SessionRefState {
   generation: number;
 }
 
-export function isDetailsReturnFor(expectedPath: string): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const target = sessionStorage.getItem("details_return_target");
-    if (!target) return false;
-    const cleanTarget = target.split("?")[0].split("#")[0];
-    const cleanExpected = expectedPath.split("?")[0].split("#")[0];
-    return cleanTarget === cleanExpected;
-  } catch {
-    return false;
-  }
-}
-
-export function clearDetailsReturnTarget(): void {
-  if (typeof window !== "undefined") {
-    try {
-      sessionStorage.removeItem("details_return_target");
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 export function purgeExploreSessions(): void {
   if (typeof window === "undefined") return;
   try {
@@ -106,29 +84,6 @@ export function purgeExploreSessions(): void {
   }
 }
 
-export function getStoredCategoryControls(
-  storageKey: string,
-  currentUserId?: string,
-): { sortBy?: SortBy; minRating?: MinRating } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = sessionStorage.getItem(storageKey);
-    if (stored) {
-      const parsed = JSON.parse(stored) as StoredCategorySession;
-      const sameUser = !currentUserId || parsed.userId === currentUserId;
-      if (sameUser) {
-        return {
-          sortBy: parsed.sortBy,
-          minRating: parsed.minRating,
-        };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
 function isSnapshotUnavailable(
   state: string | null | undefined,
   updatedAt: string | null | undefined,
@@ -147,9 +102,12 @@ export function useExploreCategory(
   minRating: MinRating,
 ) {
   const store = useStore();
+  const { entryKey, action } = useRouter();
+  const activeEntryKey = useRef(entryKey);
+  activeEntryKey.current = entryKey;
   const currentUserId = store.currentUser?.id;
 
-  const storageKey = `explore_session_${mediaType}_${category}`;
+  const storageKey = `explore_session_${entryKey}_${mediaType}_${category}`;
 
   // Purge explore sessions from sessionStorage when auth switches or logs out
   const prevUserIdRef = useRef(currentUserId);
@@ -606,19 +564,16 @@ export function useExploreCategory(
       return;
     }
 
-    // Only restore stored session if returning from details for the current category route (Q6)
-    const categoryPath = `/explore/${mediaType}/${category}`;
-    const isDetailsReturn = isDetailsReturnFor(categoryPath);
+    // A loaded grid belongs to one browser history entry. Direct loads start a new
+    // bounded pagination session even if a previous tab saved the same URL.
+    const isDetailsReturn = action === "pop";
 
     let restored = false;
+    let cancelled = false;
+    let rafId: number | undefined;
+    let timeoutId: number | undefined;
 
     if (isDetailsReturn && typeof window !== "undefined") {
-      // Clear marker shortly after mount so StrictMode replay (0-2ms) can read it,
-      // but subsequent ordinary navigation or reload always starts fresh (Q6 / DR06)
-      window.setTimeout(() => {
-        clearDetailsReturnTarget();
-      }, 150);
-
       try {
         const stored = sessionStorage.getItem(storageKey);
         if (stored) {
@@ -724,15 +679,16 @@ export function useExploreCategory(
               setLastFailedAction(null);
             }
 
-            // Restore scroll position once DOM renders the restored movie cards
+            // Wait for the restored cards, then restore only while this entry is active.
             if (parsed.scrollY > 0) {
               const targetY = parsed.scrollY;
-              requestAnimationFrame(() => {
-                window.scrollTo(0, targetY);
-                setTimeout(() => {
-                  window.scrollTo(0, targetY);
-                }, 60);
+              const targetKey = entryKey;
+              rafId = requestAnimationFrame(() => {
+                if (!cancelled && activeEntryKey.current === targetKey) window.scrollTo(0, targetY);
               });
+              timeoutId = window.setTimeout(() => {
+                if (!cancelled && activeEntryKey.current === targetKey) window.scrollTo(0, targetY);
+              }, 50);
             }
           }
         }
@@ -741,7 +697,6 @@ export function useExploreCategory(
       }
     } else {
       // Ordinary reload or category navigation starts again (Q6)
-      clearDetailsReturnTarget();
       confirmedSavedIdsRef.current.clear();
       if (typeof window !== "undefined") {
         try {
@@ -758,13 +713,17 @@ export function useExploreCategory(
     }
 
     return () => {
+      cancelled = true;
+      activeEntryKey.current = "";
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       // Invalidate any in-flight requests and reset flags when context changes or unmounts
       activeReqId.current++;
       setLoadingMore(false);
       setRefreshing(false);
       pendingRef.current = false;
     };
-  }, [mediaType, category, sortBy, minRating, currentUserId, storageKey, applySessionState, fetchInitialPage]);
+  }, [mediaType, category, sortBy, minRating, currentUserId, storageKey, action, entryKey, applySessionState, fetchInitialPage]);
 
   // Window focus & visibility listener: recheck 7-day snapshot age throughout mounted session (Q12)
   // and sync latest library state from backend to prune saved cards (DR04, Q9)

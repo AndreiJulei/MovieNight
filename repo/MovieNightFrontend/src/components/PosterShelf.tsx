@@ -174,6 +174,7 @@ function ShelfPoster({
   const store = useStore();
 
   const handleClick = (e: MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     store.upsertMovie(movie);
     try {
@@ -184,11 +185,6 @@ function ShelfPoster({
     if (posterRef.current) {
       const rect = posterRef.current.getBoundingClientRect();
       const currentReferrer = referrer ?? (typeof window !== "undefined" ? window.location.pathname + window.location.search : "/explore/movies");
-      try {
-        sessionStorage.setItem("last_movie_referrer", currentReferrer);
-      } catch {
-        /* ignore */
-      }
       startTransition({
         movieId: movie.id,
         startRect: {
