@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
   const siteConfigPath = path.resolve(__dirname, '.figma/make/site.json')
-  const siteConfiguration: FigmaSiteConfiguration = mode === 'demo' || !existsSync(siteConfigPath)
+  const siteConfiguration: FigmaSiteConfiguration = mode === 'demo' || mode === 'lan' || !existsSync(siteConfigPath)
     ? { title: 'MovieNight', language: 'en' }
     : JSON.parse(readFileSync(siteConfigPath, 'utf8')) as FigmaSiteConfiguration
 
@@ -37,6 +37,29 @@ export default defineConfig(({ mode }) => {
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       watch: { ignored: ['**/.figma/**'] },
+      // LAN mode keeps the API bound to the computer's loopback interface.
+      proxy: mode === 'lan' ? {
+        '/api': {
+          target: process.env.MN_LAN_API_TARGET || 'http://127.0.0.1:8080',
+          configure(proxy) {
+            // A same-origin browser request becomes a server-to-server request.
+            // Keep foreign origins intact for Spring's existing CORS policy.
+            proxy.on('proxyReq', (request, incoming) => {
+              const origin = incoming.headers.origin
+              const host = incoming.headers.host
+              if (!origin || !host) return
+              try {
+                const parsed = new URL(origin)
+                if (parsed.protocol === 'http:' && parsed.origin === origin && parsed.host.toLowerCase() === host.toLowerCase()) {
+                  request.removeHeader('origin')
+                }
+              } catch {
+                // Forward malformed origins to the backend for rejection.
+              }
+            })
+          },
+        },
+      } : undefined,
     },
     preview: {
       host: '0.0.0.0',

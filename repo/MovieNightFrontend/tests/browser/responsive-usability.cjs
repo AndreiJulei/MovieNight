@@ -176,7 +176,7 @@ async function waitUntil(check, message) {
   assert.fail(message);
 }
 
-for (const viewport of [{width:360,height:800},{width:390,height:844},{width:844,height:390},{width:1280,height:720},{width:1440,height:900}]) {
+for (const viewport of [{width:360,height:800},{width:390,height:844},{width:430,height:932},{width:844,height:390},{width:1280,height:720},{width:1440,height:900}]) {
   test(`core-${viewport.width}`, async browser => {
     const context=await browser.newContext({viewport,hasTouch:viewport.width<1024,isMobile:viewport.width<1024,reducedMotion:'reduce'});
     try {
