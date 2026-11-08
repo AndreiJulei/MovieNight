@@ -90,3 +90,9 @@ _Avoid_: Full catalog coverage, recommendation accuracy.
 Discovery by movie, TV, or anime TV category, independent of personal viewing
 history.
 _Avoid_: Library when referring to browse results.
+
+**Hero banner**:
+A curated spotlight presentation at the top of the main page showcasing prominent
+titles across catalog categories and personal recommendations with high-resolution
+artwork and direct title access.
+_Avoid_: Jumbotron, header carousel, promo slider.

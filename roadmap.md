@@ -20,7 +20,7 @@ renumbering existing feature records; these labels are not feature IDs.
 | 9a | Desktop and phone usability | Fix desktop signup panel overflow; verify core flows in responsive phone and desktop layouts with touch/keyboard access |
 | 9b | Meaningful discovery and recommendations | Quality-filter popular picks, rank Top Rated with rating confidence, and improve personal relevance explanations; evaluate optional critic enrichment |
 | 9c |   discovery results | Load more category results with bounded work, stable ranking, typed deduplication and current watchlist/watched exclusions |
-| 9d | Main-page logo rotation | Display a different user-approved `/mainPageLogo` asset on each reload; exact filenames and selection order pending user input |
+| 9d | Main-page popular movie hero | Display the current most popular movie as a full-page hero banner with high-resolution backdrop, title, rank, metadata, synopsis, and primary actions |
 | 10 | Staging and public release | Deploy over HTTPS; verify access, privacy, restart/release retention, and backup/restore |
 
 Public deployment is required for the initial release. Anime films, public
@@ -77,12 +77,7 @@ retrieval as well as UI changes. The observed 41 TV titles are a user report,
 not a diagnosed hardcoded limit. Settle batch/cap sizes, stable ordering,
 exhaustion/error behavior and refreshed library exclusions with the 9b policy.
 
-Add **9d: main-page logo rotation** as a small slice before staging. Use only the
-logos the user explicitly selects from `/mainPageLogo`, with a different logo on
-each reload when multiple assets are approved and no change on ordinary
-rerenders. Keep desktop/phone sizing and accessible branding intact. Confirm the
-exact filenames, asset path and random-versus-sequential behavior before
-implementation; no assets are selected by this documentation update.
+Add **9d: main-page popular movie hero** as a prominent visual milestone before staging. Replace the current static hero/logo asset on the main page with a full-page hero banner showcasing the current most popular movie with high-resolution backdrop artwork, title typography, rank badge, metadata (rating, release year, media format, genres), synopsis, and direct actions (e.g. play trailer and view details/add to watchlist). Settle data source, carousel/ranking behavior, responsive sizing, and interactive boundaries during specification.
 
 These priorities implement the product direction in [spec.md](spec.md#product-rules).
 They are planned, not implemented or validated. Keep them as roadmap entries until
