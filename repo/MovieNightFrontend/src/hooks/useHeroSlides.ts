@@ -146,6 +146,7 @@ export function useHeroSlides() {
             ...prev,
             [title.id]: {
               backdropUrl: res.backdropUrl ?? null,
+              logoUrl: res.logoUrl ?? null,
               genres: parsedGenres,
               imdbRating: res.imdbRating ?? null,
               tmdbVoteAverage: res.tmdbVoteAverage ?? null,
@@ -155,6 +156,7 @@ export function useHeroSlides() {
           // Upsert enriched movie into store
           storeRef.current.upsertMovie({
             ...title,
+            logoUrl: res.logoUrl ?? title.logoUrl ?? null,
             genres:
               parsedGenres.length > 0 ? parsedGenres : (title.genres ?? []),
             imdb: res.imdbRating ?? title.imdb ?? null,

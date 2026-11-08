@@ -7,6 +7,7 @@ export interface HeroSlide {
   movie: Movie
   backdropUrl: string | null
   posterUrl: string | null
+  logoUrl: string | null
   title: string
   year: number | null
   mediaType: MediaType
@@ -17,6 +18,7 @@ export interface HeroSlide {
 
 export interface EnrichedMetadata {
   backdropUrl?: string | null
+  logoUrl?: string | null
   genres?: string[] | null
   imdbRating?: number | null
   tmdbVoteAverage?: number | null
@@ -76,7 +78,10 @@ export function isFamilyOrKidsTitle(
       return true
     }
   }
-  if (title && /doraemon|anpanman|shin-chan|crayons? shinchan|wildwood/i.test(title)) {
+  if (
+    title &&
+    /doraemon|anpanman|shin-chan|crayons? shinchan|wildwood/i.test(title)
+  ) {
     return true
   }
   return false
@@ -88,7 +93,9 @@ function parseScore(val: unknown): number | null {
   }
   if (typeof val === "string") {
     const parsed = parseFloat(val)
-    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 10 ? parsed : null
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 10
+      ? parsed
+      : null
   }
   return null
 }
@@ -171,7 +178,12 @@ export function selectTvCandidate<T extends CandidateItem = CandidateItem>(
 
   // If passed an array of explore categories, strictly select from top-rated
   const first = categoriesOrList[0] as any
-  if (first && typeof first === "object" && "id" in first && "movies" in first) {
+  if (
+    first &&
+    typeof first === "object" &&
+    "id" in first &&
+    "movies" in first
+  ) {
     const cats = categoriesOrList as TvCategoryItem<T>[]
     const topRatedCat = cats.find((c) => c.id === TV_HERO_CATEGORY_ID)
     if (!topRatedCat?.movies || topRatedCat.movies.length === 0) {
@@ -235,6 +247,10 @@ export function createHeroSlide(params: {
     enriched?.backdropUrl ||
     (movie as { backdropUrl?: string | null }).backdropUrl ||
     null
+  const logo =
+    enriched?.logoUrl !== undefined
+      ? enriched.logoUrl
+      : (movie as { logoUrl?: string | null }).logoUrl || null
   const poster = movie.posterUrl || null
   const year = enriched?.releaseYear ?? movie.year ?? null
   const genres =
@@ -257,6 +273,7 @@ export function createHeroSlide(params: {
     movie,
     backdropUrl: backdrop,
     posterUrl: poster,
+    logoUrl: logo,
     title: movie.title,
     year,
     mediaType: movie.mediaType,
@@ -358,3 +375,39 @@ export function evaluateTouchSwipe(deltaX: number): "next" | "prev" | "none" {
   if (deltaX > SWIPE_THRESHOLD_PX) return "prev"
   return "none"
 }
+
+export interface HeroTitleDisplay {
+  mode: "logo" | "text"
+  logoUrl?: string
+  altText: string
+  title: string
+}
+
+/**
+ * Resolves whether the hero slide header displays an authentic title logo
+ * or gracefully falls back to the high-contrast styled text title (LG02, LG03).
+ */
+export function resolveHeroTitleDisplay(
+  slide: Pick<HeroSlide, "id" | "title" | "logoUrl">,
+  failedLogos: Record<string, boolean> = {},
+): HeroTitleDisplay {
+  const hasFailed = Boolean(failedLogos[slide.id])
+  const validLogo =
+    slide.logoUrl && slide.logoUrl.trim().length > 0 ? slide.logoUrl.trim() : null
+
+  if (validLogo && !hasFailed) {
+    return {
+      mode: "logo",
+      logoUrl: validLogo,
+      altText: slide.title,
+      title: slide.title,
+    }
+  }
+
+  return {
+    mode: "text",
+    title: slide.title,
+    altText: slide.title,
+  }
+}
+

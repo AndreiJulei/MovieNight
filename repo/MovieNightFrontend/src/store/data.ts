@@ -21,6 +21,7 @@ export type Movie = {
   posterSeed?: number | null;
   posterUrl: string | null;
   backdropUrl?: string | null;
+  logoUrl?: string | null;
   runtimeMinutes?: number | null;
   imdb?: number | null;
   tmdbRating?: number | null;

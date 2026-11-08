@@ -17,6 +17,7 @@ export interface ApiMovieResponse {
   overview?: string;
   posterUrl?: string;
   backdropUrl?: string;
+  logoUrl?: string | null;
   genres?: string;
   runtimeMinutes?: number;
   trailerKey?: string;
@@ -501,6 +502,8 @@ export interface ApiSuggestionMovieItem {
   tmdbId: number;
   title: string;
   posterUrl?: string;
+  backdropUrl?: string;
+  logoUrl?: string | null;
   releaseYear?: number;
   voteAverage?: number;
   voteCount?: number;

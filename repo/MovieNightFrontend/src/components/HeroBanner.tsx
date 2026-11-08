@@ -10,6 +10,7 @@ import {
   getPreviousSlideIndex,
   shouldAutoAdvance,
   evaluateTouchSwipe,
+  resolveHeroTitleDisplay,
   type HeroSlide,
 } from "./heroBannerLogic"
 
@@ -23,6 +24,7 @@ export default function HeroBanner() {
   const [isManuallyPaused, setIsManuallyPaused] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
+  const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({})
 
   const touchStartX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -221,10 +223,33 @@ export default function HeroBanner() {
                   <span>{slide.badge}</span>
                 </div>
 
-                {/* Scaled down display title typography capped at text-3xl per DESIGN.md (HB03) */}
-                <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight leading-tight line-clamp-2 mb-2 sm:mb-2.5">
-                  {slide.title}
-                </h1>
+                {/* Title logo branding with graceful text fallback (LG02, LG03) */}
+                {(() => {
+                  const titleDisplay = resolveHeroTitleDisplay(slide, failedLogos)
+                  if (titleDisplay.mode === "logo" && titleDisplay.logoUrl) {
+                    return (
+                      <div className="mb-2 sm:mb-2.5 flex items-center">
+                        <img
+                          src={titleDisplay.logoUrl}
+                          alt={titleDisplay.altText}
+                          onError={() =>
+                            setFailedLogos((prev) => ({
+                              ...prev,
+                              [slide.id]: true,
+                            }))
+                          }
+                          className="max-h-24 sm:max-h-32 w-auto max-w-[280px] sm:max-w-md object-contain drop-shadow-md"
+                        />
+                        <h1 className="sr-only">{titleDisplay.title}</h1>
+                      </div>
+                    )
+                  }
+                  return (
+                    <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight leading-tight line-clamp-2 mb-2 sm:mb-2.5">
+                      {titleDisplay.title}
+                    </h1>
+                  )
+                })()}
 
                 {/* Metadata Line: Star Audience Rating, Year, Media Badge, Top Genres */}
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-text-muted mb-3 sm:mb-4">

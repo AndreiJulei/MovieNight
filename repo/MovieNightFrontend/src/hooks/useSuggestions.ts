@@ -168,7 +168,7 @@ export function useExploreMedia(mediaType: "movies" | "tv" | "anime") {
   };
 }
 
-export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; voteCount?: number; reason?: string; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
+export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: string; backdropUrl?: string; logoUrl?: string | null; releaseYear?: number; imdbRating?: number; rottenTomatoesRating?: number; voteAverage?: number; voteCount?: number; reason?: string; mediaType?: string }, store: { movieById: (id: string) => Movie | undefined }): Movie {
   const id = titleId(m.tmdbId, m.mediaType ?? "");
   const existing = store.movieById(id);
   return {
@@ -178,6 +178,8 @@ export function mapApiMovie(m: { tmdbId: number; title: string; posterUrl?: stri
     year: m.releaseYear ?? existing?.year ?? null,
     posterSeed: null,
     posterUrl: m.posterUrl ?? existing?.posterUrl ?? null,
+    backdropUrl: m.backdropUrl ?? existing?.backdropUrl ?? null,
+    logoUrl: m.logoUrl ?? existing?.logoUrl ?? null,
     imdb: m.imdbRating ?? existing?.imdb ?? null,
     tmdbRating: m.voteAverage ?? existing?.tmdbRating ?? null,
     tmdbVotes: m.voteCount ?? existing?.tmdbVotes ?? null,
