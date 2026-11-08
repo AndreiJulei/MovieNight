@@ -31,6 +31,12 @@ class MovieCatalogControllerTest {
     @Mock
     private com.movienight.backend.service.SuggestionService suggestionService;
 
+    @Mock
+    private com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
+
+    @Mock
+    private com.movienight.backend.service.MovieSimilarityService movieSimilarityService;
+
     @InjectMocks
     private MovieCatalogController controller;
 
@@ -80,5 +86,16 @@ class MovieCatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Guardians of the Galaxy Vol. 2"))
                 .andExpect(jsonPath("$.director").value("James Gunn"));
+    }
+
+    @Test
+    void getSimilarMovies_returnsOk() throws Exception {
+        when(movieSimilarityService.getSimilarMovies(283995L, 10, null))
+                .thenReturn(List.of(sampleMovieResponse));
+
+        mockMvc.perform(get("/api/movies/283995/similar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Guardians of the Galaxy Vol. 2"))
+                .andExpect(jsonPath("$[0].tmdbId").value(283995L));
     }
 }
