@@ -5,6 +5,7 @@ import useFriendSuggestions from "../hooks/useFriendSuggestions";
 import { mapApiMovie } from "../hooks/useSuggestions";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import HeroBanner from "../components/HeroBanner";
+import CharacterLogoBanner from "../components/CharacterLogoBanner";
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
@@ -459,8 +460,14 @@ export default function HomePage() {
         )}
       </div>
 
+      {/* ── Rotating Decorative Character Logo Banner ── */}
+      <CharacterLogoBanner />
+
       {/* ── 3. Editorial Narrative / App Description ── */}
-      <section className="relative mx-auto max-w-4xl px-6 pt-10 pb-20 sm:pt-14 sm:pb-28 text-center">
+      <section
+        id="editorial-narrative"
+        className="relative mx-auto max-w-4xl px-6 pt-10 pb-20 sm:pt-14 sm:pb-28 text-center"
+      >
         <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight">
           A single, deliberate space for everything you watch.
         </h2>
