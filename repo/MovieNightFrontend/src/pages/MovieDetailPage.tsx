@@ -7,7 +7,8 @@ import type { Movie, MediaType } from "../store/data";
 import { titleId, parseTitleId, resourceType } from "../store/titleIdentity";
 import AppShell from "../components/AppShell";
 import AddToListPopover from "../components/AddToListPopover";
-import PosterShelf from "../components/PosterShelf";
+import MovieGrid from "../components/MovieGrid";
+import ShelfReloadButton from "../components/ShelfReloadButton";
 import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useToast } from "../components/Toast";
@@ -15,6 +16,10 @@ import {
   formatRuntime,
   getInitials,
   parseCastMembers,
+  providerRatingNotice,
+  resolveDetailTitleDisplay,
+  shouldSyncProviderRatings,
+  RATING_SYNC_INTERVAL_MS,
 } from "../components/movieDetailLogic";
 
 interface FriendReview {
@@ -54,12 +59,15 @@ export default function MovieDetailPage() {
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsRetry, setDetailsRetry] = useState(0);
 
-  // Trailer modal state
-  const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
+  // Inline hero trailer state
+  const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
+  const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
+  const [ratingSyncAttempt, setRatingSyncAttempt] = useState(0);
 
   // Similar titles state
   const [similarMovies, setSimilarMovies] = useState<Movie[]>([]);
   const [isLoadingSimilar, setIsLoadingSimilar] = useState(false);
+  const [similarReload, setSimilarReload] = useState(0);
 
   // Friends reviews state
   const [friendReviews, setFriendReviews] = useState<FriendReview[]>([]);
@@ -101,6 +109,7 @@ export default function MovieDetailPage() {
           year: res.releaseYear ?? null,
           posterUrl: res.posterUrl ?? null,
           backdropUrl: res.backdropUrl ?? null,
+          logoUrl: res.logoUrl ?? null,
           runtimeMinutes: res.runtimeMinutes ?? null,
           posterSeed: null,
           imdb: res.imdbRating ?? null,
@@ -133,6 +142,51 @@ export default function MovieDetailPage() {
       controller.abort();
     };
   }, [requestedId, typeParam, user?.id, detailsRetry, store.upsertMovie]);
+
+  // Background OMDb enrichment sync: re-fetch ratings a bounded number of times
+  // for released titles that still lack IMDb / Rotten Tomatoes data.
+  useEffect(() => {
+    if (!movie || movie.id !== requestedId || isLoadingDetails) return;
+    if (!shouldSyncProviderRatings(movie, ratingSyncAttempt)) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const identity = parseTitleId(requestedId);
+          const res = identity.providerId != null
+            ? await moviesApi.getByTmdbId(identity.providerId, identity.category!, {
+                signal: controller.signal,
+                userScope: user?.id,
+              })
+            : await moviesApi.getById(identity.catalogId!, {
+                signal: controller.signal,
+                userScope: user?.id,
+              });
+          if (controller.signal.aborted || !res) return;
+          setMovie((prev) => {
+            if (!prev || prev.key !== requestedId) return prev;
+            const updated = {
+              ...prev.movie,
+              imdb: res.imdbRating ?? prev.movie.imdb ?? null,
+              rt: res.rottenTomatoesRating ?? prev.movie.rt ?? null,
+              tmdbRating: res.tmdbVoteAverage ?? prev.movie.tmdbRating ?? null,
+              tmdbVotes: res.tmdbVoteCount ?? prev.movie.tmdbVotes ?? null,
+            };
+            store.upsertMovie(updated);
+            return { key: prev.key, movie: updated };
+          });
+        } catch {
+          // Best-effort refresh; the page keeps showing current data.
+        } finally {
+          if (!controller.signal.aborted) setRatingSyncAttempt((n) => n + 1);
+        }
+      })();
+    }, RATING_SYNC_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [movie, requestedId, isLoadingDetails, ratingSyncAttempt, user?.id, store]);
 
   // Asynchronous credit photo enrichment
   useEffect(() => {
@@ -197,7 +251,7 @@ export default function MovieDetailPage() {
       });
 
     return () => controller.abort();
-  }, [movie?.tmdbId, movie?.mediaType]);
+  }, [movie?.tmdbId, movie?.mediaType, similarReload]);
 
   // Load friends' reviews
   useEffect(() => {
@@ -272,17 +326,21 @@ export default function MovieDetailPage() {
     else navigate(backDest);
   };
 
-  // Close trailer modal on Escape key
+  // Stop inline trailer and reset rating sync when navigating to another title
   useEffect(() => {
-    if (!isTrailerModalOpen) return;
+    setIsTrailerPlaying(false);
+    setRatingSyncAttempt(0);
+  }, [requestedId]);
+
+  // Stop inline trailer on Escape key
+  useEffect(() => {
+    if (!isTrailerPlaying) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsTrailerModalOpen(false);
-      }
+      if (e.key === "Escape") setIsTrailerPlaying(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isTrailerModalOpen]);
+  }, [isTrailerPlaying]);
 
   if (!movie) {
     return (
@@ -327,16 +385,32 @@ export default function MovieDetailPage() {
       <section
         role="region"
         aria-label={`${movie.title} hero banner`}
-        className="relative w-full min-h-[500px] sm:min-h-[580px] lg:min-h-[640px] overflow-hidden bg-[#05070d] select-none"
+        className="relative w-full min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] overflow-hidden bg-[#05070d] select-none"
       >
         {/* Backdrop artwork */}
         <div className="absolute inset-0">
-          {backdropUrl ? (
+          {isTrailerPlaying ? (
+            <div className="h-full w-full bg-black">
+              {movie.trailerKey ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`}
+                  title={`${movie.title} Trailer`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="h-full w-full border-0"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm text-text-muted">
+                  No video trailer available for this title
+                </div>
+              )}
+            </div>
+          ) : backdropUrl ? (
             <img
               src={backdropUrl}
               alt=""
               aria-hidden="true"
-              className="h-full w-full object-cover object-center lg:object-top filter brightness-[0.85]"
+              className="h-full w-full object-cover object-center lg:object-top"
             />
           ) : (
             <div className="h-full w-full bg-gradient-to-tr from-[#05070d] via-[#090e1c] to-[#12192e]" />
@@ -344,29 +418,55 @@ export default function MovieDetailPage() {
         </div>
 
         {/* Cinematic Vignettes: dark bottom ground and side text vignettes */}
-        <div className="absolute inset-x-0 bottom-0 h-64 sm:h-80 bg-gradient-to-t from-[#05070d] via-[#05070d]/90 to-transparent pointer-events-none" />
-        <div className="absolute inset-y-0 left-0 w-full sm:w-4/5 lg:w-3/5 bg-gradient-to-r from-[#05070d] via-[#05070d]/80 to-transparent pointer-events-none" />
-        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#05070d]/80 to-transparent pointer-events-none" />
+        <div
+          aria-hidden="true"
+          className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0" : "opacity-100"}`}
+        >
+          <div className="absolute inset-x-0 bottom-0 h-48 sm:h-56 bg-gradient-to-t from-[#05070d] via-[#05070d]/60 to-transparent" />
+          <div className="absolute inset-y-0 left-0 w-full sm:w-1/2 bg-gradient-to-r from-[#05070d]/85 via-[#05070d]/40 to-transparent" />
+        </div>
 
         {/* Hero Overlay Content */}
-        <div className="relative z-20 mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-6 sm:pt-8 pb-10 sm:pb-14 flex flex-col justify-between min-h-[500px] sm:min-h-[580px] lg:min-h-[640px]">
+        <div className={`relative z-20 mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-16 sm:pt-20 lg:pt-8 pb-6 sm:pb-8 flex flex-col justify-between min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] ${isTrailerPlaying ? "pointer-events-none" : ""}`}>
           {/* Top Bar with Back Link */}
-          <div>
+          <div className="pointer-events-auto flex items-center justify-between gap-3">
             <BackLink onClick={handleBack} label={backLabel} />
           </div>
 
-          {/* Bottom aligned metadata and primary actions */}
-          <div className="max-w-3xl text-left">
+          {/* Bottom aligned logo and details; fade out while the trailer plays */}
+          <div
+            aria-hidden={isTrailerPlaying}
+            data-testid="hero-details"
+            className={`max-w-3xl text-left transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+          >
             {/* Title Typography */}
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
-              {movie.title}
-            </h1>
+            {(() => {
+              const display = resolveDetailTitleDisplay(movie, failedLogos);
+              if (display.mode === "logo") {
+                return (
+                  <h1 className="m-0">
+                    <img
+                      src={display.logoUrl}
+                      alt={display.title}
+                      onError={() => setFailedLogos((f) => ({ ...f, [movie.id]: true }))}
+                      className="max-h-20 sm:max-h-28 max-w-full object-contain object-left drop-shadow-lg"
+                    />
+                  </h1>
+                );
+              }
+              return (
+                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
+                  {display.title}
+                </h1>
+              );
+            })()}
 
+            <div>
             {/* Metadata Line: Ratings, Year, Runtime, 4K, Media Type */}
-            <div className="mt-3.5 flex flex-wrap items-center gap-2.5 text-xs sm:text-sm text-text-muted">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
               {/* IMDb Rating Badge */}
               {movie.imdb != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400">
+                <span className="nums inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-400">
                   <span className="rounded bg-amber-400 px-1 py-0.2 text-[10px] font-black text-black">
                     IMDb
                   </span>
@@ -376,22 +476,28 @@ export default function MovieDetailPage() {
 
               {/* TMDb Rating Badge */}
               {movie.tmdbRating != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-indigo-500/30 bg-indigo-500/15 px-2.5 py-0.5 text-xs font-bold text-indigo-400">
+                <span className="nums inline-flex items-center gap-1 rounded-md border border-indigo-500/30 bg-indigo-500/15 px-2 py-0.5 text-[11px] font-bold text-indigo-400">
                   ★ {movie.tmdbRating.toFixed(1)} TMDb
                 </span>
               )}
 
               {/* Rotten Tomatoes Badge */}
               {movie.rt != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2.5 py-0.5 text-xs font-bold text-rose-300">
+                <span className="nums inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-rose-300">
                   <span>🍅</span>
                   {movie.rt}%
                 </span>
               )}
 
+              {providerRatingNotice(movie) && (
+                <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                  {providerRatingNotice(movie)}
+                </span>
+              )}
+
               {/* Personal Rating Badge */}
               {entry?.status === "watched" && entry.rating != null && (
-                <span className="nums inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/25 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+                <span className="nums inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/25 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
                   <span className="text-accent">★</span> {entry.rating.toFixed(1)}{" "}
                   <span className="text-text-muted text-[11px] font-normal">(Yours)</span>
                 </span>
@@ -455,25 +561,26 @@ export default function MovieDetailPage() {
 
             {/* Clamped overview synopsis (2-3 lines) */}
             {movie.overview && (
-              <p className="mt-3 line-clamp-3 text-sm sm:text-base leading-relaxed text-text-primary/90 max-w-2xl drop-shadow-sm">
+              <p className="mt-3 line-clamp-2 sm:line-clamp-3 text-sm leading-relaxed text-text-primary/90 max-w-2xl drop-shadow-sm">
                 {movie.overview}
               </p>
             )}
-
-            {/* ── 2. Action Button Row & Inline Rating Slider (DP01, DP02, DP03) ── */}
-            <div className="mt-6">
-              <ActionArea
-                movie={movie}
-                onPlayTrailer={() => setIsTrailerModalOpen(true)}
-                onRemoveMovie={handleBack}
-              />
             </div>
           </div>
         </div>
       </section>
 
+      {/* ── 2. Action Button Row & Inline Rating Slider, below the hero (DP01, DP02, DP03) ── */}
+      <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-5">
+        <ActionArea
+          movie={movie}
+          isTrailerPlaying={isTrailerPlaying}
+          onToggleTrailer={() => setIsTrailerPlaying((v) => !v)}
+        />
+      </div>
+
       {/* Main Container below Hero */}
-      <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 py-10 space-y-12">
+      <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-10 pb-16 space-y-10 sm:space-y-16">
         {/* ── 3. Actor Cast Photo Gallery (DP04) ── */}
         {castList.length > 0 && (
           <section role="region" aria-label="Key cast members">
@@ -487,9 +594,9 @@ export default function MovieDetailPage() {
               {castList.map((member) => (
                 <div
                   key={member.name}
-                  className="flex flex-col items-center w-24 sm:w-28 shrink-0 text-center group select-none"
+                  className="flex w-28 sm:w-32 shrink-0 flex-col text-left group select-none"
                 >
-                  <div className="relative mb-2.5 h-16 w-16 sm:h-20 sm:w-20 overflow-hidden rounded-full border border-white/10 bg-surface shadow-md transition-all duration-200 group-hover:scale-105 group-hover:border-accent">
+                  <div className="relative mb-2.5 aspect-[3/4] w-full overflow-hidden rounded-xl border border-white/10 bg-surface shadow-md transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-accent">
                     {member.profileUrl ? (
                       <img
                         src={member.profileUrl}
@@ -506,12 +613,12 @@ export default function MovieDetailPage() {
                     <div
                       className={`avatar-fallback ${
                         member.profileUrl ? "hidden" : "flex"
-                      } h-full w-full items-center justify-center bg-accent/20 text-accent font-bold text-sm sm:text-base`}
+                      } h-full w-full items-center justify-center bg-accent/20 text-accent font-bold text-lg`}
                     >
                       {getInitials(member.name)}
                     </div>
                   </div>
-                  <span className="w-full truncate text-xs sm:text-sm font-semibold text-text-primary group-hover:text-white">
+                  <span className="w-full truncate text-xs sm:text-sm font-bold text-white">
                     {member.name}
                   </span>
                   <span className="w-full truncate text-[11px] text-text-muted mt-0.5">
@@ -535,18 +642,18 @@ export default function MovieDetailPage() {
               />
             </section>
           ) : (
-            <div className="rounded-lg border border-white/5 bg-white/[0.02] p-5 flex flex-col justify-center text-text-muted text-sm">
-              <p>Mark this title as watched to record your private personal notes and ratings.</p>
+            <div className="self-start rounded-lg border border-dashed border-white/10 px-4 py-3 text-xs text-text-muted">
+              <span className="font-semibold text-text-primary">Private notes</span> — mark this title as watched to add your own notes and rating.
             </div>
           )}
 
           {/* Friends' ratings section */}
-          <section className="rounded-lg border border-white/10 bg-surface/60 p-5 shadow-lg">
+          <section className={`self-start rounded-lg border border-white/10 bg-surface/60 shadow-lg ${friendReviews.length > 0 || friendError || store.friendsError ? "p-5" : "px-4 py-3"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <h2 className="text-sm font-semibold text-white">Friends&apos; Ratings</h2>
                 {friendAvg != null && (
-                  <span className="nums inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/20 px-2.5 py-0.5 text-xs font-bold text-accent">
+                  <span className="nums inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent">
                     ★ {friendAvg.toFixed(1)} avg
                   </span>
                 )}
@@ -605,8 +712,8 @@ export default function MovieDetailPage() {
                 ))}
               </ul>
             ) : !friendError && !store.friendsError && !store.friendsLoading && !isLoadingFriends ? (
-              <p className="mt-3 text-xs text-text-muted">
-                No shared friend ratings for this movie yet.
+              <p className="mt-2 text-xs text-text-muted">
+                No friends have rated this title yet.
               </p>
             ) : null}
           </section>
@@ -614,83 +721,45 @@ export default function MovieDetailPage() {
 
         {/* ── 5. 'You may like' Similarity Shelf (DP06) ── */}
         {(similarMovies.length > 0 || isLoadingSimilar) && (
-          <section role="region" aria-label="Similar movie recommendations" className="pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-semibold tracking-wide text-text-primary">
-                You May Also Like
-              </h2>
-              <span className="text-xs text-text-muted">
-                Based on community similarity patterns
-              </span>
+          <section role="region" aria-label="Similar movie recommendations" className="relative">
+            <div className="mb-3 flex items-start justify-between px-1">
+              <div>
+                <h2 className="text-base font-semibold tracking-wide text-text-primary">
+                  You May Also Like
+                </h2>
+                <p className="mt-0.5 text-xs text-text-muted">
+                  Based on community similarity patterns
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2.5">
+                <ShelfReloadButton
+                  onReload={() => setSimilarReload((n) => n + 1)}
+                  disabled={isLoadingSimilar}
+                  label="Reload You May Also Like list"
+                />
+              </div>
             </div>
             {isLoadingSimilar && similarMovies.length === 0 ? (
               <div className="h-44 w-full animate-pulse rounded-lg bg-surface/50" />
             ) : (
-              <PosterShelf movies={similarMovies} referrer={path} />
+              <MovieGrid movies={similarMovies} compact explorePresentation referrerOverride={path} />
             )}
           </section>
         )}
       </div>
 
-      {/* ── 6. Trailer Modal (DP02) ── */}
-      {isTrailerModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${movie.title} Trailer Modal`}
-          onClick={() => setIsTrailerModalOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
-        >
-          <div
-            className="relative w-full max-w-4xl overflow-hidden rounded-lg border border-white/15 bg-black shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header bar */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-surface/90">
-              <span className="font-semibold text-sm text-white truncate max-w-md">
-                {movie.title} — Official Trailer
-              </span>
-              <button
-                type="button"
-                aria-label="Close trailer modal"
-                onClick={() => setIsTrailerModalOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted hover:bg-white/10 hover:text-white transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Video embed */}
-            <div className="relative aspect-video w-full bg-black">
-              {movie.trailerKey ? (
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`}
-                  title={`${movie.title} Trailer`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="h-full w-full border-0"
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-text-muted">
-                  <span className="text-sm font-medium">No video trailer available for this title</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }
 
 function ActionArea({
   movie,
-  onPlayTrailer,
-  onRemoveMovie,
+  isTrailerPlaying,
+  onToggleTrailer,
 }: {
   movie: Movie;
-  onPlayTrailer: () => void;
-  onRemoveMovie: () => void;
+  isTrailerPlaying: boolean;
+  onToggleTrailer: () => void;
 }) {
   const store = useStore();
   const { toggleWatchlist, error: watchlistError } = useWatchlistSave();
@@ -764,13 +833,20 @@ function ActionArea({
         {/* Play Trailer CTA */}
         <button
           type="button"
-          onClick={onPlayTrailer}
-          className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-xs sm:text-sm font-bold text-black transition-all hover:bg-white/90 active:scale-95 shadow-xl"
+          onClick={onToggleTrailer}
+          aria-pressed={isTrailerPlaying}
+          className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-xs font-bold text-black transition-all hover:bg-white/90 active:scale-95 shadow-xl"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          <span>Play Trailer</span>
+          {isTrailerPlaying ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="5" y="5" width="14" height="14" rx="1" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          )}
+          <span>{isTrailerPlaying ? "Close Trailer" : "Play Trailer"}</span>
         </button>
 
         {/* Watchlist Toggle Button */}
@@ -780,7 +856,7 @@ function ActionArea({
             disabled={saving}
             aria-busy={saving}
             onClick={() => toggleWatchlist(movie.id, movie)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-xs sm:text-sm font-bold transition-all active:scale-95 disabled:opacity-60 ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all active:scale-95 disabled:opacity-60 ${
               inWatchlist
                 ? "border border-accent bg-accent/20 text-accent hover:bg-accent/30"
                 : "border border-white/20 bg-black/40 text-text-primary hover:border-white/40 hover:text-white backdrop-blur-md"
@@ -800,7 +876,7 @@ function ActionArea({
               : "Mark as Watched"
           }
           onClick={handleToggleSlider}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-xs sm:text-sm font-bold transition-all active:scale-95 disabled:opacity-60 ${
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all active:scale-95 disabled:opacity-60 ${
             watched
               ? "border border-success/40 bg-success/20 text-success hover:bg-success hover:text-black"
               : "border border-white/20 bg-black/40 text-text-primary hover:border-success/40 hover:text-success backdrop-blur-md"
@@ -894,8 +970,12 @@ function ActionArea({
               setError(result.error ?? "Could not remove title. Retry.");
               return;
             }
-            toast({ message: `"${movie.title}" removed from library`, type: "info" });
-            onRemoveMovie();
+            // Stay on the detail page: reset action state in place.
+            setIsSliderExpanded(false);
+            setConfirmRemove(false);
+            setRating(null);
+            setDesc("");
+            toast({ message: `"${movie.title}" removed from library`, type: "success" });
           }}
         />
       )}
