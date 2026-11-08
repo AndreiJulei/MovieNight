@@ -3,6 +3,7 @@
 # ==========================================
 sources/
 impeccable/
+/mainPageLogo/
 
 # ==========================================
 # Dependencies (Frontend & Node)
