@@ -287,6 +287,7 @@ public class UserMovieService {
                 .overview(movie.getOverview())
                 .posterUrl(movie.getPosterUrl())
                 .backdropUrl(movie.getBackdropUrl())
+                .logoUrl(movie.getLogoUrl())
                 .genres(movie.getGenres())
                 .runtimeMinutes(movie.getRuntimeMinutes())
                 .trailerKey(movie.getTrailerKey())

@@ -127,7 +127,7 @@ public class TmdbClient {
             TmdbMovieDetailsResponse response = restClient.get()
                     .uri(uriBuilder -> applyAuth(uriBuilder)
                             .path("/movie/{id}")
-                            .queryParam("append_to_response", "credits,videos")
+                            .queryParam("append_to_response", "credits,videos,images")
                             .build(tmdbId))
                     .retrieve()
                     .body(TmdbMovieDetailsResponse.class);
@@ -166,7 +166,7 @@ public class TmdbClient {
             TmdbMovieDetailsResponse response = restClient.get()
                     .uri(uriBuilder -> applyAuth(uriBuilder)
                             .path("/tv/{id}")
-                            .queryParam("append_to_response", "credits,videos")
+                            .queryParam("append_to_response", "credits,videos,images")
                             .build(tmdbId))
                     .retrieve()
                     .body(TmdbMovieDetailsResponse.class);
@@ -428,5 +428,31 @@ public class TmdbClient {
             return null;
         }
         return imageBaseUrl + "/w185" + profilePath;
+    }
+
+    /**
+     * Helper to construct full transparent title logo URL from relative logo path.
+     */
+    public String buildLogoUrl(String logoPath) {
+        if (logoPath == null || logoPath.isBlank()) {
+            return null;
+        }
+        if (logoPath.startsWith("http://") || logoPath.startsWith("https://")) {
+            return logoPath;
+        }
+        if (logoPath.toLowerCase().endsWith(".svg")) {
+            return imageBaseUrl + "/original" + logoPath;
+        }
+        return imageBaseUrl + "/w500" + logoPath;
+    }
+
+    /**
+     * Extracts and builds the full URL for the best title logo from TMDB movie/tv details.
+     */
+    public String extractLogoUrl(TmdbMovieDetailsResponse response) {
+        if (response == null) {
+            return null;
+        }
+        return buildLogoUrl(response.getEffectiveLogoPath());
     }
 }

@@ -58,31 +58,52 @@ public class CatalogPersistenceService {
         });
     }
 
+    public record CoreDetails(
+            String overview,
+            String genres,
+            String director,
+            String castMembers,
+            String trailerKey,
+            Integer runtimeMinutes,
+            String logoUrl
+    ) {}
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Movie backfillCoreDetails(Long movieId, CoreDetails details) {
+        if (details == null) {
+            return movieRepository.findById(movieId).orElse(null);
+        }
+        return movieRepository.findById(movieId).map(m -> {
+            if ((m.getOverview() == null || m.getOverview().isBlank()) && details.overview() != null) {
+                m.setOverview(details.overview());
+            }
+            if ((m.getGenres() == null || m.getGenres().isBlank()) && details.genres() != null) {
+                m.setGenres(details.genres());
+            }
+            if ((m.getDirector() == null || m.getDirector().isBlank()) && details.director() != null) {
+                m.setDirector(details.director());
+            }
+            if ((m.getCastMembers() == null || m.getCastMembers().isBlank()) && details.castMembers() != null) {
+                m.setCastMembers(details.castMembers());
+            }
+            if ((m.getTrailerKey() == null || m.getTrailerKey().isBlank()) && details.trailerKey() != null) {
+                m.setTrailerKey(details.trailerKey());
+            }
+            if (m.getRuntimeMinutes() == null && details.runtimeMinutes() != null) {
+                m.setRuntimeMinutes(details.runtimeMinutes());
+            }
+            if ((m.getLogoUrl() == null || m.getLogoUrl().isBlank()) && details.logoUrl() != null) {
+                m.setLogoUrl(details.logoUrl());
+            }
+            return movieRepository.save(m);
+        }).orElse(null);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Movie backfillCoreDetails(Long movieId, String overview, String genres,
                                      String director, String castMembers,
                                      String trailerKey, Integer runtimeMinutes) {
-        return movieRepository.findById(movieId).map(m -> {
-            if ((m.getOverview() == null || m.getOverview().isBlank()) && overview != null) {
-                m.setOverview(overview);
-            }
-            if ((m.getGenres() == null || m.getGenres().isBlank()) && genres != null) {
-                m.setGenres(genres);
-            }
-            if ((m.getDirector() == null || m.getDirector().isBlank()) && director != null) {
-                m.setDirector(director);
-            }
-            if ((m.getCastMembers() == null || m.getCastMembers().isBlank()) && castMembers != null) {
-                m.setCastMembers(castMembers);
-            }
-            if ((m.getTrailerKey() == null || m.getTrailerKey().isBlank()) && trailerKey != null) {
-                m.setTrailerKey(trailerKey);
-            }
-            if (m.getRuntimeMinutes() == null && runtimeMinutes != null) {
-                m.setRuntimeMinutes(runtimeMinutes);
-            }
-            return movieRepository.save(m);
-        }).orElse(null);
+        return backfillCoreDetails(movieId, new CoreDetails(overview, genres, director, castMembers, trailerKey, runtimeMinutes, null));
     }
 }
 

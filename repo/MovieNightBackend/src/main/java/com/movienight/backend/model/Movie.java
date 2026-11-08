@@ -76,6 +76,12 @@ public class Movie {
     private String backdropUrl;
 
     /**
+     * URL to official transparent PNG title logo.
+     */
+    @Column(length = 1000)
+    private String logoUrl;
+
+    /**
      * Comma-separated list of genres (e.g. "Action, Sci-Fi, Thriller").
      */
     @Column(length = 200)

@@ -112,6 +112,7 @@ public class MovieCatalogLookupService {
             Integer runtimeMinutes,
             String posterUrl,
             String backdropUrl,
+            String logoUrl,
             Integer seasonsCount,
             Integer episodesCount,
             String imdbId,
@@ -162,6 +163,9 @@ public class MovieCatalogLookupService {
         String safeBackdropUrl = tmdbClient.buildBackdropUrl(tmdb.getBackdropPath());
         if (safeBackdropUrl != null && safeBackdropUrl.length() > 1000) safeBackdropUrl = safeBackdropUrl.substring(0, 1000);
 
+        String safeLogoUrl = tmdbClient.extractLogoUrl(tmdb);
+        if (safeLogoUrl != null && safeLogoUrl.length() > 1000) safeLogoUrl = safeLogoUrl.substring(0, 1000);
+
         return new ExtractedMetadata(
                 safeTitle,
                 tmdb.getOverview(),
@@ -172,6 +176,7 @@ public class MovieCatalogLookupService {
                 tmdb.getEffectiveRuntimeMinutes(),
                 safePosterUrl,
                 safeBackdropUrl,
+                safeLogoUrl,
                 tmdb.getNumberOfSeasons(),
                 tmdb.getNumberOfEpisodes(),
                 tmdb.getImdbId(),
@@ -265,6 +270,7 @@ public class MovieCatalogLookupService {
                     .overview(meta.overview())
                     .posterUrl(meta.posterUrl())
                     .backdropUrl(meta.backdropUrl())
+                    .logoUrl(meta.logoUrl())
                     .genres(meta.genres())
                     .runtimeMinutes(meta.runtimeMinutes())
                     .trailerKey(meta.trailerKey())
@@ -324,9 +330,10 @@ public class MovieCatalogLookupService {
                         ? tmdbClient.getTvDetails(tmdbId) : tmdbClient.getMovieDetails(tmdbId);
                 if (detailsOpt.isPresent()) {
                     ExtractedMetadata meta = extractMetadata(detailsOpt.get(), resourceType);
-                    catalogPersistenceService.backfillCoreDetails(movieId,
+                    catalogPersistenceService.backfillCoreDetails(movieId, new CatalogPersistenceService.CoreDetails(
                             meta.overview(), meta.genres(), meta.director(),
-                            meta.castMembers(), meta.trailerKey(), meta.runtimeMinutes());
+                            meta.castMembers(), meta.trailerKey(), meta.runtimeMinutes(),
+                            meta.logoUrl()));
                     if (meta.imdbId() != null && omdbClient.isConfigured()) {
                         triggerBackgroundEnrichment(movieId, meta.imdbId());
                     }
@@ -398,6 +405,7 @@ public class MovieCatalogLookupService {
                 .overview(movie.getOverview())
                 .posterUrl(movie.getPosterUrl())
                 .backdropUrl(movie.getBackdropUrl())
+                .logoUrl(movie.getLogoUrl())
                 .genres(movie.getGenres())
                 .runtimeMinutes(movie.getRuntimeMinutes())
                 .trailerKey(movie.getTrailerKey())

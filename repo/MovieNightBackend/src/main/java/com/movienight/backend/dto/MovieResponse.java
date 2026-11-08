@@ -24,6 +24,7 @@ public class MovieResponse {
     private String overview;
     private String posterUrl;
     private String backdropUrl;
+    private String logoUrl;
     private String genres;
     private Integer runtimeMinutes;
     private String trailerKey;
