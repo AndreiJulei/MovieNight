@@ -56,7 +56,10 @@ Preserve the existing movie scoring model:
 - A supplied personal rating has weight `rating - 5.5`; an unrated watched movie
   has weight `+1.5` (the existing default of 7). Zero therefore has weight `-5.5`.
 - Sum `seed weight × MovieLens similarity` for each candidate. This does not train
-  a new model or imply MovieLens covers every movie.
+  a new model or imply MovieLens covers every movie. The implemented
+  [feature 015 / issue #7 upgrade](../015-movielens-latest-similarity/spec.md)
+  targets the underlying MovieLens inputs and similarity coverage while
+  preserving this scoring model.
 - When TMDB is configured, take movie recommendations from page 1 for up to three
   positive-weight watched-movie seeds, sorted by weight descending then provider
   ID ascending. For each returned position `i`, starting at zero, add

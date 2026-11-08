@@ -50,6 +50,9 @@ class SuggestionControllerTest {
     @Mock
     private com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
 
+    @Mock
+    private com.movienight.backend.service.RecommendationMaintenanceService recommendationMaintenanceService;
+
     @InjectMocks
     private SuggestionController suggestionController;
 

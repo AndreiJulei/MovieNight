@@ -1,0 +1,48 @@
+{
+  "dataset_source": "MovieLens ml-latest",
+  "dataset_url": "https://files.grouplens.org/datasets/movielens/ml-latest.zip",
+  "dataset_snapshot_date": "2023-07-20",
+  "inputs": {
+    "ratings_file": "ratings.csv",
+    "ratings_sha256": "ae77c01e7c895e7d61ba3594a1c5ff191b5f7f3a9d788000315a463322fa44f6",
+    "links_file": "links.csv",
+    "links_sha256": "92f18202228071d5dc56a5bc7fd7ccbd06ff355c54bc48e55a059cd4896966d7"
+  },
+  "environment": {
+    "python_version": "3.12.12 (main, Oct  9 2025, 11:07:00) [Clang 17.0.0 (clang-1700.6.3.2)]",
+    "pandas_version": "3.1.0",
+    "numpy_version": "2.5.4",
+    "scipy_version": "1.18.1",
+    "scikit_learn_version": "1.9.1"
+  },
+  "algorithm": {
+    "type": "uncentered item-item cosine similarity over sparse rating vectors",
+    "rating_scale": "0.5 to 5.0",
+    "top_k_neighbors": 30,
+    "min_similarity_threshold": 0.1,
+    "tie_breaking": "descending score, then ascending neighbor TMDB ID, ascending source TMDB ID",
+    "score_rounding": "4 decimal places after selection"
+  },
+  "input_statistics": {
+    "total_links": 86537,
+    "valid_tmdb_mappings": 86411,
+    "excluded_links": 126,
+    "duplicate_mappings": 0,
+    "total_raw_ratings": 33832162,
+    "excluded_unmapped_ratings": 4949,
+    "retained_unique_ratings": 33826378,
+    "unique_users": 330975,
+    "unique_tmdb_movies": 83080
+  },
+  "output_statistics": {
+    "distinct_source_movies_with_neighbors": 82941,
+    "total_neighbor_pairs": 2443981,
+    "output_sha256": "5bc222a71bac4ef0db243f3daabd13f9a96135d827aaa846da87782529441ae3"
+  },
+  "run_measurements": {
+    "elapsed_seconds": 172.55,
+    "peak_process_memory_bytes": 4441423872,
+    "peak_process_memory_mib": 4235.67,
+    "output_csv_size_bytes": 48633717
+  }
+}

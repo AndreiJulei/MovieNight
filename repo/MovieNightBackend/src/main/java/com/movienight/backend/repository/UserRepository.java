@@ -35,6 +35,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     java.util.List<User> findByNeedsRecommendationRefreshTrue();
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query("UPDATE User u SET u.needsRecommendationRefresh = true")
+    int invalidateAllPersonalRecommendationCaches();
+
     default Optional<User> findByIdentifier(String identifier) {
         if (identifier == null || identifier.isBlank()) return Optional.empty();
         String clean = identifier.trim();

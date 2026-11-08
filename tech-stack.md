@@ -15,7 +15,7 @@ Consult the manifests when versions change.
 | Authentication | Spring Security, BCrypt, JWT | Backend security and user service |
 | Backend tools | Maven wrapper, Maven 3.9.16 | Backend wrapper configuration |
 | Discovery | TMDB catalog, optional OMDb enrichment, remote image URLs | Backend provider clients and catalog service |
-| Personal movie recommendations | MovieLens item similarity; Python with pandas, NumPy, SciPy, scikit-learn; generated CSV consumed by Java | `repo/ml/train_similarity.py`, similarity loader |
+| Personal movie recommendations | MovieLens item similarity backbone targeting full `ml-latest` dataset (Q1–Q14 contract); Python 3.12 with pandas, NumPy, SciPy, scikit-learn; generated CSV, SHA-256 manifest, and attribution consumed by Java backend with maintenance controls | `repo/ml/train_similarity.py`, similarity loader; `docs/features/015-movielens-latest-similarity/spec.md` |
 | Work tracking | GitHub Issues and `gh` | `docs/agents/issue-tracker.md` |
 
 ## Verification commands

@@ -75,6 +75,17 @@ A candidate selected using the user's own watched history and available
 recommendation data.
 _Avoid_: Personalized when referring to general discovery results.
 
+**Movie similarity**:
+A relationship between two movies derived from patterns in community ratings,
+used as evidence for personalized recommendations.
+_Avoid_: Personal rating, predicted enjoyment, guaranteed relevance.
+
+**Similarity coverage**:
+The movies for which the selected community-rating data provides eligible
+movie similarities. Coverage alone does not establish recommendation quality
+or guarantee displayable recommendations for a person.
+_Avoid_: Full catalog coverage, recommendation accuracy.
+
 **Explore**:
 Discovery by movie, TV, or anime TV category, independent of personal viewing
 history.

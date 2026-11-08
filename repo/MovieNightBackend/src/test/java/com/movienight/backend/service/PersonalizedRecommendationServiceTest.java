@@ -43,6 +43,9 @@ class PersonalizedRecommendationServiceTest {
     @Mock
     private CachedMovieListRepository cachedMovieListRepository;
 
+    @Mock
+    private RecommendationMaintenanceService recommendationMaintenanceService;
+
     @InjectMocks
     private PersonalizedRecommendationService personalizedRecommendationService;
 

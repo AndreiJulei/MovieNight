@@ -21,6 +21,20 @@ venv/
 .ruff_cache/
 
 # ==========================================
+# Datasets & ML Artifacts (MovieLens ml-latest)
+# ==========================================
+# Unneeded MovieLens data files
+repo/ml/data/**/genome-scores.csv
+repo/ml/data/**/genome-tags.csv
+repo/ml/data/ml-latest/tags.csv
+repo/ml/data/ml-latest/movies.csv
+repo/ml/data/ml-latest/links.csv
+repo/ml/data/ml-latest/README.txt
+# Raw ratings dataset (934 MB exceeds GitHub 100MB file limit) and archive
+repo/ml/data/ml-latest/ratings.csv
+repo/ml/data/ml-latest.zip
+
+# ==========================================
 # Java / Maven Build Outputs & Artifacts
 # ==========================================
 target/

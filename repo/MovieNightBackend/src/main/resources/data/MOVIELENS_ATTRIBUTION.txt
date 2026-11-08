@@ -1,0 +1,14 @@
+MovieLens Dataset Attribution Notice
+=======================================
+This product incorporates movie rating patterns and similarity vectors derived
+from the MovieLens ml-latest dataset, generated and maintained by the GroupLens
+Research Group at the University of Minnesota.
+
+Source: https://grouplens.org/datasets/movielens/
+Citation: F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets:
+History and Context. ACM Transactions on Interactive Intelligent Systems (TiiS) 5, 4: 19:1–19:19.
+
+Redistribution & Usage Terms:
+- The data is provided for research and educational purposes.
+- GroupLens does not endorse or sponsor this application or the derived recommendations.
+- Raw datasets are excluded from version control and distributed artifacts.

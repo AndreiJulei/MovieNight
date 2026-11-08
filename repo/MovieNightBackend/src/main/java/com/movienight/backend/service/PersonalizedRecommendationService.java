@@ -23,6 +23,7 @@ public class PersonalizedRecommendationService {
     private final UserRepository userRepository;
     private final TmdbClient tmdbClient;
     private final CachedMovieListRepository cachedMovieListRepository;
+    private final RecommendationMaintenanceService recommendationMaintenanceService;
 
     private boolean isMovie(Movie movie) {
         return movie != null && (movie.getMediaType() == null || "MOVIE".equalsIgnoreCase(movie.getMediaType()));
@@ -40,6 +41,9 @@ public class PersonalizedRecommendationService {
 
     @Transactional
     public SuggestionCategoryResponse movieCategory(User user) {
+        if (recommendationMaintenanceService != null) {
+            recommendationMaintenanceService.checkRecommendationAccess();
+        }
         List<PersonalizedRecommendation> previous = personalizedRecommendationRepository
                 .findByUserIdAndMediaTypeOrderByRankOrderAsc(user.getId(), "MOVIE");
         if (user.isNeedsRecommendationRefresh() || user.getPersonalRecommendationState() == null
@@ -72,7 +76,11 @@ public class PersonalizedRecommendationService {
 
     @Transactional
     public void recomputeRecommendationsForUser(User user) {
-        List<UserMovieEntry> entries = entries(user);
+        if (recommendationMaintenanceService != null) {
+            recommendationMaintenanceService.startRecomputation();
+        }
+        try {
+            List<UserMovieEntry> entries = entries(user);
         Map<Long, Double> weights = new TreeMap<>();
         for (UserMovieEntry e : entries) {
             if (e.getStatus() == MovieStatus.WATCHED && isMovie(e.getMovie())
@@ -186,6 +194,11 @@ public class PersonalizedRecommendationService {
         user.setPersonalRecommendationLimitations(String.join(",", limitations));
         user.setNeedsRecommendationRefresh(false);
         userRepository.save(user);
+        } finally {
+            if (recommendationMaintenanceService != null) {
+                recommendationMaintenanceService.endRecomputation();
+            }
+        }
     }
 
     private boolean validTitle(String title) { return title != null && !title.isBlank(); }

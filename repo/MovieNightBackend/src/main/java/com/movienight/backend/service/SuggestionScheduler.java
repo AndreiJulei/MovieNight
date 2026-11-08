@@ -38,6 +38,7 @@ public class SuggestionScheduler {
     private final DiscoverySnapshotRepository discoverySnapshotRepository;
     private final UserRepository userRepository;
     private final PersonalizedRecommendationService personalizedRecommendationService;
+    private final RecommendationMaintenanceService recommendationMaintenanceService;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
     private final Map<String, CompletableFuture<Void>> activeCategoryRefreshes = new ConcurrentHashMap<>();
 
@@ -375,6 +376,11 @@ public class SuggestionScheduler {
      * Recalculate recommendations only for users whose rating/movie library changed.
      */
     public void recalculateDirtyUserRecommendations() {
+        if (recommendationMaintenanceService != null && recommendationMaintenanceService.isMaintenanceActive()) {
+            log.info("Skipping scheduled dirty user recommendation recalculation: maintenance mode is active.");
+            return;
+        }
+
         List<User> dirtyUsers = userRepository.findByNeedsRecommendationRefreshTrue();
         if (dirtyUsers.isEmpty()) {
             return;

@@ -26,6 +26,7 @@ public class SuggestionController {
     private final UserRepository userRepository;
     private final com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
     private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
+    private final com.movienight.backend.service.RecommendationMaintenanceService recommendationMaintenanceService;
 
     /**
      * Get all suggestion category rows for the authenticated user.
@@ -40,6 +41,9 @@ public class SuggestionController {
      */
     @GetMapping("/personal")
     public ResponseEntity<SuggestionsResponse> getPersonalRecommendations(Authentication authentication) {
+        if (recommendationMaintenanceService != null) {
+            recommendationMaintenanceService.checkRecommendationAccess();
+        }
         return ResponseEntity.ok(suggestionService.getPersonalRecommendations(authentication.getName()));
     }
 
@@ -123,6 +127,9 @@ public class SuggestionController {
      */
     @PostMapping("/personalized/refresh")
     public ResponseEntity<Map<String, String>> refreshPersonalizedRecommendations(Authentication authentication) {
+        if (recommendationMaintenanceService != null) {
+            recommendationMaintenanceService.checkRecommendationAccess();
+        }
         String authName = authentication.getName();
         User user = userRepository.findByUsername(authName)
                 .or(() -> userRepository.findByUsernameIgnoreCase(authName))
