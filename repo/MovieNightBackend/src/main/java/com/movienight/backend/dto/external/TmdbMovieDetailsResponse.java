@@ -154,6 +154,8 @@ public class TmdbMovieDetailsResponse {
         private String name;
         private String character;
         private Integer order;
+        @JsonProperty("profile_path")
+        private String profilePath;
     }
 
     @Data

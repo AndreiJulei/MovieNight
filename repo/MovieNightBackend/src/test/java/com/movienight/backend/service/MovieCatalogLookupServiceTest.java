@@ -206,4 +206,41 @@ class MovieCatalogLookupServiceTest {
         assertEquals(62, result.getEpisodesCount());
         assertEquals(2008, result.getReleaseYear());
     }
+
+    @Test
+    void parseStoredCastMembers_extractsNamesAndRoles() {
+        String castStr = "Ewan McGregor as Mark Renton, Ewen Bremner (Spud), Jonny Lee Miller";
+        List<MovieResponse.CastMemberDto> cast = lookupService.parseStoredCastMembers(castStr);
+
+        assertEquals(3, cast.size());
+        assertEquals("Ewan McGregor", cast.get(0).getName());
+        assertEquals("Mark Renton", cast.get(0).getRole());
+        assertNull(cast.get(0).getProfileUrl());
+
+        assertEquals("Ewen Bremner", cast.get(1).getName());
+        assertEquals("Spud", cast.get(1).getRole());
+
+        assertEquals("Jonny Lee Miller", cast.get(2).getName());
+        assertEquals("Cast", cast.get(2).getRole());
+    }
+
+    @Test
+    void getCredits_localFallback_parsesRolesProperly() {
+        when(tmdbClient.isConfigured()).thenReturn(false);
+        Movie movie = Movie.builder()
+                .tmdbId(627L)
+                .resourceType(com.movienight.backend.model.ResourceType.MOVIE)
+                .castMembers("Ewan McGregor as Mark Renton, Kelly Macdonald as Diane")
+                .build();
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 627L))
+                .thenReturn(Optional.of(movie));
+
+        List<MovieResponse.CastMemberDto> credits = lookupService.getCredits(627L, "MOVIE");
+
+        assertEquals(2, credits.size());
+        assertEquals("Ewan McGregor", credits.get(0).getName());
+        assertEquals("Mark Renton", credits.get(0).getRole());
+        assertEquals("Kelly Macdonald", credits.get(1).getName());
+        assertEquals("Diane", credits.get(1).getRole());
+    }
 }

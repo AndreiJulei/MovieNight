@@ -347,9 +347,48 @@ public class MovieCatalogLookupService {
     }
 
     /**
+     * Parse stored comma-separated castMembers string (e.g., "Ewan McGregor as Mark Renton, Ewen Bremner as Spud")
+     * into structured CastMemberDto list, extracting actor names and roles.
+     */
+    public List<MovieResponse.CastMemberDto> parseStoredCastMembers(String castMembers) {
+        if (castMembers == null || castMembers.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(castMembers.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(item -> {
+                    String name = item;
+                    String role = "Cast";
+                    if (item.contains(" as ")) {
+                        String[] parts = item.split(" as ", 2);
+                        name = parts[0].trim();
+                        role = parts[1].trim().isBlank() ? "Cast" : parts[1].trim();
+                    } else if (item.matches("^.+?\\s*\\(.+?\\)$")) {
+                        int open = item.lastIndexOf('(');
+                        int close = item.lastIndexOf(')');
+                        name = item.substring(0, open).trim();
+                        String r = item.substring(open + 1, close).trim();
+                        role = r.isBlank() ? "Cast" : r;
+                    }
+                    return MovieResponse.CastMemberDto.builder()
+                            .name(name)
+                            .role(role)
+                            .profileUrl(null)
+                            .build();
+                })
+                .toList();
+    }
+
+    /**
      * Helper to map Movie entity to response DTO.
      */
     public MovieResponse mapToResponse(Movie movie) {
+        List<MovieResponse.CastMemberDto> castList = parseStoredCastMembers(movie.getCastMembers());
+        if (castList.isEmpty()) {
+            castList = null;
+        }
+
         return MovieResponse.builder()
                 .id(movie.getId())
                 .tmdbId(movie.getTmdbId())
@@ -364,6 +403,7 @@ public class MovieCatalogLookupService {
                 .trailerKey(movie.getTrailerKey())
                 .director(movie.getDirector())
                 .castMembers(movie.getCastMembers())
+                .cast(castList)
                 .mediaType(movie.getMediaType())
                 .seasonsCount(movie.getSeasonsCount())
                 .episodesCount(movie.getEpisodesCount())
@@ -372,6 +412,44 @@ public class MovieCatalogLookupService {
                 .tmdbVoteAverage(movie.getTmdbVoteAverage())
                 .tmdbVoteCount(movie.getTmdbVoteCount())
                 .build();
+    }
+
+    /**
+     * Get credits (cast with profile photos and character names) for a TMDB title.
+     */
+    public List<MovieResponse.CastMemberDto> getCredits(Long tmdbId, String mediaType) {
+        if (tmdbId == null) {
+            return Collections.emptyList();
+        }
+        ResourceType resourceType = ResourceType.fromCategory(mediaType);
+        if (tmdbClient.isConfigured()) {
+            try {
+                Optional<TmdbMovieDetailsResponse> details = resourceType == ResourceType.TV
+                        ? tmdbClient.getTvDetails(tmdbId)
+                        : tmdbClient.getMovieDetails(tmdbId);
+                if (details.isPresent() && details.get().getCredits() != null && details.get().getCredits().getCast() != null) {
+                    return details.get().getCredits().getCast().stream()
+                            .filter(c -> c.getName() != null && !c.getName().isBlank())
+                            .limit(15)
+                            .map(c -> MovieResponse.CastMemberDto.builder()
+                                    .name(c.getName())
+                                    .role(c.getCharacter() != null && !c.getCharacter().isBlank() ? c.getCharacter() : "Cast")
+                                    .profileUrl(tmdbClient.buildProfileUrl(c.getProfilePath()))
+                                    .build())
+                            .toList();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch live credits for tmdbId {}: {}", tmdbId, e.getMessage());
+            }
+        }
+
+        // Fallback: Check local movie repository for saved castMembers string
+        Optional<Movie> local = movieRepository.findByResourceTypeAndTmdbId(resourceType, tmdbId);
+        if (local.isPresent() && local.get().getCastMembers() != null && !local.get().getCastMembers().isBlank()) {
+            return parseStoredCastMembers(local.get().getCastMembers());
+        }
+
+        return Collections.emptyList();
     }
 
     private Integer parseYear(String releaseDate) {

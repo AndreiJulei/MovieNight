@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Data transfer object representing the objective facts of a movie
  * from our shared catalog.
@@ -27,6 +29,7 @@ public class MovieResponse {
     private String trailerKey;
     private String director;
     private String castMembers;
+    private List<CastMemberDto> cast;
     private String mediaType;
     private Integer seasonsCount;
     private Integer episodesCount;
@@ -34,4 +37,14 @@ public class MovieResponse {
     private Integer rottenTomatoesRating;
     private Double tmdbVoteAverage;
     private Integer tmdbVoteCount;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CastMemberDto {
+        private String name;
+        private String role;
+        private String profileUrl;
+    }
 }

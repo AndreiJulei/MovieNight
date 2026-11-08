@@ -94,6 +94,18 @@ public class MovieCatalogController {
     }
 
     /**
+     * Get credits (cast with character names and profile photos) for a TMDB title.
+     * Example: GET /api/movies/550/credits
+     */
+    @GetMapping("/{tmdbId:[0-9]+}/credits")
+    public ResponseEntity<List<MovieResponse.CastMemberDto>> getCredits(
+            @PathVariable Long tmdbId,
+            @RequestParam(required = false) String mediaType
+    ) {
+        return ResponseEntity.ok(movieCatalogLookupService.getCredits(tmdbId, mediaType));
+    }
+
+    /**
      * Get movie details by database primary key ID.
      * Example: GET /api/movies/12
      */

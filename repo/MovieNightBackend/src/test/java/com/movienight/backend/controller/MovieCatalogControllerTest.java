@@ -98,4 +98,21 @@ class MovieCatalogControllerTest {
                 .andExpect(jsonPath("$[0].title").value("Guardians of the Galaxy Vol. 2"))
                 .andExpect(jsonPath("$[0].tmdbId").value(283995L));
     }
+
+    @Test
+    void getCredits_returnsOk() throws Exception {
+        MovieResponse.CastMemberDto castMember = MovieResponse.CastMemberDto.builder()
+                .name("Chris Pratt")
+                .role("Peter Quill / Star-Lord")
+                .profileUrl("https://image.tmdb.org/t/p/w185/pratt.jpg")
+                .build();
+        when(lookupService.getCredits(283995L, null))
+                .thenReturn(List.of(castMember));
+
+        mockMvc.perform(get("/api/movies/283995/credits"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Chris Pratt"))
+                .andExpect(jsonPath("$[0].role").value("Peter Quill / Star-Lord"))
+                .andExpect(jsonPath("$[0].profileUrl").value("https://image.tmdb.org/t/p/w185/pratt.jpg"));
+    }
 }

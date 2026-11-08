@@ -419,4 +419,14 @@ public class TmdbClient {
         }
         return imageBaseUrl + "/original" + backdropPath;
     }
+
+    /**
+     * Helper to construct actor profile photo URL from relative profile path.
+     */
+    public String buildProfileUrl(String profilePath) {
+        if (profilePath == null || profilePath.isBlank()) {
+            return null;
+        }
+        return imageBaseUrl + "/w185" + profilePath;
+    }
 }
