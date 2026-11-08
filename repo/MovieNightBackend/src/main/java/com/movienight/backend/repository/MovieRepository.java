@@ -16,6 +16,8 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
      */
     Optional<Movie> findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType resourceType, Long tmdbId);
 
+    List<Movie> findByResourceTypeAndTmdbIdIn(com.movienight.backend.model.ResourceType resourceType, java.util.Collection<Long> tmdbIds);
+
     /**
      * Look up a movie by its IMDb identifier (e.g. "tt0133093").
      */

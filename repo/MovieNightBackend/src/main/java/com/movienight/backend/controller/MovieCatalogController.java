@@ -20,6 +20,7 @@ public class MovieCatalogController {
     private final MovieCatalogLookupService movieCatalogLookupService;
     private final com.movienight.backend.service.SuggestionService suggestionService;
     private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
+    private final com.movienight.backend.service.MovieSimilarityService movieSimilarityService;
 
     /**
      * Get explore catalog shelves for a specific media type (movies, tv, anime).
@@ -76,6 +77,20 @@ public class MovieCatalogController {
                 ? movieCatalogLookupService.getOrFetchMovie(tmdbId, mediaType)
                 : movieCatalogLookupService.getOrFetchMovie(tmdbId);
         return ResponseEntity.ok(movieCatalogLookupService.mapToResponse(movie));
+    }
+
+    /**
+     * Get similar titles for a specific TMDB movie ID.
+     * Queries precomputed cosine similarity neighbors from MovieLens, with graceful fallback to TMDB recommendations.
+     * Example: GET /api/movies/550/similar?limit=10
+     */
+    @GetMapping("/{tmdbId:[0-9]+}/similar")
+    public ResponseEntity<List<MovieResponse>> getSimilarMovies(
+            @PathVariable Long tmdbId,
+            @RequestParam(required = false, defaultValue = "10") Integer limit,
+            @RequestParam(required = false) String mediaType
+    ) {
+        return ResponseEntity.ok(movieSimilarityService.getSimilarMovies(tmdbId, limit, mediaType));
     }
 
     /**

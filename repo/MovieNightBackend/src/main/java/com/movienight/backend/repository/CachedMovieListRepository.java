@@ -18,6 +18,8 @@ public interface CachedMovieListRepository extends JpaRepository<CachedMovieList
 
     List<CachedMovieList> findByTmdbId(Long tmdbId);
 
+    List<CachedMovieList> findByTmdbIdIn(java.util.Collection<Long> tmdbIds);
+
     void deleteByListType(MovieListType listType);
 
     void deleteByMediaTypeAndListType(String mediaType, MovieListType listType);
