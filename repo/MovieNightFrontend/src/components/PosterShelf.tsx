@@ -1,59 +1,78 @@
-import { useRef, useState, useCallback, useEffect, useId, type MouseEvent } from "react";
-import type { Movie } from "../store/data";
-import { formatExploreMetadata } from "./ratingEvidence";
-import { ExplorePosterOverlay } from "./ExplorePosterOverlay";
-import { useRouter } from "../router";
-import { useStore } from "../store/MovieStore";
-import { usePosterTransition } from "./PosterTransitionContext";
+import {
+  useRef,
+  useState,
+  useCallback,
+  useEffect,
+  useId,
+  type MouseEvent,
+} from "react"
+import type { Movie } from "../store/data"
+import { formatExploreMetadata } from "./ratingEvidence"
+import { ExplorePosterOverlay } from "./ExplorePosterOverlay"
+import { useRouter } from "../router"
+import { useStore } from "../store/MovieStore"
+import { usePosterTransition } from "./PosterTransitionContext"
+import ShelfEmptyCard from "./ShelfEmptyCard"
 
 interface PosterShelfProps {
-  movies: Movie[];
-  referrer?: string;
+  movies: Movie[]
+  referrer?: string
+  emptyType?: "personal" | "friends" | "generic"
+  emptyMessage?: string
+  emptyCta?: { label: string; to: string }
 }
 
-export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
+export default function PosterShelf({
+  movies,
+  referrer,
+  emptyType = "generic",
+  emptyMessage,
+  emptyCta,
+}: PosterShelfProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(true)
 
   const updateArrows = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 6);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 6);
-  }, []);
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 6)
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 6)
+  }, [])
 
   useEffect(() => {
-    const track = scrollRef.current;
-    if (!track) return;
-    updateArrows();
-    const observer = new ResizeObserver(updateArrows);
-    observer.observe(track);
-    return () => observer.disconnect();
-  }, [movies.length, updateArrows]);
+    const track = scrollRef.current
+    if (!track) return
+    updateArrows()
+    const observer = new ResizeObserver(updateArrows)
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [movies.length, updateArrows])
 
   const scrollBy = (dir: number) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const pageWidth = el.clientWidth * 0.75;
+    const el = scrollRef.current
+    if (!el) return
+    const pageWidth = el.clientWidth * 0.75
 
     if (dir > 0 && el.scrollLeft >= el.scrollWidth - el.clientWidth - 6) {
-      el.scrollTo({ left: 0, behavior: "smooth" });
+      el.scrollTo({ left: 0, behavior: "smooth" })
     } else if (dir < 0 && el.scrollLeft <= 6) {
-      el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
+      el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
     } else {
-      el.scrollBy({ left: dir * pageWidth, behavior: "smooth" });
+      el.scrollBy({ left: dir * pageWidth, behavior: "smooth" })
     }
 
-    setTimeout(updateArrows, 400);
-  };
+    setTimeout(updateArrows, 400)
+  }
 
   if (movies.length === 0) {
     return (
-      <div className="flex h-44 items-center justify-center">
-        <p className="text-sm text-text-muted">No suggestions yet.</p>
-      </div>
-    );
+      <ShelfEmptyCard
+        type={emptyType}
+        customMessage={emptyMessage}
+        customCta={emptyCta}
+      />
+    )
   }
 
   return (
@@ -70,7 +89,7 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
           will-change: transform;
         }
         .shelf-card + .shelf-card {
-          margin-left: -32px;
+          margin-left: -34px;
         }
         .shelf-card:hover,
         .shelf-card:focus-visible {
@@ -134,11 +153,7 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
         style={{ scrollbarWidth: "none" }}
       >
         {movies.map((movie) => (
-          <ShelfPoster
-            key={movie.id}
-            movie={movie}
-            referrer={referrer}
-          />
+          <ShelfPoster key={movie.id} movie={movie} referrer={referrer} />
         ))}
       </div>
 
@@ -157,34 +172,33 @@ export default function PosterShelf({ movies, referrer }: PosterShelfProps) {
         ›
       </button>
     </div>
-  );
+  )
 }
 
-function ShelfPoster({
-  movie,
-  referrer,
-}: {
-  movie: Movie;
-  referrer?: string;
-}) {
-  const ratingId = useId();
-  const posterRef = useRef<HTMLAnchorElement>(null);
-  const { startTransition } = usePosterTransition();
-  const { navigate } = useRouter();
-  const store = useStore();
+function ShelfPoster({ movie, referrer }: { movie: Movie; referrer?: string }) {
+  const ratingId = useId()
+  const posterRef = useRef<HTMLAnchorElement>(null)
+  const { startTransition } = usePosterTransition()
+  const { navigate } = useRouter()
+  const store = useStore()
 
   const handleClick = (e: MouseEvent) => {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    store.upsertMovie(movie);
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+      return
+    e.preventDefault()
+    store.upsertMovie(movie)
     try {
-      sessionStorage.setItem("last_selected_movie", JSON.stringify(movie));
+      sessionStorage.setItem("last_selected_movie", JSON.stringify(movie))
     } catch {
       /* ignore */
     }
     if (posterRef.current) {
-      const rect = posterRef.current.getBoundingClientRect();
-      const currentReferrer = referrer ?? (typeof window !== "undefined" ? window.location.pathname + window.location.search : "/explore/movies");
+      const rect = posterRef.current.getBoundingClientRect()
+      const currentReferrer =
+        referrer ??
+        (typeof window !== "undefined"
+          ? window.location.pathname + window.location.search
+          : "/explore/movies")
       startTransition({
         movieId: movie.id,
         startRect: {
@@ -198,14 +212,18 @@ function ShelfPoster({
         title: movie.title,
         referrer: currentReferrer,
         movie,
-      });
+      })
     }
-    const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
-    navigate(targetUrl);
-  };
+    const targetUrl = `/movies/${movie.id}${
+      movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""
+    }`
+    navigate(targetUrl)
+  }
 
-  const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
-  const metadata = formatExploreMetadata(movie);
+  const targetUrl = `/movies/${movie.id}${
+    movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""
+  }`
+  const metadata = formatExploreMetadata(movie)
 
   return (
     <a
@@ -215,7 +233,7 @@ function ShelfPoster({
       title={movie.title}
       aria-label={movie.title}
       aria-describedby={metadata ? ratingId : undefined}
-      className="shelf-card group/poster relative shrink-0 h-[252px] w-[168px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 select-none"
+      className="shelf-card group/poster relative shrink-0 h-[270px] w-[180px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 select-none"
     >
       {/* Poster image */}
       {movie.posterUrl ? (
@@ -235,7 +253,11 @@ function ShelfPoster({
       )}
 
       {/* Hover/focus detail overlay: revealed on pointer hover or keyboard focus */}
-      <ExplorePosterOverlay movie={movie} ratingId={ratingId} className="shelf-poster-overlay" />
+      <ExplorePosterOverlay
+        movie={movie}
+        ratingId={ratingId}
+        className="shelf-poster-overlay"
+      />
     </a>
-  );
+  )
 }
