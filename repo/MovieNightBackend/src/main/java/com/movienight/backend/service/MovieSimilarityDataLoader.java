@@ -39,9 +39,17 @@ public class MovieSimilarityDataLoader implements ApplicationRunner {
 
     private final ReentrantLock reloadLock = new ReentrantLock();
 
+    @org.springframework.beans.factory.annotation.Value("${app.similarity.auto-load-on-startup:false}")
+    private boolean autoLoadOnStartup;
+
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        if (!autoLoadOnStartup) {
+            log.info("MovieLens similarity startup loading disabled by configuration (app.similarity.auto-load-on-startup=false).");
+            return;
+        }
+
         if (movieSimilarityRepository.count() > 0) {
             log.info("MovieLens similarity backbone already initialized in database. Preserving existing model.");
             return;

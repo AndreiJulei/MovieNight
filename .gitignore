@@ -71,6 +71,7 @@ build/
 *.cert
 **/application.properties
 !**/application.properties.example
+!**/src/test/**/application.properties
 
 # Local H2 database files
 *.mv.db
