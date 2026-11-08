@@ -244,26 +244,23 @@ async function main() {
     await synopsisLocator.waitFor({ timeout: 5000 });
     console.log("PASS: Synopsis displayed.");
 
-    // ── DP02: Trailer Playback Modal ──
-    console.log("2. Checking DP02: Trailer Playback Modal...");
+    // ── DP02: Inline Trailer Playback ──
+    console.log("2. Checking DP02: Inline Trailer Playback...");
     const playBtn = page.getByRole("button", { name: "Play Trailer" });
     await playBtn.waitFor({ timeout: 5000 });
     await playBtn.click();
 
-    // Verify trailer modal dialog is opened
-    const trailerModal = page.getByRole("dialog", { name: "Trainspotting Trailer Modal" });
-    await trailerModal.waitFor({ timeout: 5000 });
-    const trailerIframe = trailerModal.locator("iframe");
+    // Trailer plays inline in the hero (no modal dialog)
+    assert.equal(await page.getByRole("dialog").count(), 0, "No modal dialog for trailer");
+    const trailerIframe = page.getByRole("region", { name: "Trainspotting hero banner" }).locator("iframe");
     await trailerIframe.waitFor({ timeout: 5000 });
     const iframeSrc = await trailerIframe.getAttribute("src");
     assert.ok(iframeSrc && iframeSrc.includes("8EzfBYbF6yQ"), "Trailer iframe embeds YouTube video");
-    console.log("PASS: Trailer modal opened with YouTube iframe embed.");
+    console.log("PASS: Trailer plays inline in hero with YouTube iframe embed.");
 
-    // Close trailer modal
-    const closeTrailerBtn = trailerModal.getByRole("button", { name: "Close trailer modal" });
-    await closeTrailerBtn.click();
-    await trailerModal.waitFor({ state: "detached", timeout: 5000 });
-    console.log("PASS: Trailer modal closed successfully.");
+    await page.getByRole("button", { name: "Close Trailer" }).click();
+    await trailerIframe.waitFor({ state: "detached", timeout: 5000 });
+    console.log("PASS: Inline trailer closed successfully.");
 
     // ── DP03: Inline Rating Slider ──
     console.log("3. Checking DP03: Inline Rating Slider...");
