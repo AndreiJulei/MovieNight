@@ -243,4 +243,22 @@ class MovieCatalogLookupServiceTest {
         assertEquals("Kelly Macdonald", credits.get(1).getName());
         assertEquals("Diane", credits.get(1).getRole());
     }
+
+    @Test
+    void mapToResponse_includesLogoUrl() {
+        Movie movieWithLogo = Movie.builder()
+                .id(42L)
+                .tmdbId(550L)
+                .title("Fight Club")
+                .logoUrl("https://image.tmdb.org/t/p/w500/fight_club_logo.png")
+                .posterUrl("https://image.tmdb.org/t/p/w500/poster.jpg")
+                .backdropUrl("https://image.tmdb.org/t/p/original/backdrop.jpg")
+                .build();
+
+        MovieResponse response = lookupService.mapToResponse(movieWithLogo);
+
+        assertNotNull(response);
+        assertEquals(550L, response.getTmdbId());
+        assertEquals("https://image.tmdb.org/t/p/w500/fight_club_logo.png", response.getLogoUrl());
+    }
 }

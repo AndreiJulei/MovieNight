@@ -96,6 +96,104 @@ test("createHeroSlide: preserves null backdropUrl and retains posterUrl when bac
     slide.posterUrl,
     "https://image.tmdb.org/t/p/w500/indie_poster.jpg",
   )
+  assert.equal(slide.logoUrl, null)
+})
+
+test("createHeroSlide: preserves and maps logoUrl from movie when available (LG01, LG02)", () => {
+  const movie = {
+    id: "movie-105",
+    tmdbId: 105,
+    title: "Fight Club",
+    year: 1999,
+    posterUrl: "https://image.tmdb.org/t/p/w500/fight_club.jpg",
+    backdropUrl: "https://image.tmdb.org/t/p/w1280/fight_club_bg.jpg",
+    logoUrl: "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+    mediaType: "MOVIE",
+  }
+
+  const slide = hero.createHeroSlide({
+    badge: "#1 in Movies",
+    categoryPillar: "movies",
+    movie,
+  })
+
+  assert.equal(slide.title, "Fight Club")
+  assert.equal(
+    slide.logoUrl,
+    "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+  )
+})
+
+test("createHeroSlide: applies enriched logoUrl when provided (LG01, LG02)", () => {
+  const movie = {
+    id: "movie-106",
+    tmdbId: 106,
+    title: "Inception",
+    year: 2010,
+    posterUrl: "https://image.tmdb.org/t/p/w500/inception.jpg",
+    mediaType: "MOVIE",
+  }
+
+  const enriched = {
+    backdropUrl: "https://image.tmdb.org/t/p/w1280/inception_bg.jpg",
+    logoUrl: "https://image.tmdb.org/t/p/w500/inception_logo.png",
+  }
+
+  const slide = hero.createHeroSlide({
+    badge: "#1 in Movies",
+    categoryPillar: "movies",
+    movie,
+    enriched,
+  })
+
+  assert.equal(
+    slide.logoUrl,
+    "https://image.tmdb.org/t/p/w500/inception_logo.png",
+  )
+})
+
+test("resolveHeroTitleDisplay: resolves to logo mode when logoUrl is available and not failed (LG02)", () => {
+  const slide = {
+    id: "hero-movies-550",
+    title: "Fight Club",
+    logoUrl: "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+  }
+  const display = hero.resolveHeroTitleDisplay(slide, {})
+  assert.equal(display.mode, "logo")
+  assert.equal(
+    display.logoUrl,
+    "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+  )
+  assert.equal(display.altText, "Fight Club")
+  assert.equal(display.title, "Fight Club")
+})
+
+test("resolveHeroTitleDisplay: resolves to text mode when logoUrl is null, undefined, or blank (LG03)", () => {
+  const nullSlide = { id: "hero-tv-1", title: "Breaking Bad", logoUrl: null }
+  assert.equal(hero.resolveHeroTitleDisplay(nullSlide, {}).mode, "text")
+  assert.equal(
+    hero.resolveHeroTitleDisplay(nullSlide, {}).title,
+    "Breaking Bad",
+  )
+
+  const undefinedSlide = { id: "hero-tv-2", title: "The Wire" }
+  assert.equal(hero.resolveHeroTitleDisplay(undefinedSlide, {}).mode, "text")
+
+  const blankSlide = { id: "hero-tv-3", title: "Lost", logoUrl: "   " }
+  assert.equal(hero.resolveHeroTitleDisplay(blankSlide, {}).mode, "text")
+})
+
+test("resolveHeroTitleDisplay: gracefully falls back to text title when logo image failed to load (LG03)", () => {
+  const slide = {
+    id: "hero-movies-550",
+    title: "Fight Club",
+    logoUrl: "https://image.tmdb.org/t/p/w500/corrupt_logo.png",
+  }
+  const failedLogos = { "hero-movies-550": true }
+  const display = hero.resolveHeroTitleDisplay(slide, failedLogos)
+  assert.equal(display.mode, "text")
+  assert.equal(display.title, "Fight Club")
+  assert.equal(display.logoUrl, undefined)
 })
 
 test("createHeroSlide: applies enriched metadata when provided (PH02)", () => {
@@ -192,6 +290,46 @@ test("buildHeroSlides: generates 4 curated slides in exact pillar order (PH01)",
   assert.equal(slides[2].title, "Top Anime")
   assert.equal(slides[3].badge, "#1 For You")
   assert.equal(slides[3].title, "Top For You")
+})
+
+test("buildHeroSlides: propagates logoUrl from candidates or enrichments (LG01, LG02)", () => {
+  const popular = {
+    id: "m-1",
+    tmdbId: 1,
+    title: "Fight Club",
+    mediaType: "MOVIE",
+    logoUrl: "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+  }
+  const airing = {
+    id: "m-2",
+    tmdbId: 2,
+    title: "Breaking Bad",
+    mediaType: "TV",
+  }
+
+  const enrichments = {
+    "m-2": {
+      logoUrl: "https://image.tmdb.org/t/p/w500/breaking_bad_logo.png",
+    },
+  }
+
+  const slides = hero.buildHeroSlides(
+    {
+      movie: popular,
+      tvSeries: airing,
+    },
+    enrichments,
+  )
+
+  assert.equal(slides.length, 2)
+  assert.equal(
+    slides[0].logoUrl,
+    "https://image.tmdb.org/t/p/w500/fight_club_logo.png",
+  )
+  assert.equal(
+    slides[1].logoUrl,
+    "https://image.tmdb.org/t/p/w500/breaking_bad_logo.png",
+  )
 })
 
 test("buildHeroSlides: falls back to #1 Anticipated when personal recommendation is null/empty (PH01)", () => {
