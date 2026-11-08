@@ -4,6 +4,7 @@ import PersonalRecommendationStatus from "../components/PersonalRecommendationSt
 import useFriendSuggestions from "../hooks/useFriendSuggestions";
 import { mapApiMovie } from "../hooks/useSuggestions";
 import useWatchlistSave from "../hooks/useWatchlistSave";
+import HeroBanner from "../components/HeroBanner";
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import AppShell from "../components/AppShell";
@@ -46,55 +47,13 @@ export default function HomePage() {
 
   return (
     <AppShell fullBleed>
-      {/* ── 1. The Hero: ~75vh Brand Moment (No buttons, no cards, transparent cropped asset) ── */}
-      <section className="relative w-full h-[75vh] min-h-[440px] max-h-[820px] flex items-end justify-center overflow-hidden bg-transparent">
-        {/* Transparent cropped character & logo asset: only character & text visible */}
-        <div className="relative z-10 w-full h-full flex items-end justify-center pointer-events-none px-4 pt-4 sm:px-6 sm:pt-6 pb-0">
-          <img
-            src="/heroes/joker_marvel_anton_cropped.png"
-            alt="Movie Night"
-            className="h-full w-auto max-w-full object-contain object-bottom pointer-events-none select-none filter drop-shadow-[0_20px_45px_rgba(0,0,0,0.85)]"
-            loading="eager"
-          />
-        </div>
-      </section>
+      {/* ── 1. Curated Spotlight Hero Banner ── */}
+      <HeroBanner />
 
-      {/* ── 2. Editorial Narrative / App Description ── */}
-      <section className="relative mx-auto max-w-4xl px-6 pt-2 pb-14 sm:pt-3 sm:pb-20 text-center">
-        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight">
-          A single, deliberate space for everything you watch.
-        </h2>
-        <p className="mt-10 sm:mt-12 text-base sm:text-lg leading-relaxed text-text-muted max-w-2xl mx-auto">
-          Here you can track almost anything — from contemporary cinema and prestige television to anime and classic gems. Never run out of great stories with recommendations tuned to what you actually love, rather than an algorithm's guess. Check what your friends have been watching, compare ratings, and browse their personal watchlists to discover what's worth your evening.
-        </p>
-
-        {/* Three quiet editorial pillars */}
-        <div className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-3 text-left border-t border-white/[0.08] pt-10">
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary">Track without boundaries</h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
-              Log watched titles, assign 10-point ratings, and maintain a unified watchlist across Movies, TV Series, and Anime.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary">Curated by your circle</h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
-              Explore what your friends have been enjoying, tap into their consensus picks, and filter out titles you've already seen.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary">Group your way</h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
-              Build private lists for weekend marathons, ongoing seasonals, or comfort rewatches without cluttering your watchlist.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 3. Recommendations (Wide, Distilled, No Redundant Tags/Boxes) ── */}
+      {/* ── 2. Recommendations (Personalized and Friends) ── */}
       <div
         id="recommendations"
-        className="mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-12 pb-28 space-y-16 sm:space-y-24"
+        className="mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-12 pt-8 sm:pt-12 pb-16 sm:pb-20 space-y-16 sm:space-y-24"
       >
         {/* ── Section 1: Personalized Recommendations ── */}
         <PersonalRecommendationStatus suggestions={personalSuggestions} />
@@ -499,6 +458,38 @@ export default function HomePage() {
           </section>
         )}
       </div>
+
+      {/* ── 3. Editorial Narrative / App Description ── */}
+      <section className="relative mx-auto max-w-4xl px-6 pt-10 pb-20 sm:pt-14 sm:pb-28 text-center">
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight">
+          A single, deliberate space for everything you watch.
+        </h2>
+        <p className="mt-10 sm:mt-12 text-base sm:text-lg leading-relaxed text-text-muted max-w-2xl mx-auto">
+          Here you can track almost anything — from contemporary cinema and prestige television to anime and classic gems. Never run out of great stories with recommendations tuned to what you actually love, rather than an algorithm's guess. Check what your friends have been watching, compare ratings, and browse their personal watchlists to discover what's worth your evening.
+        </p>
+
+        {/* Three quiet editorial pillars */}
+        <div className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-3 text-left border-t border-white/[0.08] pt-10">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Track without boundaries</h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+              Log watched titles, assign 10-point ratings, and maintain a unified watchlist across Movies, TV Series, and Anime.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Curated by your circle</h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+              Explore what your friends have been enjoying, tap into their consensus picks, and filter out titles you've already seen.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Group your way</h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+              Build private lists for weekend marathons, ongoing seasonals, or comfort rewatches without cluttering your watchlist.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* Trailer Modal */}
       {activeTrailer && (

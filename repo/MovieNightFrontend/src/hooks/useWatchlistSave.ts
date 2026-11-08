@@ -16,7 +16,7 @@ export default function useWatchlistSave() {
     if (!result.ok) {
       const message = result.error ?? "Could not confirm the save. Please try again.";
       setError(message);
-      toast({ message, type: "error", duration: 6000 });
+      toast({ message, type: "error", duration: 3000 });
       return false;
     }
     toast({
@@ -24,9 +24,35 @@ export default function useWatchlistSave() {
         ? `"${title}" is already in your watched history`
         : `"${title}" saved to Watchlist`,
       type: "success",
+      duration: 3000,
     });
     return true;
   };
 
-  return { saveWatchlist, error };
+  const toggleWatchlist = async (movieId: string, movie?: Movie) => {
+    if (!store.currentUser) return false;
+    const entry = store.entryFor(store.currentUser.id, movieId);
+    const title = movie?.title ?? store.movieById(movieId)?.title ?? "Title";
+    if (!entry) {
+      return saveWatchlist(movieId, movie);
+    }
+    if (entry.status === "watched") {
+      return false;
+    }
+    const result = await store.removeEntry(entry.id);
+    if (!result.ok) {
+      const message = result.error ?? "Could not remove title from Watchlist.";
+      setError(message);
+      toast({ message, type: "error", duration: 3000 });
+      return false;
+    }
+    toast({
+      message: `"${title}" removed from Watchlist`,
+      type: "success",
+      duration: 3000,
+    });
+    return true;
+  };
+
+  return { saveWatchlist, toggleWatchlist, error };
 }

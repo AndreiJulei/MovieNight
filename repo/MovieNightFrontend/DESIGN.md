@@ -77,11 +77,11 @@ Three core surfaces with three distinct jobs:
 - **Peer Filter Controls**: Dropdown triggers using `h-8`, `px-3`, `text-xs`, `border border-white/10 bg-[#111624] text-text-primary hover:border-white/20`.
 - **Nav Dropdown**: Clean plain text list beneath the parent link with seamless hover highlights (`hover:bg-white/[0.04]`).
 - **Poster Cards**: 2:3 ratio with lazy loading, subtle scale transition on hover (`group-hover:scale-105`), and clean rating tags.
-- **Hero**: Single featured item with cinematic backdrop, clean metadata pills, synopsis, and quiet actions.
+- **Hero Banner**: Curated spotlight presentation showcasing prominent titles across core discovery pillars (Movies, TV, Anime, For You) with cinematic backdrop, rank badge, clean metadata pills, direct 'More info' access, and quick-save watchlist toggle (synopsis omitted for unobstructed artwork and streamlined visual density).
 
 ## Do's and Don'ts
 - **DO** keep filters unified in one quiet cluster; do not create separate layout rows or mismatched control styles.
 - **DO** explain missing history or insufficient recommendation coverage and show service errors with recovery actions. Optional decorative shelves may be hidden when empty; preserve required explanatory states.
 - **DO** deduplicate rows (e.g. exclude items already in Newest from Most Popular).
 - **DON'T** invent decorative variations between Movies, TV, and Anime pages; let data differences (e.g. Currently Airing) drive the structure.
-- **DON'T** turn Home into an Explore repeat or a carousel; keep it curated to a single hero and two equal suggestion entry panels.
+- **DON'T** turn Home into an Explore repeat; keep it curated to the spotlight Hero Banner, personalized/friend recommendations shelves, and the editorial narrative.
