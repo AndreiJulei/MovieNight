@@ -136,3 +136,55 @@ export function detailPageReducer(
 }
 
 
+
+/**
+ * Title display for the detail hero: official TMDB logo when present and not
+ * failed to load, otherwise a typographic heading.
+ */
+export function resolveDetailTitleDisplay(
+  movie: { id: string; title: string; logoUrl?: string | null },
+  failedLogos: Record<string, boolean> = {},
+): { mode: "logo"; logoUrl: string; title: string } | { mode: "text"; title: string } {
+  const logo = movie.logoUrl?.trim() || null
+  if (logo && !failedLogos[movie.id]) return { mode: "logo", logoUrl: logo, title: movie.title }
+  return { mode: "text", title: movie.title }
+}
+
+export const RATING_SYNC_MAX_ATTEMPTS = 3
+export const RATING_SYNC_INTERVAL_MS = 4000
+
+/** A title whose release year is after the current year has no provider ratings yet. */
+export function isUnreleasedTitle(year: number | null | undefined, now: Date = new Date()): boolean {
+  return year != null && year > now.getFullYear()
+}
+
+/**
+ * Whether the page should re-fetch while background OMDb enrichment finishes:
+ * a released title still missing IMDb or Rotten Tomatoes data.
+ */
+export function shouldSyncProviderRatings(
+  movie: { year?: number | null; imdb?: number | null; rt?: number | null },
+  attempt: number,
+  now: Date = new Date(),
+): boolean {
+  if (attempt >= RATING_SYNC_MAX_ATTEMPTS) return false
+  if (isUnreleasedTitle(movie.year, now)) return false
+  return movie.imdb == null || movie.rt == null
+}
+
+/** Notice shown when an unreleased title has no provider ratings. */
+export function providerRatingNotice(
+  movie: { year?: number | null; imdb?: number | null; rt?: number | null },
+  now: Date = new Date(),
+): string | null {
+  if (movie.imdb != null || movie.rt != null) return null
+  return isUnreleasedTitle(movie.year, now) ? "Not yet rated" : null
+}
+
+/**
+ * Page state after a title is removed from the library: stays on the page,
+ * collapses the rating panel and clears the per-entry draft; trailer state is kept.
+ */
+export function stateAfterLibraryRemoval(state: MovieDetailPageState): MovieDetailPageState {
+  return { ...state, isSliderExpanded: false, rating: null, notes: "" }
+}
