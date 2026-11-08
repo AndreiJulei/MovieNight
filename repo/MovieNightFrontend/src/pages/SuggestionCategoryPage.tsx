@@ -1,65 +1,78 @@
-import useWatchlistSave from "../hooks/useWatchlistSave";
-import { useEffect, useMemo, useState } from "react";
-import { Link, matchPath, useRouter } from "../router";
-import AppShell from "../components/AppShell";
-import MovieGrid from "../components/MovieGrid";
-import usePersonalRecommendations, { mapPersonalMovie } from "../hooks/usePersonalRecommendations";
-import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus";
-import { useStore } from "../store/MovieStore";
-import TopBar, { type Filters, type SortBy, type ViewMode, type MinRating } from "../components/TopBar";
-import { filterAndSortMovies } from "../components/movieFilterSort";
+import useWatchlistSave from "../hooks/useWatchlistSave"
+import { useEffect, useMemo, useState } from "react"
+import { Link, matchPath, useRouter } from "../router"
+import AppShell from "../components/AppShell"
+import MovieGrid from "../components/MovieGrid"
+import usePersonalRecommendations, {
+  mapPersonalMovie,
+} from "../hooks/usePersonalRecommendations"
+import PersonalRecommendationStatus from "../components/PersonalRecommendationStatus"
+import { useStore } from "../store/MovieStore"
+import TopBar, {
+  type Filters,
+  type SortBy,
+  type ViewMode,
+  type MinRating,
+} from "../components/TopBar"
+import { filterAndSortMovies } from "../components/movieFilterSort"
+import ShelfEmptyCard from "../components/ShelfEmptyCard"
 
 export default function SuggestionCategoryPage() {
-  const store = useStore();
-  const { saveWatchlist, error: saveError } = useWatchlistSave();
-  const { path } = useRouter();
-  const params = matchPath("/suggestions/:category", path);
-  const category = (params?.category || "for-you");
+  const store = useStore()
+  const { saveWatchlist, error: saveError } = useWatchlistSave()
+  const { path } = useRouter()
+  const params = matchPath("/suggestions/:category", path)
+  const category = params?.category || "for-you"
 
-  const suggestions = usePersonalRecommendations();
-  const title = "Personal movie recommendations";
-  const subtitle = "Movies in recommendation order, excluding your watchlist and watched history.";
-  const rawMovies = useMemo(() => suggestions.category?.movies.map(mapPersonalMovie) ?? [], [suggestions.category]);
+  const suggestions = usePersonalRecommendations()
+  const title = "Personal movie recommendations"
+  const rawMovies = useMemo(
+    () => suggestions.category?.movies.map(mapPersonalMovie) ?? [],
+    [suggestions.category],
+  )
 
   // Initialize view mode from localStorage or grid
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("app_view_mode") as ViewMode) || "grid";
+      return localStorage.getItem("app_view_mode") as ViewMode || "grid"
     }
-    return "grid";
-  });
+    return "grid"
+  })
 
-  const [sortBy, setSortBy] = useState<SortBy>("recommendation");
-  const [minRating, setMinRating] = useState<MinRating>(0);
-  useEffect(() => { setSortBy("recommendation"); setMinRating(0); }, [category, store.currentUser?.id]);
+  const [sortBy, setSortBy] = useState<SortBy>("recommendation")
+  const [minRating, setMinRating] = useState<MinRating>(0)
+  useEffect(() => {
+    setSortBy("recommendation")
+    setMinRating(0)
+  }, [category, store.currentUser?.id])
 
   const filters: Filters = {
     sortBy,
     minRating,
     dateRange: "all",
     viewMode,
-  };
+  }
 
   const handleFilterChange = (f: Filters) => {
-    setSortBy(f.sortBy);
-    setMinRating(f.minRating);
-    setViewMode(f.viewMode);
-    localStorage.setItem("app_view_mode", f.viewMode);
-  };
+    setSortBy(f.sortBy)
+    setMinRating(f.minRating)
+    setViewMode(f.viewMode)
+    localStorage.setItem("app_view_mode", f.viewMode)
+  }
 
   const sortedMovies = useMemo(
     () => filterAndSortMovies(rawMovies, sortBy, minRating),
     [rawMovies, sortBy, minRating],
-  );
+  )
 
   // Check if current user already has a movie
   const userHasMovie = (movieId: string) => {
-    const userId = store.currentUser?.id;
-    if (!userId) return false;
-    return !!store.entryFor(userId, movieId);
-  };
+    const userId = store.currentUser?.id
+    if (!userId) return false
+    return !!store.entryFor(userId, movieId)
+  }
 
-  const referrerPath = `/suggestions/${category}`;
+  const referrerPath = `/suggestions/${category}`
 
   return (
     <AppShell>
@@ -72,17 +85,18 @@ export default function SuggestionCategoryPage() {
         </Link>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {title}
         </h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {subtitle}
-        </p>
       </div>
 
       <PersonalRecommendationStatus suggestions={suggestions} />
-      {saveError && <p role="alert" className="mb-4 text-danger">{saveError}</p>}
+      {saveError && (
+        <p role="alert" className="mb-4 text-danger">
+          {saveError}
+        </p>
+      )}
       <TopBar
         recommendationOrder
         count={sortedMovies.length}
@@ -94,15 +108,21 @@ export default function SuggestionCategoryPage() {
         showAddButton={false}
       />
 
-      {sortedMovies.length > 0 && <MovieGrid
-        movies={sortedMovies}
-        compact={viewMode === "compact"}
-        empty="No titles found for this recommendation category."
-        referrerOverride={referrerPath}
-        showAddToWatchlist
-        onAddToWatchlist={saveWatchlist}
-        userHasMovie={userHasMovie}
-      />}
+      {sortedMovies.length > 0 ? (
+        <MovieGrid
+          movies={sortedMovies}
+          compact={viewMode === "compact"}
+          empty="No titles found for this recommendation category."
+          referrerOverride={referrerPath}
+          showAddToWatchlist
+          onAddToWatchlist={saveWatchlist}
+          userHasMovie={userHasMovie}
+        />
+      ) : (
+        <div className="py-8">
+          <ShelfEmptyCard type="personal" />
+        </div>
+      )}
     </AppShell>
-  );
+  )
 }
