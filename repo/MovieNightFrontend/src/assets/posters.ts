@@ -15,6 +15,7 @@ import donniePoster from "../imports/DonnieDarko.jpg";
 export type CastMember = {
   name: string;
   role: string;
+  profileUrl?: string | null;
 };
 
 export type MockPoster = {

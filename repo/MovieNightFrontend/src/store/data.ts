@@ -20,6 +20,8 @@ export type Movie = {
   year: number | null;
   posterSeed?: number | null;
   posterUrl: string | null;
+  backdropUrl?: string | null;
+  runtimeMinutes?: number | null;
   imdb?: number | null;
   tmdbRating?: number | null;
   tmdbVotes?: number | null;

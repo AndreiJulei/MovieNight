@@ -37,6 +37,8 @@ export type AddMovieInput = {
   year?: number;
   posterSeed?: number | null;
   posterUrl?: string | null;
+  backdropUrl?: string | null;
+  runtimeMinutes?: number | null;
   imdb?: number | null;
   rt?: number | null;
   overview?: string;
@@ -585,7 +587,10 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       catalogMovieId: input.catalogMovieId,
       tmdbId: input.tmdbId, title: input.title.trim(),
       year: input.year ?? null, posterSeed: input.posterSeed,
-      posterUrl: input.posterUrl ?? null, imdb: input.imdb, rt: input.rt,
+      posterUrl: input.posterUrl ?? null,
+      backdropUrl: input.backdropUrl ?? null,
+      runtimeMinutes: input.runtimeMinutes ?? null,
+      imdb: input.imdb, rt: input.rt,
       overview: input.overview, mediaType: input.mediaType ?? "MOVIE",
       seasonsCount: input.seasonsCount, episodesCount: input.episodesCount,
     };

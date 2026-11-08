@@ -2,6 +2,12 @@ import { authApi } from "./auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
+export interface ApiCastMemberResponse {
+  name: string;
+  role: string;
+  profileUrl?: string | null;
+}
+
 export interface ApiMovieResponse {
   id?: number;
   tmdbId?: number;
@@ -16,6 +22,7 @@ export interface ApiMovieResponse {
   trailerKey?: string;
   director?: string;
   castMembers?: string;
+  cast?: ApiCastMemberResponse[];
   imdbRating?: number;
   rottenTomatoesRating?: number;
   tmdbVoteAverage?: number;
@@ -464,6 +471,28 @@ export const moviesApi = {
     limit: number = 10,
   ): Promise<ApiMovieResponse[]> {
     return fetchSimilarTitles(API_BASE, tmdbId, mediaType, limit, getAuthHeaders);
+  },
+
+  /**
+   * Fetch credits (cast members with character names and profile photos).
+   */
+  async getCredits(
+    tmdbId: number,
+    mediaType?: string,
+  ): Promise<ApiCastMemberResponse[]> {
+    if (!tmdbId || tmdbId <= 0) return [];
+    try {
+      const qs = mediaType ? `?mediaType=${encodeURIComponent(mediaType)}` : "";
+      const res = await fetch(`${API_BASE}/api/movies/${tmdbId}/credits${qs}`, {
+        headers: getAuthHeaders(),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
 
 };
