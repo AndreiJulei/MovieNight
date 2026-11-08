@@ -263,6 +263,7 @@ public class TmdbClient {
             String airDateGte,
             String airDateLte,
             String withGenres,
+            String withoutGenres,
             String withOriginalLanguage,
             int page
     ) {
@@ -299,6 +300,9 @@ public class TmdbClient {
                         }
                         if (withGenres != null && !withGenres.isBlank()) {
                             builder.queryParam("with_genres", withGenres);
+                        }
+                        if (withoutGenres != null && !withoutGenres.isBlank()) {
+                            builder.queryParam("without_genres", withoutGenres);
                         }
                         if (withOriginalLanguage != null && !withOriginalLanguage.isBlank()) {
                             builder.queryParam("with_original_language", withOriginalLanguage);

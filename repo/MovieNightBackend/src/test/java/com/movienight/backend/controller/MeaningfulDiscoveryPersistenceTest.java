@@ -44,6 +44,7 @@ class MeaningfulDiscoveryPersistenceTest {
     @Autowired DiscoverySnapshotRepository snapshots;
     @Autowired JwtTokenProvider tokens;
     @MockitoBean TmdbClient tmdb;
+    @MockitoBean com.movienight.backend.client.AniListClient aniList; // disabled by default: no live AniList calls
 
     @BeforeEach void clearDisposableSnapshots() {
         reset(tmdb);
@@ -120,17 +121,17 @@ class MeaningfulDiscoveryPersistenceTest {
         String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
         String tomorrow = LocalDate.now(ZoneOffset.UTC).plusDays(1).toString();
         when(tmdb.isConfigured()).thenReturn(true);
-        when(tmdb.discoverTv(anyString(), anyInt(), any(), any(), any(), any(), any(), any(), anyInt()))
+        when(tmdb.discoverTv(anyString(), anyInt(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
             .thenAnswer(call -> {
                 int votes = call.getArgument(1);
-                int page = call.getArgument(8);
+                int page = call.getArgument(9);
                 if (page > 1) return List.of();
                 if (votes == 100) return List.of(tv(99301, "Series", 7.0, 100, 30, yesterday, false),
                     tv(99302, "Upcoming premiere", 8.0, 1000, 50, tomorrow, false),
                     tv(99303, "Anime is separate", 9.0, 1000, 60, yesterday, true));
                 if (votes == 500) return List.of(tv(99304, "TV top", 8.0, 500, 20, yesterday, false));
-                if (votes == 50) return List.of(tv(99305, "Anime popular", 7.0, 50, 40, yesterday, true));
-                if (votes == 200) return List.of(tv(99306, "Anime top", 8.0, 200, 25, yesterday, true));
+                if (votes == 150) return List.of(tv(99305, "Anime popular", 7.0, 150, 40, yesterday, true));
+                if (votes == 300) return List.of(tv(99306, "Anime top", 8.0, 300, 25, yesterday, true));
                 return List.of();
             });
         User user = users.save(User.builder().username("discovery-" + UUID.randomUUID()).password("test").build());
@@ -144,9 +145,27 @@ class MeaningfulDiscoveryPersistenceTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.categories[2].movies[0].title").value("TV top"));
         mvc.perform(post("/api/suggestions/explore/anime/popular/refresh").header("Authorization", token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.categories[1].movies[0].title").value("Anime popular"))
-            .andExpect(jsonPath("$.categories[1].movies[0].voteCount").value(50));
+            .andExpect(jsonPath("$.categories[1].movies[0].voteCount").value(150));
         mvc.perform(post("/api/suggestions/explore/anime/top-rated/refresh").header("Authorization", token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.categories[2].movies[0].title").value("Anime top"));
+    }
+
+    @Test void animeShelvesExcludeKidsAndFamilyAndRequireJapaneseAnimationWhileTvDoesNot() throws Exception {
+        when(tmdb.isConfigured()).thenReturn(true);
+        when(tmdb.discoverTv(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        User user = users.save(User.builder().username("discovery-" + UUID.randomUUID()).password("test").build());
+        String token = "Bearer " + tokens.generateToken(user.getUsername(), user.getId(), user.getRole());
+        var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        for (String shelf : List.of("current-season", "popular", "top-rated", "upcoming"))
+            mvc.perform(post("/api/suggestions/explore/anime/" + shelf + "/refresh").header("Authorization", token));
+        org.mockito.Mockito.verify(tmdb, org.mockito.Mockito.atLeastOnce()).discoverTv(any(), any(), any(), any(), any(), any(),
+            eq("16"), eq("10762|10751"), eq("ja"), anyInt());
+        org.mockito.Mockito.verify(tmdb, org.mockito.Mockito.never()).discoverTv(any(), any(), any(), any(), any(), any(),
+            any(), isNull(), eq("ja"), anyInt());
+        mvc.perform(post("/api/suggestions/explore/tv/popular/refresh").header("Authorization", token));
+        org.mockito.Mockito.verify(tmdb, org.mockito.Mockito.atLeastOnce()).discoverTv(any(), any(), any(), any(), any(), any(),
+            isNull(), isNull(), isNull(), anyInt());
     }
 
     @Test void coldAndScheduledRefreshesCoalesceConcurrentRequests() throws Exception {

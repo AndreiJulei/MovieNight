@@ -36,6 +36,7 @@ class PersonalRecommendationsPersistenceTest {
     @Autowired PersonalizedRecommendationRepository recommendations;
     @Autowired com.movienight.backend.service.SuggestionScheduler scheduler;
     @MockitoBean TmdbClient tmdb;
+    @MockitoBean com.movienight.backend.client.AniListClient aniList; // disabled by default: no live AniList calls
     MockMvc mvc;
     User owner;
     static long nextId = 99600000;

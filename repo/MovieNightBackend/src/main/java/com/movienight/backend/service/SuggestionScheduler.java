@@ -33,7 +33,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class SuggestionScheduler {
 
+    /** TMDB TV genre ids: Animation, and Kids/Family (excluded from curated anime shelves; pipe = either). */
+    static final String ANIMATION_GENRE = "16";
+    static final String KIDS_AND_FAMILY_GENRES = "10762|10751";
+    static final int ANIME_POPULAR_MIN_VOTES = 150;
+    static final int ANIME_TOP_RATED_MIN_VOTES = 300;
+
     private final TmdbClient tmdbClient;
+    private final AnimeEnrichmentService animeEnrichment;
     private final CachedMovieListRepository cachedMovieListRepository;
     private final DiscoverySnapshotRepository discoverySnapshotRepository;
     private final UserRepository userRepository;
@@ -110,7 +117,7 @@ public class SuggestionScheduler {
         };
     }
 
-    /** Rebuild one shelf; the transaction leaves its previous publication intact on failure. */
+    /** Rebuild one shelf; the previous publication stays intact unless the whole new shelf is built. */
     public void refreshCategory(String mediaType, MovieListType listType) {
         if (!tmdbClient.isConfigured()) throw new IllegalStateException("Discovery provider is unavailable. Retry.");
         String type = mediaType == null ? "" : mediaType.trim().toUpperCase();
@@ -122,8 +129,9 @@ public class SuggestionScheduler {
             catch (CompletionException failure) { throw new IllegalStateException("Discovery refresh failed. Retry.", failure.getCause()); }
         }
         try {
-            new org.springframework.transaction.support.TransactionTemplate(transactionManager)
-                    .executeWithoutResult(status -> rebuildCategory(type, listType));
+            // Provider calls (TMDB, AniList) run outside any DB transaction; only publication is transactional,
+            // so a failure leaves the previous publication intact and no connection is held during HTTP.
+            rebuildCategory(type, listType);
             owned.complete(null);
         } catch (RuntimeException failure) {
             owned.completeExceptionally(failure);
@@ -147,19 +155,23 @@ public class SuggestionScheduler {
                 default -> throw new IllegalArgumentException("Invalid movie shelf");
             }
         } else if ("TV".equals(type) || "ANIME".equals(type)) {
-            int votes = listType == MovieListType.TOP_RATED ? ("TV".equals(type) ? 500 : 200)
-                    : listType == MovieListType.POPULAR ? ("TV".equals(type) ? 100 : 50) : 0;
+            boolean anime = "ANIME".equals(type);
+            int votes = listType == MovieListType.TOP_RATED ? (anime ? ANIME_TOP_RATED_MIN_VOTES : 500)
+                    : listType == MovieListType.POPULAR ? (anime ? ANIME_POPULAR_MIN_VOTES : 100) : 0;
+            String withGenres = anime ? ANIMATION_GENRE : null;
+            String withoutGenres = anime ? KIDS_AND_FAMILY_GENRES : null;
+            String language = anime ? "ja" : null;
             if (listType == MovieListType.CURRENTLY_AIRING && "TV".equals(type)) {
                 refreshTvOnTheAirCategory(type, listType, 10);
             } else if (listType == MovieListType.CURRENTLY_AIRING) {
                 refreshTvCategory(type, listType, "popularity.desc", 5, null, now,
-                        season.start, season.end, "16", null, 10);
+                        season.start, season.end, withGenres, withoutGenres, language, 10);
             } else if (listType == MovieListType.POPULAR || listType == MovieListType.TOP_RATED) {
                 refreshTvCategory(type, listType, listType == MovieListType.POPULAR ? "popularity.desc" : "vote_average.desc",
-                        votes, null, now, null, null, "ANIME".equals(type) ? "16" : null, null, 10);
+                        votes, null, now, null, null, withGenres, withoutGenres, language, 10);
             } else if (listType == MovieListType.UPCOMING) {
                 refreshTvCategory(type, listType, "popularity.desc", 0, today.plusDays(1).toString(),
-                        nextYear, null, null, "ANIME".equals(type) ? "16" : null, null, 10);
+                        nextYear, null, null, withGenres, withoutGenres, language, 10);
             } else throw new IllegalArgumentException("Invalid series shelf");
         } else throw new IllegalArgumentException("Invalid media type");
     }
@@ -239,6 +251,7 @@ public class SuggestionScheduler {
             String airDateGte,
             String airDateLte,
             String withGenres,
+            String withoutGenres,
             String withOriginalLanguage,
             int maxPages
     ) {
@@ -249,7 +262,7 @@ public class SuggestionScheduler {
             for (int page = 1; page <= maxPages; page++) {
                 List<TmdbSearchResponse.TmdbMovieSummary> results = tmdbClient.discoverTv(
                         source, minVotes, firstAirDateGte, firstAirDateLte, airDateGte, airDateLte,
-                        withGenres, withOriginalLanguage, page);
+                        withGenres, withoutGenres, withOriginalLanguage, page);
                 if (results == null) throw new IllegalStateException("Invalid discovery response");
                 if (results.isEmpty()) {
                     streamEnded = true;
@@ -293,15 +306,16 @@ public class SuggestionScheduler {
             if (listType == MovieListType.RECENT && release.isBefore(today.minusDays(90))) continue;
             unique.putIfAbsent(item.getId(), item);
         }
+        Map<Long, AniListMapping> anime = curateAnime(mediaType, listType, unique);
         List<TmdbSearchResponse.TmdbMovieSummary> ordered = new ArrayList<>(unique.values());
         if (listType == MovieListType.POPULAR) ordered.sort(Comparator
                 .comparing(TmdbSearchResponse.TmdbMovieSummary::getPopularity).reversed()
                 .thenComparing(TmdbSearchResponse.TmdbMovieSummary::getVoteCount, Comparator.reverseOrder())
                 .thenComparing(TmdbSearchResponse.TmdbMovieSummary::getId));
         if (listType == MovieListType.TOP_RATED) ordered.sort(Comparator
-                .comparingDouble((TmdbSearchResponse.TmdbMovieSummary item) ->
+                .comparingDouble((TmdbSearchResponse.TmdbMovieSummary item) -> AnimeShelfPolicy.topRatedScore(
                         (item.getVoteCount() * item.getVoteAverage() + minimumVotes * 6.0)
-                                / (item.getVoteCount() + minimumVotes)).reversed()
+                                / (item.getVoteCount() + minimumVotes), anime.get(item.getId()))).reversed()
                 .thenComparing(TmdbSearchResponse.TmdbMovieSummary::getVoteCount, Comparator.reverseOrder())
                 .thenComparing(TmdbSearchResponse.TmdbMovieSummary::getId));
         List<CachedMovieList> entries = new ArrayList<>();
@@ -311,16 +325,40 @@ public class SuggestionScheduler {
                 .voteCount(item.getVoteCount()).popularity(item.getPopularity())
                 .releaseDate("MOVIE".equals(mediaType) ? item.getReleaseDate() : item.getFirstAirDate())
                 .rankOrder(entries.size() + 1).build());
-        cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
-        cachedMovieListRepository.saveAll(entries);
-        DiscoverySnapshot snapshot = discoverySnapshotRepository.findByMediaTypeAndListType(mediaType, listType)
-                .orElseGet(() -> DiscoverySnapshot.builder().mediaType(mediaType).listType(listType).build());
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        snapshot.setUpdatedAt(now);
-        discoverySnapshotRepository.save(snapshot);
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            cachedMovieListRepository.deleteByMediaTypeAndListType(mediaType, listType);
+            cachedMovieListRepository.saveAll(entries);
+            DiscoverySnapshot snapshot = discoverySnapshotRepository.findByMediaTypeAndListType(mediaType, listType)
+                    .orElseGet(() -> DiscoverySnapshot.builder().mediaType(mediaType).listType(listType).build());
+            snapshot.setUpdatedAt(now);
+            discoverySnapshotRepository.save(snapshot);
+        });
         categoryPublicationMetaMap.put(mediaType + ":" + listType,
                 new CategoryPublicationMeta(mediaType, listType, selectionLimitReached, providerExhausted, now));
         log.info("Cached {} items for [{} - {}]", entries.size(), mediaType, listType);
+    }
+
+    /**
+     * Apply AniList curation to candidates that already passed the TMDB rules (removing them from
+     * {@code unique}) and return their mappings. A provider failure propagates so the previous
+     * publication stays in place; no metadata is invented.
+     */
+    private Map<Long, AniListMapping> curateAnime(String mediaType, MovieListType listType,
+                                                  Map<Long, TmdbSearchResponse.TmdbMovieSummary> unique) {
+        Map<Long, AniListMapping> mappings = new LinkedHashMap<>();
+        if (!"ANIME".equals(mediaType) || !animeEnrichment.isEnabled()) return mappings;
+        boolean floor = listType == MovieListType.POPULAR || listType == MovieListType.TOP_RATED;
+        for (var entry : List.copyOf(unique.entrySet())) {
+            TmdbSearchResponse.TmdbMovieSummary item = entry.getValue();
+            LocalDate first = date(item.getFirstAirDate());
+            AniListMapping mapping = animeEnrichment.resolve(item.getId(), item.getEffectiveTitle(),
+                    first == null ? null : first.getYear());
+            if (AnimeShelfPolicy.excludedFromCuratedShelves(mapping)
+                    || floor && !AnimeShelfPolicy.meetsSignalFloor(mapping)) unique.remove(entry.getKey());
+            else mappings.put(entry.getKey(), mapping);
+        }
+        return mappings;
     }
 
     private boolean validAudience(Double average) {

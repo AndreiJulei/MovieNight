@@ -32,6 +32,7 @@ class TvTitlesPersistenceTest {
     @Autowired com.movienight.backend.repository.DiscoverySnapshotRepository snapshots;
     @Autowired com.movienight.backend.repository.MovieRepository catalog;
     @MockitoBean TmdbClient tmdb;
+    @MockitoBean com.movienight.backend.client.AniListClient aniList; // disabled by default: no live AniList calls
     MockMvc mvc;
     User owner;
     static long nextId = 99800000;
@@ -58,7 +59,7 @@ class TvTitlesPersistenceTest {
         tv.setOriginalLanguage("ja"); tv.setOriginCountry(java.util.List.of("JP"));
         tv.setFirstAirDate(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(1).toString());
         tv.setVoteAverage(7.5); tv.setVoteCount(1200); tv.setPopularity(60.0);
-        when(tmdb.discoverTv(any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+        when(tmdb.discoverTv(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(java.util.List.of(anime, tv, anime));
         when(tmdb.getTvOnTheAir(anyInt())).thenReturn(java.util.List.of(anime, tv));
         read("/api/movies/explore/tv").andExpect(status().isOk())
