@@ -79,6 +79,7 @@ export interface ApiFriendRatingResponse {
   watchedAt?: string;
 }
 
+import { fetchSimilarTitles } from "./similarMovies";
 import {
   boundedRead,
   type BoundedReadOptions,
@@ -451,6 +452,18 @@ export const moviesApi = {
     } catch {
       throw new Error("Could not refresh personal movies. Retry to try again.");
     }
+  },
+
+  /**
+   * Fetch similar titles for a given movie/show from precomputed cosine similarity
+   * with graceful fallback to TMDB recommendations. Responses are cached in sessionStorage.
+   */
+  getSimilarTitles(
+    tmdbId: number,
+    mediaType?: string,
+    limit: number = 10,
+  ): Promise<ApiMovieResponse[]> {
+    return fetchSimilarTitles(API_BASE, tmdbId, mediaType, limit, getAuthHeaders);
   },
 
 };
