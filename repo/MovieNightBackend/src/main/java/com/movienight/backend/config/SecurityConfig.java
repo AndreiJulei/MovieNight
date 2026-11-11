@@ -3,6 +3,7 @@ package com.movienight.backend.config;
 import com.movienight.backend.security.CustomUserDetailsService;
 import com.movienight.backend.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -31,6 +32,10 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    /** Comma-separated exact browser origins allowed in addition to localhost (set for hosted deployments). */
+    @Value("${app.cors.allowed-origins:}")
+    private String extraAllowedOrigins;
 
     /**
      * Password encoder bean used across the application to hash and verify passwords.
@@ -61,7 +66,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
+        List<String> origins = new java.util.ArrayList<>(List.of("http://localhost:*", "http://127.0.0.1:*"));
+        Arrays.stream(extraAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(o -> o.startsWith("https://") && !o.contains("*"))
+                .forEach(origins::add);
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Retry-After"));

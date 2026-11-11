@@ -1,0 +1,31 @@
+# Render Blueprint: free backend web service. Deploys are triggered by the
+# GitHub Actions "Deploy" workflow (after CI) through a deploy hook, so Render's
+# own auto-deploy is off. Secrets (sync: false) are set in the Render dashboard/CLI.
+services:
+  - type: web
+    name: movienight-backend
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: repo/MovieNightBackend
+    dockerfilePath: ./Dockerfile
+    autoDeploy: false
+    envVars:
+      - key: MN_DB_URL
+        sync: false
+      - key: MN_DB_USER
+        sync: false
+      - key: MN_DB_PASSWORD
+        sync: false
+      - key: MN_MIGRATION_USER
+        sync: false
+      - key: MN_MIGRATION_PASSWORD
+        sync: false
+      - key: MN_JWT_SECRET
+        sync: false
+      - key: MN_TMDB_KEY
+        sync: false
+      - key: MN_OMDB_KEY
+        sync: false
+      - key: MN_ALLOWED_ORIGINS
+        sync: false
