@@ -46,6 +46,11 @@ public class AnimeEnrichmentService {
 
     public boolean isEnabled() { return client.isEnabled(); }
 
+    /** Stored mapping of any age, never calling AniList; null when this title has not been resolved. */
+    public AniListMapping findStored(long tmdbId) {
+        return repository.findByResourceTypeAndTmdbId(ResourceType.TV, tmdbId).orElse(null);
+    }
+
     /**
      * Return the stored or freshly resolved mapping for a TMDB TV title.
      * @throws AniListUnavailableException when AniList is needed but cannot answer and nothing usable is stored

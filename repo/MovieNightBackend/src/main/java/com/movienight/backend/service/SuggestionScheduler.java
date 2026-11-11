@@ -1,5 +1,6 @@
 package com.movienight.backend.service;
 
+import com.movienight.backend.client.AniListUnavailableException;
 import com.movienight.backend.client.TmdbClient;
 import com.movienight.backend.dto.external.TmdbSearchResponse;
 import com.movienight.backend.model.*;
@@ -349,11 +350,28 @@ public class SuggestionScheduler {
         Map<Long, AniListMapping> mappings = new LinkedHashMap<>();
         if (!"ANIME".equals(mediaType) || !animeEnrichment.isEnabled()) return mappings;
         boolean floor = listType == MovieListType.POPULAR || listType == MovieListType.TOP_RATED;
+        // With a published shelf, a provider failure aborts so that shelf stays unchanged. With none yet,
+        // an empty page is worse: fall back to the TMDB-only rules for titles AniList has not resolved.
+        boolean firstPublication = discoverySnapshotRepository.findByMediaTypeAndListType(mediaType, listType).isEmpty();
+        boolean providerDown = false;
         for (var entry : List.copyOf(unique.entrySet())) {
             TmdbSearchResponse.TmdbMovieSummary item = entry.getValue();
             LocalDate first = date(item.getFirstAirDate());
-            AniListMapping mapping = animeEnrichment.resolve(item.getId(), item.getEffectiveTitle(),
-                    first == null ? null : first.getYear());
+            AniListMapping mapping = null;
+            if (providerDown) {
+                mapping = animeEnrichment.findStored(item.getId());
+            } else {
+                try {
+                    mapping = animeEnrichment.resolve(item.getId(), item.getEffectiveTitle(),
+                            first == null ? null : first.getYear());
+                } catch (AniListUnavailableException failure) {
+                    if (!firstPublication) throw failure;
+                    providerDown = true;
+                    log.warn("AniList unavailable (retry after {}s); publishing first {} shelf with TMDB-only rules for unresolved titles.",
+                            failure.getRetryAfterSeconds(), listType);
+                    mapping = animeEnrichment.findStored(item.getId());
+                }
+            }
             if (AnimeShelfPolicy.excludedFromCuratedShelves(mapping)
                     || floor && !AnimeShelfPolicy.meetsSignalFloor(mapping)) unique.remove(entry.getKey());
             else mappings.put(entry.getKey(), mapping);

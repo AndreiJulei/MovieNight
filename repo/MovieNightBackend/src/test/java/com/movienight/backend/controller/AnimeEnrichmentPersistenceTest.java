@@ -145,4 +145,16 @@ class AnimeEnrichmentPersistenceTest {
         scheduler.refreshCategory("TV", MovieListType.POPULAR);
         verify(anilist, never()).searchAnime(anyString());
     }
+
+    // AL03, first load: no published shelf yet must not leave the page empty.
+    @Test void firstPublicationFallsBackToTmdbRulesWhenAniListIsDownAndStopsCallingIt() {
+        tmdbReturns(tv(81, "One", 8.5, 1000), tv(82, "Two", 8.5, 1000));
+        when(anilist.searchAnime(anyString())).thenThrow(new AniListUnavailableException("rate limited", 16, null));
+
+        scheduler.refreshCategory("ANIME", MovieListType.POPULAR);
+
+        assertThat(shelf(MovieListType.POPULAR)).containsExactlyInAnyOrder(81L, 82L);
+        verify(anilist, times(1)).searchAnime(anyString()); // circuit-broken after the first failure
+        assertThat(mappings.count()).isZero(); // nothing invented or stored as "unmatched"
+    }
 }
