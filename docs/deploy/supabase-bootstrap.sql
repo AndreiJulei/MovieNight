@@ -8,3 +8,7 @@ GRANT mn_migrate, mn_runtime TO postgres;   -- lets the owner create objects on 
 CREATE SCHEMA movienight AUTHORIZATION mn_migrate;
 GRANT USAGE ON SCHEMA movienight TO mn_runtime;
 GRANT CONNECT ON DATABASE postgres TO mn_migrate, mn_runtime;
+-- Supabase grants TEMP on the database to PUBLIC; the app's startup guard rejects a runtime role
+-- that can create temporary objects. Revoke only TEMP (CONNECT stays so Supabase's own roles work).
+REVOKE TEMP ON DATABASE postgres FROM PUBLIC;
+GRANT TEMP ON DATABASE postgres TO postgres;

@@ -31,13 +31,13 @@ public class PostgresStorageConfiguration {
                     "jdbc:postgresql://[a-zA-Z0-9.\\-:\\[\\]]+/[a-zA-Z0-9_]+(\\?sslmode=(disable|require|verify-ca|verify-full))?")) {
                 throw new IllegalStateException("MN_DB_URL must name an explicit PostgreSQL database; only sslmode is allowed as a URL option");
             }
-            if (env.getRequiredProperty("MN_DB_USER").equals(env.getRequiredProperty("MN_MIGRATION_USER"))) {
-                throw new IllegalStateException("PostgreSQL runtime and migration roles must differ");
-            }
             for (String key : new String[]{"MN_DB_USER", "MN_MIGRATION_USER"}) {
-                if (!env.getRequiredProperty(key).matches("[a-z_][a-z0-9_]{0,62}")) {
-                    throw new IllegalStateException(key + " must be a lowercase PostgreSQL role name");
+                if (!env.getRequiredProperty(key).matches(LOGIN_NAME)) {
+                    throw new IllegalStateException(key + " must be a lowercase PostgreSQL role name, optionally followed by .<pooler-project-ref>");
                 }
+            }
+            if (roleName(env.getRequiredProperty("MN_DB_USER")).equals(roleName(env.getRequiredProperty("MN_MIGRATION_USER")))) {
+                throw new IllegalStateException("PostgreSQL runtime and migration roles must differ");
             }
             if (env.getRequiredProperty("MN_JWT_SECRET").getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 32) {
                 throw new IllegalStateException("MN_JWT_SECRET must contain at least 32 UTF-8 bytes");
@@ -56,6 +56,15 @@ public class PostgresStorageConfiguration {
         };
     }
 
+    /** A role name, optionally with a pooler tenant suffix (e.g. Supabase's {@code mn_runtime.<project-ref>}). */
+    static final String LOGIN_NAME = "[a-z_][a-z0-9_]{0,62}(\\.[a-z0-9]{1,40})?";
+
+    /** The PostgreSQL role behind a login name: the pooler suffix is routing only and is not part of the role. */
+    static String roleName(String login) {
+        int dot = login.indexOf('.');
+        return dot < 0 ? login : login.substring(0, dot);
+    }
+
     @Bean
     Flyway postgresMigrations(Environment env) {
         try {
@@ -63,7 +72,7 @@ public class PostgresStorageConfiguration {
                     .dataSource(env.getRequiredProperty("MN_DB_URL"),
                             env.getRequiredProperty("MN_MIGRATION_USER"), env.getRequiredProperty("MN_MIGRATION_PASSWORD"))
                     .schemas("movienight").defaultSchema("movienight").createSchemas(false)
-                    .placeholders(java.util.Map.of("runtimeRole", env.getRequiredProperty("MN_DB_USER")))
+                    .placeholders(java.util.Map.of("runtimeRole", roleName(env.getRequiredProperty("MN_DB_USER"))))
                     .locations(env.getProperty("app.migrations.locations", "classpath:db/postgres"))
                     .target(env.getProperty("app.migrations.target", "latest"))
                     .cleanDisabled(true).baselineOnMigrate(false).outOfOrder(false)
