@@ -88,6 +88,12 @@ export interface ApiFriendRatingResponse {
 }
 
 import { fetchSimilarTitles } from "./similarMovies";
+import { cachedRead, invalidateReadCache, type CacheWindow } from "./readCache";
+
+// Explore data changes slowly and every extra shelf costs a network round trip, so revisits reuse it.
+// Windows stay well under the server's 30-minute Explore session so a cached session id is still usable.
+const EXPLORE_OVERVIEW_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 10 * 60_000 };
+const EXPLORE_PAGE_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 5 * 60_000 };
 import {
   boundedRead,
   type BoundedReadOptions,
@@ -159,6 +165,8 @@ async function libraryRequest<T>(url: string, init: RequestInit = {}): Promise<T
       }
       throw err;
     }
+    // Any confirmed write (library, lists, ratings, discovery refresh) may change what pages show.
+    if (init.method && init.method.toUpperCase() !== "GET") invalidateReadCache();
     return await res.json() as T;
   } catch (err) {
     if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
@@ -395,14 +403,15 @@ export const moviesApi = {
       ...options,
       userScope: options?.userScope ?? authApi.getToken() ?? "anon",
     };
-    return boundedRead(actionKey, async (signal) => {
-      const response = await libraryRequest<ApiSuggestionsResponse>(
-        `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`,
-        { signal },
-      );
-      if (!Array.isArray(response?.categories)) throw new Error("Invalid discovery response. Retry.");
-      return response;
-    }, effectiveOptions);
+    return cachedRead(`${effectiveOptions.userScope}:${actionKey}`, EXPLORE_OVERVIEW_CACHE, (background) =>
+      boundedRead(actionKey, async (signal) => {
+        const response = await libraryRequest<ApiSuggestionsResponse>(
+          `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}`,
+          { signal },
+        );
+        if (!Array.isArray(response?.categories)) throw new Error("Invalid discovery response. Retry.");
+        return response;
+      }, background ? { ...effectiveOptions, signal: undefined } : effectiveOptions));
   },
 
   /**
@@ -434,7 +443,9 @@ export const moviesApi = {
       ...options,
       userScope: options?.userScope ?? authApi.getToken() ?? "anon",
     };
-    return boundedRead(actionKey, (signal) => libraryRequest<ApiExploreCategoryPageResponse>(url, { signal }), effectiveOptions);
+    return cachedRead(`${effectiveOptions.userScope}:${actionKey}`, EXPLORE_PAGE_CACHE, (background) =>
+      boundedRead(actionKey, (signal) => libraryRequest<ApiExploreCategoryPageResponse>(url, { signal }),
+        background ? { ...effectiveOptions, signal: undefined } : effectiveOptions));
   },
 
   async refreshExploreCategory(mediaType: string, category: string): Promise<ApiSuggestionsResponse> {
