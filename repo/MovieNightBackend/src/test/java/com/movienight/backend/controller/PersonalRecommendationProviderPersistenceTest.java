@@ -58,7 +58,8 @@ class PersonalRecommendationProviderPersistenceTest {
         var tokens = context.getBean(JwtTokenProvider.class);
         token = "Bearer " + tokens.generateToken(owner.getUsername(), owner.getId(), owner.getRole());
         Movie watched = catalog.save(Movie.builder().tmdbId(99700001L).title("Watched").mediaType("MOVIE").build());
-        catalog.save(Movie.builder().tmdbId(99700002L).title("Candidate").mediaType("MOVIE").build());
+        catalog.save(Movie.builder().tmdbId(99700002L).title("Candidate").mediaType("MOVIE")
+                .tmdbVoteAverage(7.5).tmdbVoteCount(2000).build());
         entries.save(UserMovieEntry.builder().user(owner).movie(watched).status(MovieStatus.WATCHED).build());
         similarities.save(MovieSimilarity.builder().tmdbId(99700001L).neighborTmdbId(99700002L).score(1.0).build());
         refresh().andExpect(status().isOk());
@@ -71,7 +72,7 @@ class PersonalRecommendationProviderPersistenceTest {
         status = 503; body = "{}";
         refresh().andExpect(status().is5xxServerError());
         read().andExpect(status().is5xxServerError());
-        status = 200; body = "{\"results\":[{\"id\":99700003,\"title\":\"From TMDB\",\"release_date\":\"2001-02-03\",\"poster_path\":\"/poster.jpg\"}]}";
+        status = 200; body = "{\"results\":[{\"id\":99700003,\"title\":\"From TMDB\",\"release_date\":\"2001-02-03\",\"poster_path\":\"/poster.jpg\",\"vote_average\":7.5,\"vote_count\":2000}]}";
         refresh().andExpect(status().isOk());
         read().andExpect(status().isOk()).andExpect(jsonPath("$.categories[0].movies", hasSize(2)))
             .andExpect(jsonPath("$.categories[0].movies[1].title").value("From TMDB"))

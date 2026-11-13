@@ -88,12 +88,14 @@ export interface ApiFriendRatingResponse {
 }
 
 import { fetchSimilarTitles } from "./similarMovies";
-import { cachedRead, invalidateReadCache, type CacheWindow } from "./readCache";
+import { cachedRead, forgetCachedRead, invalidateReadCache, type CacheWindow } from "./readCache";
 
 // Explore data changes slowly and every extra shelf costs a network round trip, so revisits reuse it.
 // Windows stay well under the server's 30-minute Explore session so a cached session id is still usable.
 const EXPLORE_OVERVIEW_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 10 * 60_000 };
 const EXPLORE_PAGE_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 5 * 60_000 };
+// Explore highlights (#26) are charts refreshed daily (spotlight) and every 4 hours (Top 10).
+const EXPLORE_HIGHLIGHTS_CACHE: CacheWindow = { freshMs: 5 * 60_000, maxAgeMs: 30 * 60_000 };
 import {
   boundedRead,
   type BoundedReadOptions,
@@ -418,6 +420,27 @@ export const moviesApi = {
   },
 
   /**
+   * Fetch an Explore category's highlights (#26): the spotlight hero's weekly trending titles
+   * ("spotlight") and the "Top 10 today" chart ("top-10"). Not user-specific. A response with an
+   * unavailable chart is not kept, so a retry asks the server again.
+   */
+  async getExploreHighlights(mediaType: string, options?: BoundedReadOptions): Promise<ApiSuggestionsResponse> {
+    const actionKey = `getExploreHighlights:${mediaType.toLowerCase()}`;
+    const cacheKey = `shared:${actionKey}`;
+    const response = await cachedRead(cacheKey, EXPLORE_HIGHLIGHTS_CACHE, (background) =>
+      boundedRead(actionKey, async (signal) => {
+        const result = await libraryRequest<ApiSuggestionsResponse>(
+          `${API_BASE}/api/movies/explore/${encodeURIComponent(mediaType)}/highlights`,
+          { signal },
+        );
+        if (!Array.isArray(result?.categories)) throw new Error("Invalid highlights response. Retry.");
+        return result;
+      }, background ? { ...options, signal: undefined } : options));
+    if (response.categories.some((c) => c.state === "UNAVAILABLE")) forgetCachedRead(cacheKey);
+    return response;
+  },
+
+  /**
    * Fetch paginated Explore category items with pinned session and server sorting/filtering.
    */
   async getExploreCategoryPage(
@@ -526,6 +549,8 @@ export interface ApiSuggestionMovieItem {
   score?: number;
   reason?: string;
   mediaType?: string;
+  /** Explore spotlight titles only (#26). */
+  genres?: string[];
 }
 
 export interface ApiSuggestionCategory {

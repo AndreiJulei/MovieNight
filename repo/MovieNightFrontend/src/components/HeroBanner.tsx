@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { Link } from "../router"
 import { useStore } from "../store/MovieStore"
 import useWatchlistSave from "../hooks/useWatchlistSave"
-import { useHeroSlides } from "../hooks/useHeroSlides"
 import type { Movie } from "../store/data"
 import {
   HERO_AUTOPLAY_INTERVAL_MS,
@@ -14,9 +13,41 @@ import {
   type HeroSlide,
 } from "./heroBannerLogic"
 
-export default function HeroBanner() {
+/**
+ * Banner height per placement. Home keeps its full cinematic height; an
+ * Explore category's spotlight (#26) is shorter (~55vh on desktop) so its
+ * Top 10 row and shelves start sooner. The phone layout follows #28.
+ */
+const HERO_HEIGHT_CLASS = {
+  home: "h-[65vh] min-h-[460px] max-h-[620px] sm:h-[75vh] sm:min-h-[500px] sm:max-h-[820px]",
+  spotlight:
+    "h-[60vh] min-h-[420px] max-h-[560px] sm:h-[55vh] sm:min-h-[440px] sm:max-h-[640px]",
+} as const
+
+/**
+ * Bottom room under the slide text. On phones the spotlight keeps its actions
+ * above the slide controls, which span most of a 360px screen.
+ */
+const HERO_CONTENT_BOTTOM_CLASS = {
+  home: "pb-10 sm:pb-14",
+  spotlight: "pb-24 sm:pb-14",
+} as const
+
+export default function HeroBanner({
+  slides,
+  loading,
+  variant = "home",
+  label,
+  ariaLabel = "Curated spotlight hero banner",
+}: {
+  slides: HeroSlide[]
+  loading: boolean
+  variant?: keyof typeof HERO_HEIGHT_CLASS
+  /** Small label above each slide's badge, e.g. an Explore category name (#26). */
+  label?: string
+  ariaLabel?: string
+}) {
   const store = useStore()
-  const { slides, loading } = useHeroSlides()
   const { toggleWatchlist } = useWatchlistSave()
   const currentUser = store.currentUser
 
@@ -129,7 +160,7 @@ export default function HeroBanner() {
     return (
       <section
         aria-label="Loading spotlight titles"
-        className="relative w-full h-[65vh] min-h-[460px] max-h-[620px] sm:h-[75vh] sm:min-h-[500px] sm:max-h-[820px] bg-[#05070d] animate-pulse overflow-hidden flex items-end"
+        className={`relative w-full ${HERO_HEIGHT_CLASS[variant]} bg-[#05070d] animate-pulse overflow-hidden flex items-end`}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-[#05070d] via-[#05070d]/70 to-transparent" />
         <div className="relative z-10 mx-auto max-w-[1400px] w-full px-5 sm:px-8 lg:px-12 pb-10 sm:pb-14 space-y-3">
@@ -154,7 +185,7 @@ export default function HeroBanner() {
     <section
       role="region"
       aria-roledescription="spotlight"
-      aria-label="Curated spotlight hero banner"
+      aria-label={ariaLabel}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocus={(e) => {
@@ -169,7 +200,7 @@ export default function HeroBanner() {
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="relative w-full h-[65vh] min-h-[460px] max-h-[620px] sm:h-[75vh] sm:min-h-[500px] sm:max-h-[820px] overflow-hidden bg-[#05070d] select-none"
+      className={`relative w-full ${HERO_HEIGHT_CLASS[variant]} overflow-hidden bg-[#05070d] select-none`}
     >
       {/* Slides with smooth crossfade */}
       {slides.map((slide, index) => {
@@ -216,8 +247,17 @@ export default function HeroBanner() {
             <div className="absolute inset-y-0 left-0 w-full sm:w-3/5 bg-gradient-to-r from-[#05070d]/80 via-[#05070d]/30 to-transparent pointer-events-none" />
 
             {/* Slide Content Overlay */}
-            <div className="relative z-20 mx-auto max-w-[1400px] h-full flex flex-col justify-end px-5 sm:px-8 lg:px-12 pb-10 sm:pb-14">
+            <div
+              className={`relative z-20 mx-auto max-w-[1400px] h-full flex flex-col justify-end px-5 sm:px-8 lg:px-12 ${HERO_CONTENT_BOTTOM_CLASS[variant]}`}
+            >
               <div className="max-w-2xl text-left">
+                {label && (
+                  <p
+                    aria-hidden="true"
+                    className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-primary/80 sm:mb-2.5 sm:text-sm">
+                    {label}
+                  </p>
+                )}
                 {/* Contextual Rank Badge with design token bg-accent and 6px radius (HB03) */}
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-wider bg-accent text-white mb-2 sm:mb-2.5">
                   <span>{slide.badge}</span>
@@ -225,6 +265,7 @@ export default function HeroBanner() {
 
                 {/* Title logo branding with graceful text fallback (LG02, LG03) */}
                 {(() => {
+                  const TitleHeading = variant === "spotlight" ? "h2" : "h1"
                   const titleDisplay = resolveHeroTitleDisplay(slide, failedLogos)
                   if (titleDisplay.mode === "logo" && titleDisplay.logoUrl) {
                     return (
@@ -240,14 +281,16 @@ export default function HeroBanner() {
                           }
                           className="max-h-24 sm:max-h-32 w-auto max-w-[280px] sm:max-w-md object-contain drop-shadow-md"
                         />
-                        <h1 className="sr-only">{titleDisplay.title}</h1>
+                        <TitleHeading className="sr-only">
+                          {titleDisplay.title}
+                        </TitleHeading>
                       </div>
                     )
                   }
                   return (
-                    <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight leading-tight line-clamp-2 mb-2 sm:mb-2.5">
+                    <TitleHeading className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight leading-tight line-clamp-2 mb-2 sm:mb-2.5">
                       {titleDisplay.title}
-                    </h1>
+                    </TitleHeading>
                   )
                 })()}
 

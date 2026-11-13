@@ -67,7 +67,7 @@ class PersonalRecommendationsPersistenceTest {
                 .andExpect(jsonPath("$.categories", hasSize(1)))
                 .andExpect(jsonPath("$.categories[0].movies", hasSize(1)))
                 .andExpect(jsonPath("$.categories[0].movies[0].title").value("Real movie"))
-                .andExpect(jsonPath("$.categories[0].movies[0].score").value(2.95))
+                .andExpect(jsonPath("$.categories[0].movies[0].score").value(closeTo(2.95 * 0.7, 1e-9)))
                 .andExpect(jsonPath("$.categories[0].limitations", hasItem("TMDB_UNCONFIGURED")));
         }
     }
@@ -106,7 +106,7 @@ class PersonalRecommendationsPersistenceTest {
         refresh().andExpect(status().isOk());
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].state").value("READY"))
             .andExpect(jsonPath("$.categories[0].movies[0].releaseYear").isEmpty())
-            .andExpect(jsonPath("$.categories[0].movies[0].voteAverage").isEmpty());
+            .andExpect(jsonPath("$.categories[0].movies[0].voteAverage").value(8.0));
         save(candidate+1, "Resolved", "MOVIE", "WATCHLIST", "null");
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].state").value("LIBRARY_EXHAUSTED"));
     }
@@ -116,9 +116,9 @@ class PersonalRecommendationsPersistenceTest {
         // Equal weights select lower IDs first, irrespective of library creation order.
         for (int i=3; i>=0; i--) save(seed+i*10, "Seed " + i, "MOVIE", "WATCHED", "7.5");
         var first = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
-        first.setId(candidate); first.setTitle("Provider movie");
+        first.setId(candidate); first.setTitle("Provider movie"); first.setVoteAverage(8.0); first.setVoteCount(300);
         var second = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
-        second.setId(candidate+1); second.setTitle("Second movie");
+        second.setId(candidate+1); second.setTitle("Second movie"); second.setVoteAverage(8.0); second.setVoteCount(300);
         when(tmdb.getMovieRecommendations(seed, 1)).thenReturn(List.of(first, second));
         when(tmdb.getMovieRecommendations(seed+10, 1)).thenReturn(List.of(first));
         when(tmdb.getMovieRecommendations(seed+20, 1)).thenReturn(List.of());
@@ -127,8 +127,8 @@ class PersonalRecommendationsPersistenceTest {
         refresh().andExpect(status().isOk());
         read("/api/suggestions/personal").andExpect(status().isOk())
             .andExpect(jsonPath("$.categories[0].movies", hasSize(2)))
-            .andExpect(jsonPath("$.categories[0].movies[0].score").value(3.0))
-            .andExpect(jsonPath("$.categories[0].movies[1].score").value(.96))
+            .andExpect(jsonPath("$.categories[0].movies[0].score").value(closeTo(3.0 * 0.7, 1e-9)))
+            .andExpect(jsonPath("$.categories[0].movies[1].score").value(closeTo(.96 * 0.7, 1e-9)))
             .andExpect(jsonPath("$.categories[0].movies[0].title").value("Provider movie"))
             .andExpect(jsonPath("$.categories[0].limitations", hasItem("PARTIAL_COVERAGE")));
     }
@@ -242,21 +242,22 @@ class PersonalRecommendationsPersistenceTest {
         neighbor(seed, candidate, 1);
         neighbor(seed + 10, candidate, .5);
         catalog.save(Movie.builder().tmdbId(candidate).mediaType("MOVIE").title("Candidate")
-            .tmdbVoteAverage(8.2).tmdbVoteCount(40).imdbRating(7.9).build());
+            .tmdbVoteAverage(8.2).tmdbVoteCount(400).imdbRating(7.9).build());
         read("/api/suggestions/personal").andExpect(status().isOk())
             .andExpect(jsonPath("$.categories[0].movies[0].reason")
                 .value("Because you watched Watched Alpha and Watched Beta (MovieLens similarity)"))
             .andExpect(jsonPath("$.categories[0].movies[0].voteAverage").value(8.2))
-            .andExpect(jsonPath("$.categories[0].movies[0].voteCount").value(40))
+            .andExpect(jsonPath("$.categories[0].movies[0].voteCount").value(400))
             .andExpect(jsonPath("$.categories[0].movies[0].imdbRating").value(7.9));
     }
 
     void neighbor(long source, long target, double score) {
         similarities.save(MovieSimilarity.builder().tmdbId(source).neighborTmdbId(target).score(score).build());
     }
+    /** Cached title with an eligible audience (8.0 from 300 votes): its quality factor is exactly 0.7. */
     void metadata(long id, String type, String title) {
         cache.save(CachedMovieList.builder().tmdbId(id).mediaType(type).title(title)
-            .listType(MovieListType.POPULAR).rankOrder(1).build());
+            .voteAverage(8.0).voteCount(300).listType(MovieListType.POPULAR).rankOrder(1).build());
     }
     void save(long id, String title, String type, String state, String rating) throws Exception {
         mvc.perform(post("/api/movies/library").header("Authorization", token()).contentType(MediaType.APPLICATION_JSON)

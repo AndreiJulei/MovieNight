@@ -4,16 +4,18 @@ import usePersonalRecommendations, {
 import useFriendSuggestions from "../hooks/useFriendSuggestions"
 import { mapApiMovie, useExploreMedia } from "../hooks/useSuggestions"
 import HeroBanner from "../components/HeroBanner"
+import { useHeroSlides } from "../hooks/useHeroSlides"
 import CharacterLogoBanner from "../components/CharacterLogoBanner"
 import PosterShelf from "../components/PosterShelf"
 import ShelfReloadButton from "../components/ShelfReloadButton"
+import ShelfSection from "../components/ShelfSection"
+import { SHELF_SPACING_CLASS, WIDE_CONTENT_CLASS } from "../components/layout"
 import { Link } from "../router"
 import AppShell from "../components/AppShell"
 import { useStore } from "../store/MovieStore"
 import {
   determineHomeShelfOrdering,
   filterAndDeduplicatePopular,
-  SHELF_SPACING_CLASS,
   type HomeShelfType,
 } from "../components/homeShelfLogic"
 import type { Movie } from "../store/data"
@@ -33,15 +35,12 @@ interface ShelfConfig {
 
 function HomeShelfSection({ config }: { config: ShelfConfig }) {
   return (
-    <section key={config.id} aria-label={config.ariaLabel} className="relative">
-      <div className="mb-3 flex items-start justify-between px-1">
-        <div>
-          <h2 className="text-base font-semibold tracking-wide text-text-primary">
-            {config.title}
-          </h2>
-          <p className="mt-0.5 text-xs text-text-muted">{config.subtitle}</p>
-        </div>
-        <div className="flex items-center gap-2.5 shrink-0">
+    <ShelfSection
+      ariaLabel={config.ariaLabel}
+      title={config.title}
+      subtitle={config.subtitle}
+      actions={
+        <>
           <ShelfReloadButton
             onReload={config.onReload}
             disabled={config.isReloadDisabled}
@@ -56,19 +55,21 @@ function HomeShelfSection({ config }: { config: ShelfConfig }) {
               →
             </span>
           </Link>
-        </div>
-      </div>
+        </>
+      }
+    >
       <PosterShelf
         movies={config.movies.slice(0, 20)}
         referrer="/"
         emptyType={config.emptyType}
       />
-    </section>
+    </ShelfSection>
   )
 }
 
 export default function HomePage() {
   const store = useStore()
+  const hero = useHeroSlides()
   const currentUser = store.currentUser
 
   const personalSuggestions = usePersonalRecommendations()
@@ -158,12 +159,12 @@ export default function HomePage() {
   return (
     <AppShell fullBleed>
       {/* ── 1. Curated Spotlight Hero Banner ── */}
-      <HeroBanner />
+      <HeroBanner slides={hero.slides} loading={hero.loading} />
 
       {/* ── 2. Recommendations & Fallback Shelves ── */}
       <div
         id="recommendations"
-        className={`mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-12 pt-8 sm:pt-12 pb-16 sm:pb-20 ${SHELF_SPACING_CLASS}`}
+        className={`${WIDE_CONTENT_CLASS} pt-8 sm:pt-12 pb-16 sm:pb-20 ${SHELF_SPACING_CLASS}`}
       >
         {shelves.map((shelfId) => (
           <HomeShelfSection key={shelfId} config={shelfConfigs[shelfId]} />

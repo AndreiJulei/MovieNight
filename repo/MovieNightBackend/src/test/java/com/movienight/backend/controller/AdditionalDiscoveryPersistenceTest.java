@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:additional-discovery-test;DB_CLOSE_DELAY=-1",
     "spring.jpa.hibernate.ddl-auto=create-drop", "app.tmdb.api-key=", "app.omdb.api-key=",
+    "app.discovery.top-rated-max-requests-per-second=100000",
     "app.jwt.secret=additional-discovery-test-signing-key-at-least-32-bytes"
 })
 class AdditionalDiscoveryPersistenceTest {
@@ -77,7 +78,7 @@ class AdditionalDiscoveryPersistenceTest {
     }
 
     @Test
-    void tenPageCandidateBoundsAndStrongerCandidatesOnLaterPages() throws Exception {
+    void fiftyPageTopRatedBoundsAndStrongerCandidatesOnLaterPages() throws Exception {
         String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
         when(tmdb.isConfigured()).thenReturn(true);
 
@@ -92,15 +93,15 @@ class AdditionalDiscoveryPersistenceTest {
                     // Page 1 has a candidate with small vote sample
                     return List.of(movie(1001, "Page 1 Movie", 8.0, 1000, 10, yesterday));
                 }
-                if (page == 10) {
-                    // Page 10 has a candidate with higher Bayesian score (9.5 avg, 10000 votes)
-                    return List.of(movie(1010, "Page 10 Strong Candidate", 9.5, 10000, 50, yesterday));
+                if (page == 50) {
+                    // The last Top Rated page has a candidate with higher Bayesian score (9.5 avg, 10000 votes)
+                    return List.of(movie(1050, "Page 50 Strong Candidate", 9.5, 10000, 50, yesterday));
                 }
-                // Pages 2-9 return non-empty items
+                // Pages 2-49 return non-empty items
                 return List.of(movie(1000 + page, "Movie " + page, 7.5, 1000, 10, yesterday));
             }
             if ("vote_count.desc".equals(sort)) {
-                // Returns 10 pages as well. Page 1 includes an overlapping candidate (1001) that also appeared in vote_average.desc
+                // Never runs out either. Page 1 includes an overlapping candidate (1001) that also appeared in vote_average.desc
                 if (page == 1) {
                     return List.of(
                             movie(1001, "Page 1 Movie (Duplicate in vote_count stream)", 8.0, 1000, 10, yesterday),
@@ -119,8 +120,8 @@ class AdditionalDiscoveryPersistenceTest {
         // Trigger refresh for MOVIE top-rated directly on scheduler
         scheduler.refreshCategory("MOVIE", MovieListType.TOP_RATED);
 
-        // Verified that 10 pages per source were fetched (10 for vote_average + 10 for vote_count = 20 total)
-        assertThat(pageFetches.get()).isEqualTo(20);
+        // Top Rated reads 50 best-rated pages and 10 most-voted pages (PD-07) = 60 total
+        assertThat(pageFetches.get()).isEqualTo(60);
 
         // Overlapping candidate 1001 appears exactly once in the published database cache (deduplicated across streams)
         long count1001InCache = cache.findByMediaTypeAndListTypeOrderByRankOrderAsc("MOVIE", MovieListType.TOP_RATED)
@@ -130,8 +131,8 @@ class AdditionalDiscoveryPersistenceTest {
         // Fetch category page 1
         var result = mvc.perform(get("/api/movies/explore/movies/top-rated").header("Authorization", token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.movies[0].tmdbId").value(1010)) // Page 10 stronger candidate ranks first!
-                .andExpect(jsonPath("$.movies[0].title").value("Page 10 Strong Candidate"))
+                .andExpect(jsonPath("$.movies[0].tmdbId").value(1050)) // Page 50 stronger candidate ranks first!
+                .andExpect(jsonPath("$.movies[0].title").value("Page 50 Strong Candidate"))
                 .andExpect(jsonPath("$.sessionId").isNotEmpty())
                 .andExpect(jsonPath("$.hasMore").value(true))
                 .andExpect(jsonPath("$.movies[?(@.tmdbId==1001)]", hasSize(1))) // Overlapping candidate appears once in results

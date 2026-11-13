@@ -11,6 +11,7 @@ import {
 import type { Movie, Status } from "../store/data"
 import AppShell from "../components/AppShell"
 import MovieGrid from "../components/MovieGrid"
+import { friendLibraryCardCaption } from "../components/libraryCard"
 import SegmentedRadio from "../components/SegmentedRadio"
 import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay"
 import { useToast } from "../components/Toast"
@@ -77,6 +78,7 @@ export default function FriendProfilePage() {
               posterUrl: m.posterUrl ?? null,
               imdb: m.imdbRating ?? null,
               rt: m.rottenTomatoesRating ?? null,
+              tmdbRating: m.tmdbVoteAverage ?? null,
               overview: m.overview ?? "",
               genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
               director: m.director,
@@ -115,7 +117,7 @@ export default function FriendProfilePage() {
   const username = profile?.username
   if (loading || error || !profile) {
     return (
-      <AppShell>
+      <AppShell width="wide">
         <Link to="/friends" className="prose-link text-sm text-text-muted">
           ← Back to Friends
         </Link>
@@ -143,6 +145,12 @@ export default function FriendProfilePage() {
   const watchlistCount = profile.watchlistCount
   const avgRating = profile.avgRating
   const displayMovies = backendMovies
+  const friendRatingByMovieId = new Map(
+    libraryEntries.map(({ movie: m, personalRating }) => [
+      titleId(m.tmdbId, m.mediaType ?? "", m.id),
+      personalRating ?? null,
+    ]),
+  )
 
   // Check if current user already has a movie in any list
   const userHasMovie = (movieId: string) => {
@@ -173,7 +181,7 @@ export default function FriendProfilePage() {
   const referrerPath = `/friends/${friendId}`
 
   return (
-    <AppShell>
+    <AppShell width="wide">
       <div className="flex items-center justify-between">
         <Link
           to="/friends"
@@ -259,6 +267,13 @@ export default function FriendProfilePage() {
             showAddToWatchlist
             onAddToWatchlist={saveWatchlist}
             userHasMovie={userHasMovie}
+            captionFor={(m) =>
+              friendLibraryCardCaption(tab, {
+                year: m.year,
+                friendRating: friendRatingByMovieId.get(m.id),
+                tmdbRating: m.tmdbRating,
+              })
+            }
           />
         )}
       </div>

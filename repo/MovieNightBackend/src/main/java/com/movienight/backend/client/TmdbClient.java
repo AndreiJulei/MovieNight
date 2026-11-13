@@ -352,6 +352,39 @@ public class TmdbClient {
     }
 
     /**
+     * TMDB trending chart for one media type ("movie" or "tv") and time window ("day" or "week"),
+     * in TMDB's rank order. Anime arrives inside the "tv" chart and is classified by the caller.
+     */
+    public List<TmdbSearchResponse.TmdbMovieSummary> getTrending(String mediaType, String timeWindow, int page) {
+        if (!isConfigured()) {
+            return Collections.emptyList();
+        }
+        if (!("movie".equals(mediaType) || "tv".equals(mediaType))
+                || !("day".equals(timeWindow) || "week".equals(timeWindow))) {
+            throw new IllegalArgumentException("Invalid trending chart");
+        }
+
+        try {
+            TmdbSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> applyAuth(uriBuilder)
+                            .path("/trending/{mediaType}/{timeWindow}")
+                            .queryParam("language", "en-US")
+                            .queryParam("page", Math.max(1, page))
+                            .build(mediaType, timeWindow))
+                    .retrieve()
+                    .body(TmdbSearchResponse.class);
+
+            if (response != null && response.getResults() != null) {
+                response.getResults().forEach(item -> item.setMediaType(mediaType));
+                return response.getResults();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Provider trending request failed. Retry.");
+        }
+        throw new IllegalStateException("Provider returned invalid trending data. Retry.");
+    }
+
+    /**
      * Fetch recommendations for a specific movie.
      */
     public List<TmdbSearchResponse.TmdbMovieSummary> getMovieRecommendations(Long movieId, int page) {

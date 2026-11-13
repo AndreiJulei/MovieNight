@@ -6,13 +6,14 @@ import useWatchlistSave from "../hooks/useWatchlistSave"
 import { Link } from "../router"
 import { useStore } from "../store/MovieStore"
 import ShelfEmptyCard from "../components/ShelfEmptyCard"
+import { POSTER_GRID_COLUMNS_CLASS } from "../components/layout"
 
 export default function FriendSuggestionsPage() {
   const store = useStore()
   const suggestions = useFriendSuggestions()
   const { saveWatchlist, error: saveError } = useWatchlistSave()
   return (
-    <AppShell>
+    <AppShell width="wide">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h1 className="text-2xl font-bold tracking-tight text-text-primary">
@@ -79,7 +80,7 @@ export default function FriendSuggestionsPage() {
                       : "No additional movies on accepted friends’ watchlists."}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+                  <div className={`grid ${POSTER_GRID_COLUMNS_CLASS} gap-x-3 gap-y-7 sm:gap-x-4`}>
                     {category.movies.map((item) => {
                       const movie = mapApiMovie(item, store)
                       return (

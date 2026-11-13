@@ -75,7 +75,7 @@ export default function SuggestionCategoryPage() {
   const referrerPath = `/suggestions/${category}`
 
   return (
-    <AppShell>
+    <AppShell width="wide">
       <div className="mb-4">
         <Link
           to="/suggestions"

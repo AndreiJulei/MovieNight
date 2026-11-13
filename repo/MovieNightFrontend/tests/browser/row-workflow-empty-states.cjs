@@ -261,12 +261,13 @@ async function main() {
       const recContainer = page.locator("#recommendations")
       await recContainer.waitFor()
       const recClass = await recContainer.getAttribute("class")
+      // RW03 spacing is superseded by #21 (PD-05) RO01; measured in rows-and-grids.cjs.
       assert.ok(
-        recClass.includes("space-y-10") && recClass.includes("sm:space-y-16"),
-        `RW03: Recommendations container must have space-y-10 sm:space-y-16. Found: ${recClass}`,
+        recClass.includes("gap-3") && recClass.includes("sm:gap-6"),
+        `RO01: Recommendations container must use the shared row spacing (gap-3 sm:gap-6). Found: ${recClass}`,
       )
       console.log(
-        "✔ RW03: Density spacing token verified on Home recommendations container",
+        "✔ RO01: Shared row spacing token verified on Home recommendations container",
       )
 
       // Verify Case 1 exact shelves: Top Rated, then Popular & Well-Rated
@@ -440,10 +441,10 @@ async function main() {
       await setupMocks(page, { caseMode: 1 })
       await page.goto(`${app}/explore/movies`)
 
-      // Verify density spacing on Explore page
-      const shelvesContainer = page.locator("div.space-y-10.sm\\:space-y-16")
+      // Shared row spacing on Explore (RW03 superseded by #21 RO01)
+      const shelvesContainer = page.locator("div.gap-3.sm\\:gap-6:has(> [data-shelf-section])")
       await shelvesContainer.waitFor()
-      console.log("✔ RW03: Density spacing token verified on Explore page")
+      console.log("✔ RO01: Shared row spacing token verified on Explore page")
 
       // Verify unified reload buttons on Explore headers
       const exploreReloadBtns = page.locator("button[aria-label*='Reload']")

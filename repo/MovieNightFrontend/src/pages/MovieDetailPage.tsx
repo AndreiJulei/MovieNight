@@ -10,6 +10,12 @@ import AppShell from "../components/AppShell";
 import AddToListPopover from "../components/AddToListPopover";
 import MovieGrid from "../components/MovieGrid";
 import ShelfReloadButton from "../components/ShelfReloadButton";
+import ShelfSection from "../components/ShelfSection";
+import {
+  SHELF_SPACING_CLASS,
+  SHELF_TRACK_CLASS,
+  WIDE_CONTENT_CLASS,
+} from "../components/layout";
 import PersonalRatingInput from "../components/PersonalRatingInput";
 import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useToast } from "../components/Toast";
@@ -564,20 +570,18 @@ export default function MovieDetailPage() {
       </div>
 
       {/* Main Container below Hero */}
-      <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-10 pb-16 space-y-10 sm:space-y-16">
+      <div className={`${WIDE_CONTENT_CLASS} pt-10 pb-16 ${SHELF_SPACING_CLASS}`}>
         {/* ── 3. Actor Cast Photo Gallery (DP04) ── */}
         {castList.length > 0 && (
-          <section role="region" aria-label="Key cast members">
-            <h2 className="text-base font-semibold tracking-wide text-text-primary mb-4">
-              Key Cast
-            </h2>
+          <ShelfSection ariaLabel="Key cast members" title="Key Cast">
             <div
-              className="flex items-start gap-4 sm:gap-6 overflow-x-auto pb-4 pt-1"
+              className={`flex items-start gap-4 sm:gap-6 overflow-x-auto ${SHELF_TRACK_CLASS}`}
               style={{ scrollbarWidth: "none" }}
             >
               {castList.map((member) => (
                 <div
                   key={member.name}
+                  data-shelf-item
                   className="flex w-28 sm:w-32 shrink-0 flex-col text-left group select-none"
                 >
                   <div className="relative mb-2.5 aspect-[3/4] w-full overflow-hidden rounded-xl border border-white/10 bg-surface shadow-md transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-accent">
@@ -611,7 +615,7 @@ export default function MovieDetailPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </ShelfSection>
         )}
 
         {/* ── 4. Original MovieNight Features Preservation (DP05) ── */}

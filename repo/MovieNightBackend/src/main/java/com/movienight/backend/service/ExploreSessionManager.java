@@ -67,6 +67,9 @@ public class ExploreSessionManager {
         }
     }
 
+    /** View all loads 40 titles per Load more (PD-07); callers that omit a limit still get 20. */
+    static final int MAX_PAGE_SIZE = 40;
+
     private final Map<String, ExploreSession> sessions = new ConcurrentHashMap<>();
 
     public void onCategoryRebuilt(String mediaType, MovieListType listType) {
@@ -207,7 +210,7 @@ public class ExploreSessionManager {
         }
 
         int effCursor = (cursor != null && cursor >= 0) ? cursor : 0;
-        int effLimit = (limit != null && limit > 0) ? Math.min(limit, 20) : 20;
+        int effLimit = (limit != null && limit > 0) ? Math.min(limit, MAX_PAGE_SIZE) : 20;
 
         List<SuggestionMovieItem> batch = new ArrayList<>();
         int nextCursorIndex = effCursor;
@@ -317,6 +320,11 @@ public class ExploreSessionManager {
         };
     }
 
+    /** Highlight charts (PD-10) are served by /highlights, never as a paged category. */
+    private static IllegalArgumentException notPagedCategory(MovieListType listType) {
+        return new IllegalArgumentException("Unknown discovery category: " + listType);
+    }
+
     private String normalizeCategoryId(String category, MovieListType listType) {
         return switch (listType) {
             case RECENT -> "newest";
@@ -324,6 +332,7 @@ public class ExploreSessionManager {
             case POPULAR -> "popular";
             case TOP_RATED -> "top-rated";
             case UPCOMING -> "upcoming";
+            case TRENDING_WEEK, TRENDING_DAY -> throw notPagedCategory(listType);
         };
     }
 
@@ -334,6 +343,7 @@ public class ExploreSessionManager {
             case POPULAR -> "Popular & well rated";
             case TOP_RATED -> "Top Rated";
             case UPCOMING -> "MOVIE".equals(mediaType) ? "Upcoming Movies" : "ANIME".equals(mediaType) ? "Upcoming Anime Series" : "Upcoming Series";
+            case TRENDING_WEEK, TRENDING_DAY -> throw notPagedCategory(listType);
         };
     }
 
@@ -344,6 +354,7 @@ public class ExploreSessionManager {
             case POPULAR -> "Popular among TMDB viewers, with at least 7/10 audience rating and enough votes";
             case TOP_RATED -> "Ranked by TMDB audience rating adjusted for vote volume within a bounded candidate pool";
             case UPCOMING -> "MOVIE".equals(mediaType) ? "Movies with release dates in the next 12 months" : "Series premiering within the next 12 months";
+            case TRENDING_WEEK, TRENDING_DAY -> throw notPagedCategory(listType);
         };
     }
 

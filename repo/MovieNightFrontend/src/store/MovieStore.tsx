@@ -154,6 +154,7 @@ function fromCatalogResponse(m: ApiMovieResponse): Movie {
     year: m.releaseYear ?? null,
     posterSeed: null,
     posterUrl: m.posterUrl ?? null,
+    backdropUrl: m.backdropUrl ?? null,
     imdb: m.imdbRating ?? null,
     tmdbRating: m.tmdbVoteAverage ?? null,
     tmdbVotes: m.tmdbVoteCount ?? null,
@@ -359,6 +360,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       setFriendProfiles([]);
       setInvitations([]);
       resetLists(true);
+      setLibraryLoading(true); // the new account's library is not loaded yet
       setCurrentUser(u);
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
       sessionStorage.setItem("movienight_current_user", JSON.stringify(u));
@@ -400,6 +402,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         setFriendProfiles([]);
         setInvitations([]);
         resetLists(true);
+        setLibraryLoading(true);
         setCurrentUser(u);
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(u.id));
         sessionStorage.setItem("movienight_current_user", JSON.stringify(u));

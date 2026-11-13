@@ -50,8 +50,17 @@ public class OmdbClient {
      * Fetch ratings from OMDb using the movie's IMDb ID (e.g. "tt3896198").
      */
     public Optional<OmdbResponse> getMovieRatings(String imdbId) {
+        return lookupRatings(imdbId).ratings();
+    }
+
+    /**
+     * Fetch ratings and say why none came back: OMDb answered that it has no such title
+     * ({@link Outcome#NOT_FOUND}), or there was no answer at all ({@link Outcome#NO_ANSWER}: not
+     * configured, network or HTTP error, including OMDb's 401 for an exhausted daily limit).
+     */
+    public RatingsLookup lookupRatings(String imdbId) {
         if (!isConfigured() || imdbId == null || imdbId.isBlank()) {
-            return Optional.empty();
+            return RatingsLookup.NO_ANSWER;
         }
 
         try {
@@ -63,14 +72,29 @@ public class OmdbClient {
                     .retrieve()
                     .body(OmdbResponse.class);
 
-            if (response != null && "True".equalsIgnoreCase(response.getResponse())) {
-                return Optional.of(response);
-            }
+            if (response == null) return RatingsLookup.NO_ANSWER;
+            return "True".equalsIgnoreCase(response.getResponse())
+                    ? RatingsLookup.found(response) : RatingsLookup.NOT_FOUND;
         } catch (Exception e) {
             log.warn("OMDb enrichment failed for IMDb ID '{}'", imdbId);
+            return RatingsLookup.NO_ANSWER;
+        }
+    }
+
+    /** Result of one OMDb ratings lookup. */
+    public record RatingsLookup(Outcome outcome, OmdbResponse response) {
+        public enum Outcome { FOUND, NOT_FOUND, NO_ANSWER }
+
+        public static final RatingsLookup NOT_FOUND = new RatingsLookup(Outcome.NOT_FOUND, null);
+        public static final RatingsLookup NO_ANSWER = new RatingsLookup(Outcome.NO_ANSWER, null);
+
+        public static RatingsLookup found(OmdbResponse response) {
+            return new RatingsLookup(Outcome.FOUND, response);
         }
 
-        return Optional.empty();
+        public Optional<OmdbResponse> ratings() {
+            return Optional.ofNullable(response);
+        }
     }
 
     /**

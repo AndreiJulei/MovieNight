@@ -1,9 +1,18 @@
 import type { Movie, MediaType } from "../store/data"
 
+export type HeroCategoryPillar =
+  | "movies"
+  | "tv"
+  | "anime"
+  | "for-you"
+  | "anticipated"
+  | HeroPickSource
+
 export interface HeroSlide {
   id: string
   badge: string
-  categoryPillar: "movies" | "tv" | "anime" | "for-you" | "anticipated"
+  /** Catalog pillar, or the personal pool a Home pick was drawn from. */
+  categoryPillar: HeroCategoryPillar
   movie: Movie
   backdropUrl: string | null
   posterUrl: string | null
@@ -237,7 +246,7 @@ export function formatHeroStarRating(movie: {
  */
 export function createHeroSlide(params: {
   badge: string
-  categoryPillar: "movies" | "tv" | "anime" | "for-you" | "anticipated"
+  categoryPillar: HeroCategoryPillar
   movie: Movie
   enriched?: EnrichedMetadata | null
 }): HeroSlide {
@@ -335,6 +344,132 @@ export function buildHeroSlides(
       }),
     ]
   })
+}
+
+/** Personal pools the Home hero draws from on each visit (#25). */
+export type HeroPickSource = "watchlist" | "recommended" | "friends"
+
+export interface HeroPick {
+  source: HeroPickSource
+  movie: Movie
+  /** Friends pool only: the title is on a friend's watchlist, not rated by one. */
+  friendsWatchlist?: boolean
+}
+
+export type HeroPickPools = Record<HeroPickSource, readonly Movie[]>
+
+export const HERO_PICK_LABELS: Record<HeroPickSource, string> = {
+  watchlist: "On your watchlist",
+  recommended: "Recommended for you",
+  friends: "Friends' pick",
+}
+
+/** Titles friends plan to watch are labelled apart from friends' rated picks. */
+export const FRIENDS_WATCHLIST_LABEL = "On a friend's watchlist"
+
+export function heroPickLabel(pick: HeroPick): string {
+  return pick.source === "friends" && pick.friendsWatchlist
+    ? FRIENDS_WATCHLIST_LABEL
+    : HERO_PICK_LABELS[pick.source]
+}
+
+/**
+ * Marks friends-pool picks that only come from friends' watchlists. A title
+ * a friend has also rated keeps the "Friends' pick" label.
+ */
+export function markFriendsWatchlistPicks(
+  picks: readonly HeroPick[],
+  watchlistOnlyIds: ReadonlySet<string>,
+): HeroPick[] {
+  return picks.map((pick) =>
+    pick.source === "friends" && watchlistOnlyIds.has(pick.movie.id)
+      ? { ...pick, friendsWatchlist: true }
+      : pick,
+  )
+}
+
+export const HERO_SLIDE_COUNT = 5
+export const HERO_MAX_PER_POOL = 2
+const HERO_PICK_SOURCES: readonly HeroPickSource[] = [
+  "watchlist",
+  "recommended",
+  "friends",
+]
+
+/** Fisher–Yates shuffle driven by an injectable random source. */
+export function shuffleWith<T>(items: readonly T[], random: () => number): T[] {
+  const result = [...items]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
+
+/**
+ * Draws up to HERO_SLIDE_COUNT picks at random, round-robin over the pools in
+ * a random order, so every non-empty pool contributes before any pool
+ * contributes twice and no pool exceeds HERO_MAX_PER_POOL. Ineligible titles
+ * (e.g. without a backdrop) are skipped, and a title is used at most once.
+ */
+export function drawHeroPicks(
+  pools: Partial<HeroPickPools>,
+  random: () => number,
+  isEligible: (movie: Movie) => boolean,
+): HeroPick[] {
+  const order = shuffleWith(HERO_PICK_SOURCES, random)
+  const queues = new Map(
+    order.map((source) => [
+      source,
+      shuffleWith(pools[source] ?? [], random).filter(isEligible),
+    ]),
+  )
+  const used = new Set<string>()
+  const picks: HeroPick[] = []
+  for (let round = 0; round < HERO_MAX_PER_POOL; round++) {
+    for (const source of order) {
+      if (picks.length >= HERO_SLIDE_COUNT) return picks
+      const queue = queues.get(source) ?? []
+      let next = queue.shift()
+      while (next && used.has(next.id)) next = queue.shift()
+      if (!next) continue
+      used.add(next.id)
+      picks.push({ source, movie: next })
+    }
+  }
+  return picks
+}
+
+/**
+ * Home hero lineup: the visit's personal picks first, then the default
+ * lineup (buildHeroSlides) fills the remaining slots. With no picks this is
+ * the default lineup unchanged.
+ */
+export function buildHomeHeroSlides(
+  picks: readonly HeroPick[],
+  candidates: HeroFeedCandidates,
+  enrichments?: Record<string, EnrichedMetadata | null>,
+): HeroSlide[] {
+  const personal = picks.map((pick) =>
+    createHeroSlide({
+      badge: heroPickLabel(pick),
+      categoryPillar: pick.source,
+      movie: pick.movie,
+      enriched: enrichments?.[pick.movie.id],
+    }),
+  )
+  const pickedIds = new Set(picks.map(({ movie }) => movie.id))
+  // The default "#1 For You" slide comes from the recommendations pool, so it
+  // is dropped once that pool already has its maximum of picks.
+  const recommendedFull =
+    picks.filter(({ source }) => source === "recommended").length >=
+    HERO_MAX_PER_POOL
+  const fallback = buildHeroSlides(candidates, enrichments).filter(
+    (slide) =>
+      !pickedIds.has(slide.movie.id) &&
+      !(recommendedFull && slide.categoryPillar === "for-you"),
+  )
+  return [...personal, ...fallback].slice(0, HERO_SLIDE_COUNT)
 }
 
 export const HERO_AUTOPLAY_INTERVAL_MS = 7000

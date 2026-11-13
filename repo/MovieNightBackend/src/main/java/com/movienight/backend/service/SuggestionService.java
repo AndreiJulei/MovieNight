@@ -137,11 +137,11 @@ public class SuggestionService {
     public SuggestionsResponse getExploreMedia(String mediaType, String username) {
         String type = userLibraryExclusionService.normalizeMediaType(mediaType);
         Set<Long> excludedTmdbIds = userLibraryExclusionService.getExcludedTmdbIds(username, type);
-        List<DiscoverySnapshot> snapshots = discoverySnapshotRepository.findByMediaType(type);
+        List<DiscoverySnapshot> snapshots = shelfSnapshots(type);
         if (snapshots.size() < 4 && tmdbClient.isConfigured()) {
             try { suggestionScheduler.refreshMediaType(type); }
             catch (RuntimeException failure) { log.warn("Discovery refresh unavailable for {}", type); }
-            snapshots = discoverySnapshotRepository.findByMediaType(type);
+            snapshots = shelfSnapshots(type);
         }
         Map<MovieListType, DiscoverySnapshot> published = snapshots.stream()
                 .collect(Collectors.toMap(DiscoverySnapshot::getListType, snapshot -> snapshot));
@@ -171,6 +171,52 @@ public class SuggestionService {
             categories.add(exploreShelf(type, "upcoming", "Upcoming Anime Series", MovieListType.UPCOMING, cached, published, excludedTmdbIds));
         }
         return SuggestionsResponse.builder().categories(categories).build();
+    }
+
+    /** Snapshots of the four browsable shelves; highlight charts are published separately. */
+    private List<DiscoverySnapshot> shelfSnapshots(String type) {
+        return discoverySnapshotRepository.findByMediaType(type).stream()
+                .filter(snapshot -> !snapshot.getListType().isHighlightChart()).toList();
+    }
+
+    /**
+     * Explore highlights for a category: the spotlight hero's trending/week titles and the "Top 10 today"
+     * trending/day chart. A missing chart, or one past its refresh interval, is rebuilt on read; if that
+     * fails an older chart is served as STALE until its maximum age, then it is UNAVAILABLE so the page
+     * hides it and offers a retry. The shelves are served independently.
+     * Library titles are not excluded: these are charts, and the page marks titles already in the library.
+     */
+    public SuggestionsResponse getExploreHighlights(String mediaType) {
+        String type = userLibraryExclusionService.normalizeMediaType(mediaType);
+        List<SuggestionCategoryResponse> categories = new ArrayList<>();
+        for (HighlightChart chart : HighlightChart.values()) {
+            Optional<DiscoverySnapshot> snapshot = discoverySnapshotRepository.findByMediaTypeAndListType(type, chart.listType);
+            if ((snapshot.isEmpty() || age(snapshot.get()).compareTo(chart.dueAfter) > 0) && tmdbClient.isConfigured()) {
+                try { suggestionScheduler.refreshCategory(type, chart.listType); }
+                catch (RuntimeException failure) { log.warn("Highlight chart {} unavailable for {}", chart.id, type); }
+                snapshot = discoverySnapshotRepository.findByMediaTypeAndListType(type, chart.listType);
+            }
+            categories.add(highlightChartResponse(type, chart, snapshot.orElse(null)));
+        }
+        return SuggestionsResponse.builder().categories(categories).build();
+    }
+
+    private SuggestionCategoryResponse highlightChartResponse(String mediaType, HighlightChart chart,
+                                                              DiscoverySnapshot snapshot) {
+        var category = SuggestionCategoryResponse.builder().id(chart.id).title(chart.title).hasMore(false);
+        if (snapshot == null || age(snapshot).compareTo(chart.maxAge) > 0) {
+            return category.state("UNAVAILABLE").movies(List.of()).totalEligibleInPool(0).terminalReason("UNAVAILABLE")
+                    .updatedAt(snapshot == null ? null : snapshot.getUpdatedAt() + "Z").build();
+        }
+        List<SuggestionMovieItem> items = mapCachedItems(cachedMovieListRepository
+                .findByMediaTypeAndListTypeOrderByRankOrderAsc(mediaType, chart.listType), mediaType)
+                .stream().limit(chart.titles).toList();
+        return category.state(age(snapshot).compareTo(chart.dueAfter) > 0 ? "STALE" : items.isEmpty() ? "EMPTY" : "READY")
+                .updatedAt(snapshot.getUpdatedAt() + "Z").movies(items).totalEligibleInPool(items.size()).build();
+    }
+
+    private Duration age(DiscoverySnapshot snapshot) {
+        return Duration.between(snapshot.getUpdatedAt(), LocalDateTime.now(ZoneOffset.UTC));
     }
 
     private SuggestionCategoryResponse exploreShelf(String mediaType, String id, String title,
@@ -238,6 +284,10 @@ public class SuggestionService {
                         .voteCount(item.getVoteCount())
                         .releaseYear(parseYear(item.getReleaseDate()))
                         .mediaType(mediaType)
+                        .backdropUrl(item.getBackdropPath() != null ? tmdbClient.buildBackdropUrl(item.getBackdropPath()) : null)
+                        .logoUrl(item.getLogoUrl())
+                        .genres(item.getGenres() == null || item.getGenres().isBlank() ? null
+                                : List.of(item.getGenres().split(",")))
                         .build())
                 .collect(Collectors.toList());
     }

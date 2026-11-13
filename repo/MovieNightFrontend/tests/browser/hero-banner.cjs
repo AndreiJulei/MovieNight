@@ -398,7 +398,14 @@ async function main() {
       "HB03: Main title typography does not exceed text-3xl",
     )
 
-    // Action buttons scaled down while satisfying minimum 44x44px touch targets (PH07)
+    // Action buttons scaled down while satisfying minimum 44x44px touch targets (PH07).
+    // The fixture's personal recommendation can lead the carousel as a #25 hero
+    // pick, so pause it and open the Dune slide before checking its controls.
+    await heroRegion.getByRole("button", { name: "Pause spotlight" }).click()
+    await heroRegion
+      .getByRole("button", { name: /^Go to slide \d+: Dune: Part Two$/ })
+      .click()
+    await page.waitForTimeout(400)
     const watchlistBtn = heroRegion
       .getByRole("button", { name: /add dune: part two to watchlist/i })
       .first()

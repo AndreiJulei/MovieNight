@@ -85,6 +85,8 @@ class MovieSimilarityDataLoaderIntegrationTest {
                 .tmdbId(157336L)
                 .title("Interstellar")
                 .mediaType("MOVIE")
+                .tmdbVoteAverage(8.5)
+                .tmdbVoteCount(38_000)
                 .build());
     }
 

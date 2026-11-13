@@ -24,6 +24,19 @@ public class PersonalizedRecommendationService {
     private final TmdbClient tmdbClient;
     private final CachedMovieListRepository cachedMovieListRepository;
     private final RecommendationMaintenanceService recommendationMaintenanceService;
+    private final RecommendationRatingEnricher ratingEnricher;
+
+    /** A candidate that cleared the quality floor, scored as relevance × quality factor. */
+    private record QualifiedCandidate(long tmdbId, double score, Double audience, Integer audienceVotes) {}
+
+    /** True only when the audience data already at hand fails the floor; unknown data stays a candidate. */
+    private boolean knownBelowFloor(CachedMovieList cached, TmdbMovieSummary summary) {
+        if (cached != null && validAudience(cached.getVoteAverage()))
+            return !RecommendationQualityPolicy.eligible(cached.getVoteAverage(), cached.getVoteCount());
+        if (summary != null && validAudience(summary.getVoteAverage()))
+            return !RecommendationQualityPolicy.eligible(summary.getVoteAverage(), summary.getVoteCount());
+        return false;
+    }
 
     private boolean isMovie(Movie movie) {
         return movie != null && (movie.getMediaType() == null || "MOVIE".equalsIgnoreCase(movie.getMediaType()));
@@ -142,32 +155,26 @@ public class PersonalizedRecommendationService {
                 .filter(e -> e.getStatus() == MovieStatus.WATCHED && isMovie(e.getMovie())
                         && e.getMovie().getTmdbId() != null)
                 .collect(Collectors.toMap(e -> e.getMovie().getTmdbId(), e -> e.getMovie().getTitle(), (a, b) -> a));
+        Map<Long, CachedMovieList> cache = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE").stream()
+            .filter(c -> validTitle(c.getTitle())).collect(Collectors.toMap(CachedMovieList::getTmdbId, c -> c, (a,b) -> a));
+        // Bounded OMDb enrichment of the most relevant candidates not already known to miss the floor (PD-08).
+        // It runs before the catalog is read, so this ranking sees the scores it stored.
+        ratingEnricher.enrich(ranked.stream().map(Map.Entry::getKey)
+                .filter(id -> !excluded.contains(id) && !knownBelowFloor(cache.get(id), summaries.get(id))).toList());
         // Every source is explicitly movie-only before resolving metadata.
         Map<Long, Movie> catalog = movieRepository.findAll().stream().filter(this::isMovie)
             .filter(m -> m.getTmdbId() != null && validTitle(m.getTitle()))
             .collect(Collectors.toMap(Movie::getTmdbId, m -> m, (a,b) -> a));
-        Map<Long, CachedMovieList> cache = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE").stream()
-            .filter(c -> validTitle(c.getTitle())).collect(Collectors.toMap(CachedMovieList::getTmdbId, c -> c, (a,b) -> a));
-        List<PersonalizedRecommendation> result = new ArrayList<>();
-        boolean eligible = false;
+        boolean outsideLibrary = false;
+        boolean missingMetadata = false;
+        List<QualifiedCandidate> qualified = new ArrayList<>();
         for (Map.Entry<Long, Double> candidate : ranked) {
             long id = candidate.getKey();
             if (excluded.contains(id)) { limitations.add("LIBRARY_EXCLUDED"); continue; }
-            eligible = true;
+            outsideLibrary = true;
             Movie movie = catalog.get(id);
             CachedMovieList cached = cache.get(id);
             TmdbMovieSummary summary = summaries.get(id);
-            String title = movie != null ? movie.getTitle() : cached != null ? cached.getTitle() : summary != null ? summary.getTitle() : null;
-            if (!validTitle(title)) { limitations.add("METADATA_OMITTED"); continue; }
-            if (result.size() == 30) continue;
-            List<String> reasonTitles = contributions.getOrDefault(id, Map.of()).entrySet().stream()
-                    .filter(e -> e.getValue() > 0 && watchedTitles.containsKey(e.getKey()))
-                    .sorted(Map.Entry.<Long, Double>comparingByValue().reversed()
-                            .thenComparing(Map.Entry.comparingByKey()))
-                    .limit(2).map(e -> watchedTitles.get(e.getKey())).toList();
-            String reason = reasonTitles.isEmpty() ? null : "Because you watched "
-                    + String.join(" and ", reasonTitles) + " ("
-                    + String.join(" and ", sources.getOrDefault(id, Set.of())) + ")";
             Double audience = null;
             Integer audienceVotes = null;
             if (movie != null && validAudience(movie.getTmdbVoteAverage())) {
@@ -177,15 +184,42 @@ public class PersonalizedRecommendationService {
             } else if (summary != null && validAudience(summary.getVoteAverage())) {
                 audience = summary.getVoteAverage(); audienceVotes = summary.getVoteCount();
             }
+            // Floor: TMDB audience rating ≥ 6.5 with ≥ 300 votes. Unknown audience data is excluded as missing metadata.
+            if (audience == null) { limitations.add("METADATA_OMITTED"); missingMetadata = true; continue; }
+            if (!RecommendationQualityPolicy.eligible(audience, audienceVotes)) continue;
+            double quality = RecommendationQualityPolicy.qualityFactor(audience, audienceVotes,
+                    movie != null ? movie.getImdbRating() : null, movie != null ? movie.getRottenTomatoesRating() : null);
+            qualified.add(new QualifiedCandidate(id, candidate.getValue() * quality, audience, audienceVotes));
+        }
+        qualified.sort(Comparator.comparingDouble(QualifiedCandidate::score).reversed()
+                .thenComparing(QualifiedCandidate::tmdbId));
+        List<PersonalizedRecommendation> result = new ArrayList<>();
+        for (QualifiedCandidate candidate : qualified) {
+            long id = candidate.tmdbId();
+            Movie movie = catalog.get(id);
+            CachedMovieList cached = cache.get(id);
+            TmdbMovieSummary summary = summaries.get(id);
+            String title = movie != null ? movie.getTitle() : cached != null ? cached.getTitle() : summary != null ? summary.getTitle() : null;
+            if (!validTitle(title)) { limitations.add("METADATA_OMITTED"); missingMetadata = true; continue; }
+            if (result.size() == 30) continue;
+            List<String> reasonTitles = contributions.getOrDefault(id, Map.of()).entrySet().stream()
+                    .filter(e -> e.getValue() > 0 && watchedTitles.containsKey(e.getKey()))
+                    .sorted(Map.Entry.<Long, Double>comparingByValue().reversed()
+                            .thenComparing(Map.Entry.comparingByKey()))
+                    .limit(2).map(e -> watchedTitles.get(e.getKey())).toList();
+            String reason = reasonTitles.isEmpty() ? null : "Because you watched "
+                    + String.join(" and ", reasonTitles) + " ("
+                    + String.join(" and ", sources.getOrDefault(id, Set.of())) + ")";
             result.add(PersonalizedRecommendation.builder().user(user).tmdbId(id).mediaType("MOVIE").title(title)
                 .posterPath(movie != null ? movie.getPosterUrl() : cached != null ? cached.getPosterPath() : summary.getPosterPath())
-                .voteAverage(audience).audienceVoteCount(audienceVotes)
+                .voteAverage(candidate.audience()).audienceVoteCount(candidate.audienceVotes())
                 .imdbRating(movie != null ? movie.getImdbRating() : null).reason(reason)
                 .releaseYear(movie != null ? movie.getReleaseYear() : year(cached != null ? cached.getReleaseDate() : summary.getReleaseDate()))
-                .score(candidate.getValue()).rankOrder(result.size() + 1).build());
+                .score(candidate.score()).rankOrder(result.size() + 1).build());
         }
+        // A floor that removes every candidate shows nothing rather than silently lowering the floor.
         String state = !result.isEmpty() ? "READY" : weights.isEmpty() ? "NO_HISTORY" : ranked.isEmpty() ? "INSUFFICIENT_COVERAGE"
-            : eligible ? "MISSING_METADATA" : "LIBRARY_EXHAUSTED";
+            : !outsideLibrary ? "LIBRARY_EXHAUSTED" : missingMetadata ? "MISSING_METADATA" : "INSUFFICIENT_COVERAGE";
         // Publish only after every configured provider request succeeded; replace legacy mixed rows too.
         personalizedRecommendationRepository.deleteByUserId(user.getId());
         personalizedRecommendationRepository.flush();

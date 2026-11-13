@@ -10,7 +10,7 @@ export default function SuggestionsPage() {
   const suggestions = usePersonalRecommendations();
   const { saveWatchlist, error } = useWatchlistSave();
   const movies = suggestions.category?.movies.map(mapPersonalMovie) ?? [];
-  return <AppShell>
+  return <AppShell width="wide">
     <h1 className="mb-3 text-2xl font-bold tracking-tight text-text-primary">Personal movie recommendations</h1>
     <PersonalRecommendationStatus suggestions={suggestions} />
     {error && <p role="alert" className="mb-4 text-danger">{error}</p>}

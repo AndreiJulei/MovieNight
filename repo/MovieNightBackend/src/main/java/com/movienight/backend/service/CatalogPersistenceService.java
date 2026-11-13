@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
@@ -55,6 +56,17 @@ public class CatalogPersistenceService {
                 movieRepository.save(m);
                 log.debug("Updated ratings for catalog movie {}: IMDb={}, RT={}", movieId, imdbRating, rtScore);
             }
+        });
+    }
+
+    /** Store OMDb values from recommendation enrichment and remember that OMDb answered (PD-08). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordOmdbCheck(Long movieId, Double imdbRating, Integer rottenTomatoes, LocalDateTime checkedAt) {
+        movieRepository.findById(movieId).ifPresent(m -> {
+            if (imdbRating != null) m.setImdbRating(imdbRating);
+            if (rottenTomatoes != null) m.setRottenTomatoesRating(rottenTomatoes);
+            m.setOmdbCheckedAt(checkedAt);
+            movieRepository.save(m);
         });
     }
 

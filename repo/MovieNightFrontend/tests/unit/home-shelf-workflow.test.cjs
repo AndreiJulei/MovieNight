@@ -120,10 +120,8 @@ test("RW02: Deduplication handles null/undefined ratings safely falling back to 
   assert.equal(filtered[0].id, "p-imdb")
 })
 
-// ── RW03: Density spacing token constant ──
-test("RW03: Shelf spacing class constant matches space-y-10 sm:space-y-16", () => {
-  assert.equal(shelfLogic.SHELF_SPACING_CLASS, "space-y-10 sm:space-y-16")
-})
+// RW03 (row density) is superseded by #21 (PD-05) RO01, which is measured in
+// tests/browser/rows-and-grids.cjs rather than asserted as a class string.
 
 // ── RW04: Centered Empty state messages and CTA buttons ──
 test("RW04: Personal recommendations empty state defines exact message and CTA", () => {

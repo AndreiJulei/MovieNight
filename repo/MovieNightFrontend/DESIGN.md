@@ -37,7 +37,7 @@ Product behavior and privacy follow the [root specification](../../spec.md). The
 
 Three core surfaces with three distinct jobs:
 - **Watched / Watchlist**: Your tracking surface (what you've already engaged with).
-- **Explore**: The catalog, browsable by media type (what exists in the world).
+- **Explore**: The catalog, browsable by media type (what exists in the world). Each Explore page opens with its spotlight hero and Top 10 today row.
 - **Home**: Curated for you specifically (what's worth your attention right now).
 
 ## Colors
@@ -53,9 +53,11 @@ Three core surfaces with three distinct jobs:
 
 ## Typography
 - **Primary Typeface**: Inter (weights 400, 500, 600, 700).
+- **Rank Numerals** (Top 10 today): the one display exception to the scale. Outlined Inter 700 at 104px (phone) / 152px (`sm`+), filled with Page Ground and stroked in Text Primary at 78%.
 - **Numbers**: Tabular numerals (`font-variant-numeric: tabular-nums`) for all ratings, runtimes, counts, and release dates.
 - **Scale**:
   - Display / Hero Title: `text-2xl` to `text-3xl font-bold tracking-tight`
+  - Row Headings (`ShelfSection`): `text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight` (18px phone, 24px desktop)
   - Section Headings: `text-base font-semibold tracking-wide text-text-primary`
   - Body: `text-sm text-text-muted`
   - Badges & Controls: `text-xs font-medium`
@@ -63,7 +65,8 @@ Three core surfaces with three distinct jobs:
 ## Layout
 - **Global Navigation**: Fixed top bar (`h-14`) on desktop with subtle glassmorphism (`bg-[#05070d]/80 backdrop-blur-md`). Clean bottom bar on mobile (`h-14`).
 - **Filter Zone**: Grouped into **one quiet cluster** at the top-right. View, Sort, and Media Type sit side-by-side as equal peer controls with identical heights and visual weights.
-- **Poster Shelves**: Horizontal carousels with smooth scrolling, edge fade masks, and clean "View all →" affordances.
+- **Poster Shelves**: Horizontal carousels with smooth scrolling and clean "View all →" affordances. Rows and poster grids use the wide content area: centred, at most 1680px of content, with 16px / 32px minimum gutters (120px each side at 1920px); shelf tracks bleed into the gutters. Row posters zoom to 1.05 on hover/focus (the same `scale-105` as poster cards). Rows stack with ≤32px (phone) / ≤48px (desktop) between posters and the next heading.
+- **Poster Grids**: 2 columns on phones, 3 from 600px, then ~220px minimum cards. Watched cards show title + personal rating; Watchlist cards show title + year. A friend's library cards show title + year + the friend's rating (Watched) or the TMDB audience rating (Watchlist).
 
 ## Elevation & Depth
 - Flat, atmospheric tonal layering rather than heavy drop shadows.
@@ -78,6 +81,9 @@ Three core surfaces with three distinct jobs:
 - **Nav Dropdown**: Clean plain text list beneath the parent link with seamless hover highlights (`hover:bg-white/[0.04]`).
 - **Poster Cards**: 2:3 ratio with lazy loading, subtle scale transition on hover (`group-hover:scale-105`), and clean rating tags.
 - **Hero Banner**: Curated spotlight presentation showcasing prominent titles across core discovery pillars (Movies, TV, Anime, For You) with cinematic backdrop, rank badge, clean metadata pills, direct 'More info' access, and quick-save watchlist toggle (synopsis omitted for unobstructed artwork and streamlined visual density).
+- **Spotlight Hero** (Explore): the Hero Banner's `spotlight` variant at the top of each Explore page, replacing the page title. About 55vh on desktop (`sm:h-[55vh]`, 440–640px), rotating five of the category's titles trending this week with a "#N Trending this week" badge. The category name sits above the badge as a small uppercase label (`text-xs sm:text-sm font-semibold tracking-[0.18em]`). If it is unavailable, the category heading and a retry take its place.
+- **Ranked Row** ("Top 10 today"): the shared poster row in chart mode directly below the spotlight hero. Each poster has its rank numeral (1–10) at its left, tucked slightly behind the poster, with the same posters, gaps and gutters as every other row. A stale chart shows the shelves' "Stale snapshot" notice; an unavailable one shows a notice with a retry.
+- **In Library Tag**: small `text-xs font-medium` tag at a poster's top-left (`bg-bg/85 backdrop-blur-sm rounded-md`), used where a row keeps library titles (the Top 10 today chart).
 
 ## Do's and Don'ts
 - **DO** keep filters unified in one quiet cluster; do not create separate layout rows or mismatched control styles.

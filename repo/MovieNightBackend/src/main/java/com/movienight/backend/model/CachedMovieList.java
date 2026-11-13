@@ -49,6 +49,15 @@ public class CachedMovieList {
 
     private String posterPath;
 
+    /** Spotlight artwork and metadata (PD-10), stored at refresh so serving needs no provider call. */
+    private String backdropPath;
+
+    @Column(length = 512)
+    private String logoUrl;
+
+    /** Comma-separated genre names. */
+    private String genres;
+
     private Double voteAverage;
 
     private Integer voteCount;

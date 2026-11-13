@@ -5,7 +5,13 @@ import AppShell from "../components/AppShell"
 import PosterShelf from "../components/PosterShelf"
 import MovieGrid from "../components/MovieGrid"
 import ShelfReloadButton from "../components/ShelfReloadButton"
-import { SHELF_SPACING_CLASS } from "../components/homeShelfLogic"
+import ShelfSection from "../components/ShelfSection"
+import ExploreHighlights from "../components/ExploreHighlights"
+import {
+  EXPLORE_CATEGORIES,
+  type ExploreCategory,
+} from "../components/exploreCategories"
+import { SHELF_SPACING_CLASS, WIDE_CONTENT_CLASS } from "../components/layout"
 import TopBar, {
   type Filters,
   type SortBy,
@@ -15,41 +21,15 @@ import TopBar, {
 import { useStore } from "../store/MovieStore"
 import { useExploreMedia, type SuggestionRow } from "../hooks/useSuggestions"
 import { useExploreCategory } from "../hooks/useExploreCategory"
-import type { Movie, MediaType } from "../store/data"
+import type { Movie } from "../store/data"
 
-type ExploreMediaType = "movies" | "tv" | "anime"
-
-const CONFIG: Record<ExploreMediaType, {
-  mediaType: MediaType
-  title: string
-  subtitle: string
-}> = {
-  movies: {
-    mediaType: "MOVIE",
-    title: "Movies",
-    subtitle:
-      "Explore acclaimed films, recent releases, and community favorites.",
-  },
-  tv: {
-    mediaType: "TV",
-    title: "TV Series",
-    subtitle:
-      "Acclaimed series, currently airing seasons, and top-rated dramas.",
-  },
-  anime: {
-    mediaType: "ANIME",
-    title: "Anime",
-    subtitle:
-      "Seasonal hits, timeless masterworks, and currently airing series.",
-  },
-}
 
 function ExploreCategoryGridView({
   type,
   rowId,
   configTitle,
 }: {
-  type: ExploreMediaType
+  type: ExploreCategory
   rowId: string
   configTitle: string
 }) {
@@ -113,7 +93,7 @@ function ExploreCategoryGridView({
     category.subtitle || "All titles in this curated shelf."
 
   return (
-    <AppShell>
+    <AppShell width="wide">
       {(category.loading || category.refreshing) && (
         <p role="status" className="mb-4 text-text-muted">
           {category.refreshing ? "Refreshing discovery…" : "Loading discovery…"}
@@ -316,9 +296,9 @@ export default function ExploreContentPage() {
 
   const type = (matchDetailed?.type ||
     matchBase?.type ||
-    "movies") as ExploreMediaType
+    "movies") as ExploreCategory
   const rowId = matchDetailed?.rowId
-  const config = CONFIG[type] ?? CONFIG.movies
+  const config = EXPLORE_CATEGORIES[type] ?? EXPLORE_CATEGORIES.movies
   const { saveWatchlist, error: saveError } = useWatchlistSave()
 
   const explore = useExploreMedia(type)
@@ -382,150 +362,140 @@ export default function ExploreContentPage() {
     )
   }
 
-  // Shelf rows view
+  // Shelf rows view: the highlights header (#26) replaces the page title, then the shelves.
   return (
-    <AppShell>
-      {(explore.loading || explore.pending) && (
-        <p role="status" className="mb-4 text-text-muted">
-          {explore.pending ? "Refreshing discovery…" : "Loading discovery…"}
-        </p>
-      )}
-      {explore.error && (
-        <p role="alert" className="mb-4 text-danger">
-          {explore.error}
-        </p>
-      )}
-      {saveError && (
-        <p role="alert" className="mb-4 text-danger">
-          {saveError}
-        </p>
-      )}
-      {store.libraryError && (
-        <div className="mb-4 flex items-center gap-3">
-          <p role="alert" className="text-sm text-danger">
-            {store.libraryError}
+    <AppShell fullBleed>
+      <ExploreHighlights key={type} type={type} />
+      <div className={`${WIDE_CONTENT_CLASS} pt-3 sm:pt-6`}>
+        {(explore.loading || explore.pending) && (
+          <p role="status" className="mb-4 text-text-muted">
+            {explore.pending ? "Refreshing discovery…" : "Loading discovery…"}
           </p>
-          <button
-            type="button"
-            onClick={() => void store.refreshLibrary()}
-            className="quiet-action inline-flex min-h-8 items-center text-sm text-link"
-          >
-            Retry library sync
-          </button>
-        </div>
-      )}
-      {explore.error && (
-        <button
-          type="button"
-          disabled={explore.loading || explore.pending}
-          onClick={explore.reload}
-          className="quiet-action mb-4 inline-flex min-h-8 items-center text-sm text-link disabled:opacity-50"
-        >
-          Retry discovery
-        </button>
-      )}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-text-primary">
-          {config.title}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">{config.subtitle}</p>
-      </div>
-
-      <div className={`${SHELF_SPACING_CLASS} pb-16`}>
-        {rows.map((row) => (
-          <section key={row.id} className="relative">
-            <div className="mb-3 flex items-start justify-between px-1">
-              <div>
-                <h2 className="text-base font-semibold tracking-wide text-text-primary">
-                  {row.title}
-                </h2>
-                {row.subtitle && (
-                  <p className="mt-0.5 text-xs text-text-muted">
-                    {row.subtitle}
-                  </p>
-                )}
-                {row.state === "STALE" && (
-                  <p role="status" className="mt-1 text-xs text-warning">
-                    Stale snapshot · updated {row.updatedAt}
-                  </p>
-                )}
-                {explore.failedCategory === row.id &&
-                  row.state !== "UNAVAILABLE" && (
-                    <p role="status" className="mt-1 text-xs text-warning">
-                      Refresh failed · showing last successful snapshot from{" "}
-                      {row.updatedAt}
-                    </p>
-                  )}
-                {row.state === "UNAVAILABLE" && (
-                  <p role="alert" className="mt-1 text-xs text-danger">
-                    Unavailable · try refreshing
-                  </p>
-                )}
-                {row.state === "EMPTY" && (
-                  <p className="mt-1 text-xs text-text-muted">
-                    No titles met this shelf's criteria.
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2.5 shrink-0">
-                <ShelfReloadButton
-                  onReload={() => explore.refresh(row.id)}
-                  disabled={explore.loading || explore.pending}
-                  label={`Reload ${row.title} list`}
-                />
-                {explore.failedCategory === row.id && (
-                  <button
-                    type="button"
-                    disabled={explore.loading || explore.pending}
-                    onClick={() => explore.refresh(row.id)}
-                    className="quiet-action inline-flex min-h-8 items-center text-xs text-link disabled:opacity-50"
-                  >
-                    Retry shelf
-                  </button>
-                )}
-                {(row.movies.length > 4 || row.hasMore) && (
-                  <Link
-                    to={`/explore/${type}/${row.id}`}
-                    className="prose-link text-link group mt-0.5 flex items-center gap-1 text-xs font-semibold transition-colors hover:text-white"
-                  >
-                    <span>View all</span>
-                    <span className="transition-transform group-hover:translate-x-0.5">
-                      →
-                    </span>
-                  </Link>
-                )}
-              </div>
-            </div>
-            {row.state !== "UNAVAILABLE" ? (
-              <PosterShelf
-                movies={row.movies.slice(0, 20)}
-                referrer={`/explore/${type}`}
-                emptyType="generic"
-                emptyMessage={
-                  row.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
-                    ? "All candidate titles in this shelf are already in your library."
-                    : row.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
-                      ? "No matching unsaved titles."
-                      : row.hasMore
-                        ? "Preview titles are in your library. Explore category to see more."
-                        : "No titles met this shelf's criteria."
-                }
-                emptyCta={{
-                  label: "Explore Category",
-                  to: `/explore/${type}/${row.id}`,
-                }}
-              />
-            ) : null}
-          </section>
-        ))}
-
-        {rows.length === 0 && (
-          <div className="flex h-48 items-center justify-center">
-            <p className="text-sm text-text-muted">
-              Loading catalog or no titles found.
+        )}
+        {explore.error && (
+          <p role="alert" className="mb-4 text-danger">
+            {explore.error}
+          </p>
+        )}
+        {saveError && (
+          <p role="alert" className="mb-4 text-danger">
+            {saveError}
+          </p>
+        )}
+        {store.libraryError && (
+          <div className="mb-4 flex items-center gap-3">
+            <p role="alert" className="text-sm text-danger">
+              {store.libraryError}
             </p>
+            <button
+              type="button"
+              onClick={() => void store.refreshLibrary()}
+              className="quiet-action inline-flex min-h-8 items-center text-sm text-link"
+            >
+              Retry library sync
+            </button>
           </div>
         )}
+        {explore.error && (
+          <button
+            type="button"
+            disabled={explore.loading || explore.pending}
+            onClick={explore.reload}
+            className="quiet-action mb-4 inline-flex min-h-8 items-center text-sm text-link disabled:opacity-50"
+          >
+            Retry discovery
+          </button>
+        )}
+        <div className={`${SHELF_SPACING_CLASS} pb-16`}>
+          {rows.map((row) => (
+            <ShelfSection
+              key={row.id}
+              title={row.title}
+              subtitle={row.subtitle}
+              actions={
+                <>
+                  <ShelfReloadButton
+                    onReload={() => explore.refresh(row.id)}
+                    disabled={explore.loading || explore.pending}
+                    label={`Reload ${row.title} list`}
+                  />
+                  {explore.failedCategory === row.id && (
+                    <button
+                      type="button"
+                      disabled={explore.loading || explore.pending}
+                      onClick={() => explore.refresh(row.id)}
+                      className="quiet-action inline-flex min-h-8 items-center text-xs text-link disabled:opacity-50"
+                    >
+                      Retry shelf
+                    </button>
+                  )}
+                  {(row.movies.length > 4 || row.hasMore) && (
+                    <Link
+                      to={`/explore/${type}/${row.id}`}
+                      className="prose-link text-link group mt-0.5 flex items-center gap-1 text-xs font-semibold transition-colors hover:text-white"
+                    >
+                      <span>View all</span>
+                      <span className="transition-transform group-hover:translate-x-0.5">
+                        →
+                      </span>
+                    </Link>
+                  )}
+                </>
+              }
+            >
+              {row.state === "STALE" && (
+                <p role="status" className="mt-1 text-xs text-warning">
+                  Stale snapshot · updated {row.updatedAt}
+                </p>
+              )}
+              {explore.failedCategory === row.id &&
+                row.state !== "UNAVAILABLE" && (
+                  <p role="status" className="mt-1 text-xs text-warning">
+                    Refresh failed · showing last successful snapshot from{" "}
+                    {row.updatedAt}
+                  </p>
+                )}
+              {row.state === "UNAVAILABLE" && (
+                <p role="alert" className="mt-1 text-xs text-danger">
+                  Unavailable · try refreshing
+                </p>
+              )}
+              {row.state === "EMPTY" && (
+                <p className="mt-1 text-xs text-text-muted">
+                  No titles met this shelf's criteria.
+                </p>
+              )}
+              {row.state !== "UNAVAILABLE" ? (
+                <PosterShelf
+                  movies={row.movies.slice(0, 20)}
+                  referrer={`/explore/${type}`}
+                  emptyType="generic"
+                  emptyMessage={
+                    row.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"
+                      ? "All candidate titles in this shelf are already in your library."
+                      : row.terminalReason === "NO_MATCHING_UNSAVED_TITLES"
+                        ? "No matching unsaved titles."
+                        : row.hasMore
+                          ? "Preview titles are in your library. Explore category to see more."
+                          : "No titles met this shelf's criteria."
+                  }
+                  emptyCta={{
+                    label: "Explore Category",
+                    to: `/explore/${type}/${row.id}`,
+                  }}
+                />
+              ) : null}
+            </ShelfSection>
+          ))}
+
+          {rows.length === 0 && (
+            <div className="flex h-48 items-center justify-center">
+              <p className="text-sm text-text-muted">
+                Loading catalog or no titles found.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </AppShell>
   )

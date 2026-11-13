@@ -156,6 +156,12 @@ public class Movie {
      */
     private Integer tmdbVoteCount;
 
+    /**
+     * When OMDb last answered recommendation enrichment for this title's IMDb / Rotten Tomatoes
+     * values, whether or not it had any; prevents re-spending the daily budget (PD-08).
+     */
+    private LocalDateTime omdbCheckedAt;
+
     // --- Audit Timestamps ---
 
     @CreationTimestamp

@@ -136,8 +136,10 @@ async function main() {
     // ET04: shelf header + subtitle
     await page.locator("text=Based on community similarity patterns").waitFor({ timeout: 8000 });
     const shelf = page.getByRole("region", { name: "Similar movie recommendations" });
-    const cols = await shelf.locator("div.grid").evaluate((el) => getComputedStyle(el).display);
-    assert.equal(cols, "grid", "Recommendations use the compact wrapped grid");
+    // #21 RO04 replaced the compact wrapped grid with the shared poster row.
+    const firstItem = shelf.locator(".shelf-track [data-shelf-item]").first();
+    await firstItem.waitFor({ timeout: 5000 });
+    assert.ok(await shelf.evaluate((el) => el.matches("[data-shelf-section]")), "Recommendations use the shared row");
     await page.getByRole("button", { name: "Reload You May Also Like list" }).waitFor({ timeout: 5000 });
     if (process.env.MOVIENIGHT_SCREENSHOT_DIR) {
       await page.getByRole("region", { name: "Similar movie recommendations" }).screenshot({ path: process.env.MOVIENIGHT_SCREENSHOT_DIR + "/shelf.png" });

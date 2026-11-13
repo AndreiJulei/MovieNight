@@ -223,6 +223,11 @@ the release goal includes deployment. Anime films remain deferred.
   save must not exclude a title as though it succeeded. Custom-list membership
   alone does not exclude a title; library pages, direct details and explicit
   catalog search must still allow access to saved titles.
+- Exception: an Explore category's spotlight hero (TMDB trending this week) and
+  its "Top 10 today" row (TMDB trending today) are charts, so they keep library
+  titles in chart order. The Top 10 row marks titles already in the user's
+  library (watchlist or watched; custom-list membership alone does not count)
+  with an "In library" tag.
 - Use bounded server/provider work and a documented loading/session limit. An
   empty filtered provider page does not prove that all eligible titles are
   exhausted. Distinguish provider exhaustion, the configured cap and a failed

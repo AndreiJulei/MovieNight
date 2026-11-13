@@ -206,6 +206,18 @@ public class MovieCatalogLookupService {
      * Returns core details promptly without waiting for optional external enrichment.
      */
     public Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint) {
+        return getOrFetchMovie(tmdbId, mediaTypeHint, true);
+    }
+
+    /**
+     * Get or fetch a movie's catalog row for recommendation enrichment. Unlike a title open, this
+     * never starts background OMDb enrichment: the caller spends its own bounded OMDb budget (PD-08).
+     */
+    public Movie getOrFetchMovieWithoutOmdb(Long tmdbId) {
+        return getOrFetchMovie(tmdbId, "MOVIE", false);
+    }
+
+    private Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint, boolean enrichCritics) {
         if (tmdbId == null || tmdbId <= 0) {
             throw new IllegalArgumentException("Provider ID must be positive");
         }
@@ -214,10 +226,11 @@ public class MovieCatalogLookupService {
         Optional<Movie> existingMovie = movieRepository.findByResourceTypeAndTmdbId(resourceType, tmdbId);
         if (existingMovie.isPresent()) {
             Movie movie = existingMovie.get();
-            if (isIncomplete(movie) && tmdbClient.isConfigured()) {
+            // Backfill can also reach OMDb, so recommendation enrichment skips it.
+            if (enrichCritics && isIncomplete(movie) && tmdbClient.isConfigured()) {
                 triggerBackgroundBackfill(movie.getId(), resourceType, tmdbId);
             }
-            if (movie.getImdbId() != null && movie.getImdbRating() == null && omdbClient.isConfigured()) {
+            if (enrichCritics && movie.getImdbId() != null && movie.getImdbRating() == null && omdbClient.isConfigured()) {
                 triggerBackgroundEnrichment(movie.getId(), movie.getImdbId());
             }
             return movie;
@@ -287,7 +300,7 @@ public class MovieCatalogLookupService {
             log.info("Cached new {} into shared catalog: {} (TMDB: {})", saved.getMediaType(), saved.getTitle(), tmdbId);
 
             // Trigger non-blocking background enrichment for critic scores
-            if (saved.getImdbId() != null && omdbClient.isConfigured()) {
+            if (enrichCritics && saved.getImdbId() != null && omdbClient.isConfigured()) {
                 triggerBackgroundEnrichment(saved.getId(), saved.getImdbId());
             }
 

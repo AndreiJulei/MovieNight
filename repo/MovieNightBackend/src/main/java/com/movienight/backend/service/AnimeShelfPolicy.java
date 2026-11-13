@@ -36,11 +36,18 @@ public final class AnimeShelfPolicy {
      * AniList match (if any).
      */
     public static boolean qualifiesAsAnimeSuggestion(TmdbMovieSummary summary, AniListMapping storedMapping) {
+        return qualifiesAsAnimeTv(summary) && !excludedFromCuratedShelves(storedMapping);
+    }
+
+    /**
+     * The anime shelves' TMDB rules for one title: anime TV in original language ja, with no Kids/Family
+     * genre. AniList exclusion is applied separately.
+     */
+    public static boolean qualifiesAsAnimeTv(TmdbMovieSummary summary) {
         if (!"ANIME".equals(summary.getResolvedMediaType())) return false;
         if (!ANIME_ORIGINAL_LANGUAGE.equalsIgnoreCase(summary.getOriginalLanguage())) return false;
         List<Integer> genres = summary.getGenreIds();
-        if (genres != null && genres.stream().anyMatch(KIDS_AND_FAMILY_TMDB_GENRES::contains)) return false;
-        return !excludedFromCuratedShelves(storedMapping);
+        return genres == null || genres.stream().noneMatch(KIDS_AND_FAMILY_TMDB_GENRES::contains);
     }
 
     /** Adult or kids-targeted matches never appear on curated shelves. */

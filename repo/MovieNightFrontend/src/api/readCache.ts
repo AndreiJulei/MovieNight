@@ -81,3 +81,8 @@ export function invalidateReadCache(): void {
   epoch++;
   entries.clear();
 }
+
+/** Drop one entry, e.g. a successful response that reports an unavailable section, so a retry refetches. */
+export function forgetCachedRead(key: string): void {
+  entries.delete(key);
+}

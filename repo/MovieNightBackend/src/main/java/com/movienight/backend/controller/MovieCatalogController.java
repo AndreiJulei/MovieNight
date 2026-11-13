@@ -1,6 +1,7 @@
 package com.movienight.backend.controller;
 
 import com.movienight.backend.dto.MovieResponse;
+import com.movienight.backend.dto.SuggestionsResponse;
 import com.movienight.backend.model.Movie;
 import com.movienight.backend.service.MovieCatalogLookupService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,15 @@ public class MovieCatalogController {
     ) {
         String username = authentication != null ? authentication.getName() : null;
         return ResponseEntity.ok(suggestionService.getExploreMedia(mediaType, username));
+    }
+
+    /**
+     * Explore highlights (PD-10): the spotlight hero's trending titles and the "Top 10 today" chart.
+     * Example: GET /api/movies/explore/anime/highlights
+     */
+    @GetMapping("/explore/{mediaType}/highlights")
+    public ResponseEntity<SuggestionsResponse> getExploreHighlights(@PathVariable String mediaType) {
+        return ResponseEntity.ok(suggestionService.getExploreHighlights(mediaType));
     }
 
     /**

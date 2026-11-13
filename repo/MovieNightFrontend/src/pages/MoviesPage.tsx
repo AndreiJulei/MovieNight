@@ -4,6 +4,7 @@ import { useStore } from "../store/MovieStore";
 import type { Entry, Movie, Status, MediaType } from "../store/data";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
+import { libraryCardCaption } from "../components/libraryCard";
 import TopBar, { type Filters, type SortBy, type MinRating, type DateRange, type ViewMode, type MediaTypeFilter } from "../components/TopBar";
 
 const VALID_SORTS: SortBy[] = ["addedAt", "title", "year", "rating"];
@@ -109,6 +110,7 @@ export default function MoviesPage() {
   }, [currentUser, entriesFor, movieById, status, filters, mediaType]);
 
   const movies: Movie[] = rows.map((r) => r.movie);
+  const personalRatingByMovieId = new Map(rows.map((r) => [r.movie.id, r.entry.rating]));
 
   const avg = useMemo(() => {
     const rated = rows.filter((r) => r.entry.rating != null);
@@ -121,7 +123,7 @@ export default function MoviesPage() {
   };
 
   return (
-    <AppShell>
+    <AppShell width="wide">
       <TopBar
         count={movies.length}
         avg={status === "watched" ? avg : null}
@@ -145,6 +147,7 @@ export default function MoviesPage() {
       {(!libraryLoading && !libraryError || movies.length > 0) && <MovieGrid
         movies={movies}
         compact={filters.viewMode === "compact"}
+        captionFor={(m) => libraryCardCaption(status, { rating: personalRatingByMovieId.get(m.id), year: m.year })}
         empty={
           status === "watchlist"
             ? "Nothing on your watchlist yet. Add a movie to get started."

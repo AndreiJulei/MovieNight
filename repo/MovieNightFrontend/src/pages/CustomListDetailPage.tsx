@@ -98,7 +98,7 @@ export default function CustomListDetailPage() {
 
   if (!list || store.listsLoading || store.listsError) {
     return (
-      <AppShell>
+      <AppShell width="wide">
         <div className="mx-auto max-w-4xl py-12 text-center">
           <p role={store.listsError ? "alert" : "status"} className="text-base text-text-muted">
             {store.listsLoading ? "Loading your lists…" : store.listsError || "List not found."}
@@ -116,7 +116,7 @@ export default function CustomListDetailPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell width="wide">
       <div className="mb-4">
         <Link
           to="/lists"

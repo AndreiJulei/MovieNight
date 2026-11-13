@@ -108,7 +108,25 @@ history.
 _Avoid_: Library when referring to browse results.
 
 **Hero banner**:
-A curated spotlight presentation at the top of the main page showcasing prominent
-titles across catalog categories and personal recommendations with high-resolution
-artwork and direct title access.
+A rotating presentation of prominent titles with high-resolution artwork and
+direct title access. On the main page it is curated across catalog categories
+and personal recommendations; an Explore page shows its category's variant, the
+spotlight hero.
 _Avoid_: Jumbotron, header carousel, promo slider.
+
+**Spotlight hero**:
+The shorter hero banner at the top of an Explore page, rotating five of that
+category's titles trending on TMDB this week, labelled with the category name.
+It keeps library titles because it follows a chart.
+_Avoid_: Explore hero, category carousel.
+
+**Top 10 today**:
+The ranked row under an Explore page's spotlight hero: that category's first ten
+titles trending on TMDB today, each beside its rank numeral. Library titles stay
+in the chart and carry an "In library" tag.
+_Avoid_: Trending row, leaderboard.
+
+**Highlight chart**:
+A provider chart behind an Explore page's header (the spotlight hero or Top 10
+today), cached and refreshed separately from the discovery shelves.
+_Avoid_: Explore shelf, discovery category.

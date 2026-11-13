@@ -16,6 +16,9 @@ export interface CategorySegment {
   openedAt?: number;
 }
 
+/** View all loads 40 titles per request; Load more fetches the next 40 (PD-07). */
+export const VIEW_ALL_PAGE_SIZE = 40;
+
 export function getTypedMovieKey(m: { tmdbId?: number; mediaType?: string }): string {
   const type = (m.mediaType || "MOVIE").toUpperCase();
   return `${type}:${m.tmdbId}`;
@@ -527,7 +530,7 @@ export function useExploreCategory(
         {
           sessionId: existingSessionId,
           cursor: 0,
-          limit: 20,
+          limit: VIEW_ALL_PAGE_SIZE,
           sortBy,
           minRating,
         },
@@ -807,7 +810,7 @@ export function useExploreCategory(
         {
           sessionId: renewalSessionId || undefined,
           cursor: renewalCursor,
-          limit: 20,
+          limit: VIEW_ALL_PAGE_SIZE,
           sortBy,
           minRating,
         },
@@ -817,7 +820,7 @@ export function useExploreCategory(
       if (reqId !== activeReqId.current) return;
       lastResponse = res;
       renewalSessionId = res.sessionId ?? null;
-      renewalCursor = res.cursor ?? (renewalCursor + 20);
+      renewalCursor = res.cursor ?? (renewalCursor + VIEW_ALL_PAGE_SIZE);
       renewalHasMore = res.hasMore;
 
       const mapped = (res.movies ?? []).map((m) => mapApiMovie(m, store));
@@ -941,7 +944,7 @@ export function useExploreCategory(
         {
           sessionId: sid,
           cursor: sessionRef.current.cursor,
-          limit: 20,
+          limit: VIEW_ALL_PAGE_SIZE,
           sortBy,
           minRating,
         },
@@ -1002,7 +1005,7 @@ export function useExploreCategory(
         category,
         {
           cursor: 0,
-          limit: 20,
+          limit: VIEW_ALL_PAGE_SIZE,
           sortBy,
           minRating,
         },

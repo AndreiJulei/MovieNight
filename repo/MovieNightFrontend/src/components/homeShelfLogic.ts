@@ -110,4 +110,3 @@ export const EMPTY_STATE_MESSAGES = {
 export const RELOAD_BUTTON_ICON = "↺"
 export const RELOAD_BUTTON_LABEL = "Reload list"
 export const RELOAD_BUTTON_TEXT = `${RELOAD_BUTTON_ICON} ${RELOAD_BUTTON_LABEL}`
-export const SHELF_SPACING_CLASS = "space-y-10 sm:space-y-16"
