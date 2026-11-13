@@ -321,3 +321,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 
+
+/* #27: the phone menu appears in place on its bar; at most a short fade. */
+@keyframes phoneMenuFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.phone-menu-fade {
+  animation: phoneMenuFade 100ms ease-out;
+}

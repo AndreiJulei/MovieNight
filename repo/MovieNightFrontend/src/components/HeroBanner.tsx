@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Link } from "../router"
 import { useStore } from "../store/MovieStore"
+import { usePhoneLayout } from "../hooks/useCompactLayout"
 import useWatchlistSave from "../hooks/useWatchlistSave"
 import type { Movie } from "../store/data"
 import {
@@ -24,10 +25,19 @@ const HERO_HEIGHT_CLASS = {
     "h-[60vh] min-h-[420px] max-h-[560px] sm:h-[55vh] sm:min-h-[440px] sm:max-h-[640px]",
 } as const
 
+/** #28 PT04: phone poster slides, title, metadata, actions and controls fit in 70vh. */
+const PHONE_POSTER_HERO_HEIGHT_CLASS = "h-[70svh] max-h-[640px]"
+
 /**
  * Bottom room under the slide text. On phones the spotlight keeps its actions
  * above the slide controls, which span most of a 360px screen.
  */
+const MEDIA_TYPE_LABEL: Record<HeroSlide["mediaType"], string> = {
+  MOVIE: "Movie",
+  TV: "TV",
+  ANIME: "Anime",
+}
+
 const HERO_CONTENT_BOTTOM_CLASS = {
   home: "pb-10 sm:pb-14",
   spotlight: "pb-24 sm:pb-14",
@@ -49,6 +59,9 @@ export default function HeroBanner({
 }) {
   const store = useStore()
   const { toggleWatchlist } = useWatchlistSave()
+  // #28: the phone home hero shows portrait poster slides within 70vh.
+  const posterLayout = usePhoneLayout() && variant === "home"
+  const heightClass = posterLayout ? PHONE_POSTER_HERO_HEIGHT_CLASS : HERO_HEIGHT_CLASS[variant]
   const currentUser = store.currentUser
 
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -160,7 +173,7 @@ export default function HeroBanner({
     return (
       <section
         aria-label="Loading spotlight titles"
-        className={`relative w-full ${HERO_HEIGHT_CLASS[variant]} bg-[#05070d] animate-pulse overflow-hidden flex items-end`}
+        className={`relative w-full ${heightClass} bg-[#05070d] animate-pulse overflow-hidden flex items-end`}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-[#05070d] via-[#05070d]/70 to-transparent" />
         <div className="relative z-10 mx-auto max-w-[1400px] w-full px-5 sm:px-8 lg:px-12 pb-10 sm:pb-14 space-y-3">
@@ -200,7 +213,7 @@ export default function HeroBanner({
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className={`relative w-full ${HERO_HEIGHT_CLASS[variant]} overflow-hidden bg-[#05070d] select-none`}
+      className={`relative w-full ${heightClass} overflow-hidden bg-[#05070d] select-none`}
     >
       {/* Slides with smooth crossfade */}
       {slides.map((slide, index) => {
@@ -209,6 +222,136 @@ export default function HeroBanner({
         const isInWatchlist = libStatus === "watchlist"
         const isWatched = libStatus === "watched"
         const isSaving = store.isWatchlistSaving(slide.movie.id)
+        // Primary actions: More info link & reversible watchlist toggle (HB03, HB04, PH07)
+        const actions = (
+          <div className="flex items-center gap-2.5 pt-0.5">
+            <Link
+              to={slide.detailUrl}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => {
+                store.upsertMovie(slide.movie)
+                try {
+                  sessionStorage.setItem(
+                    "last_selected_movie",
+                    JSON.stringify(slide.movie),
+                  )
+                } catch {
+                  /* ignore */
+                }
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-white/90 active:scale-[0.98] min-h-[44px]"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+              <span>More info</span>
+            </Link>
+
+            <button
+              type="button"
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => handleWatchlistToggle(slide.movie)}
+              disabled={isSaving || isWatched}
+              aria-busy={isSaving}
+              title={
+                isWatched
+                  ? "In Watched History"
+                  : isInWatchlist
+                    ? "Remove from Watchlist"
+                    : "Add to Watchlist"
+              }
+              aria-label={
+                isSaving
+                  ? "Saving to Watchlist"
+                  : isWatched
+                    ? `${slide.title} is in your watched history`
+                    : isInWatchlist
+                      ? `Remove ${slide.title} from watchlist`
+                      : `Add ${slide.title} to watchlist`
+              }
+              className={`flex items-center justify-center rounded-lg min-h-[44px] min-w-[44px] transition-all font-bold text-lg ${
+                isWatched
+                  ? "bg-surface border border-white/20 text-text-muted cursor-default"
+                  : isInWatchlist
+                    ? "bg-accent text-white hover:bg-accent/80 border border-accent cursor-pointer active:scale-95"
+                    : "bg-surface-raised/90 text-text-primary hover:bg-surface-raised hover:text-white border border-white/20 active:scale-95 cursor-pointer"
+              }`}
+            >
+              {isWatched || isInWatchlist ? "✓" : "+"}
+            </button>
+          </div>
+        )
+
+        if (posterLayout) {
+          return (
+            <div
+              key={slide.id}
+              role="group"
+              aria-roledescription="slide"
+              aria-label={`${index + 1} of ${slides.length}: ${slide.title}`}
+              aria-hidden={!isActive}
+              className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+                isActive ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 z-0 pointer-events-none"
+              }`}
+            >
+              {(slide.backdropUrl || slide.posterUrl) && (
+                <img
+                  src={slide.backdropUrl || slide.posterUrl || undefined}
+                  alt=""
+                  aria-hidden="true"
+                  loading={index === 0 ? "eager" : "lazy"}
+                  className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-2xl"
+                />
+              )}
+              <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[#05070d]/30 via-[#05070d]/60 to-[#05070d]" />
+
+              <div className="relative z-20 flex h-full flex-col items-center px-5 pb-[56px] pt-3">
+                <div className="flex min-h-0 w-full flex-1 justify-center">
+                  <div
+                    data-testid="hero-poster"
+                    className="relative aspect-[2/3] h-full max-w-full overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl"
+                  >
+                    {slide.posterUrl || slide.backdropUrl ? (
+                      <img
+                        src={slide.posterUrl || slide.backdropUrl || undefined}
+                        alt={slide.title}
+                        loading={index === 0 ? "eager" : "lazy"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                    <span className="absolute left-2 top-2 rounded-md bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
+                      {slide.badge}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 w-full text-center">
+                  <h1 className="line-clamp-1 text-xl font-bold leading-tight tracking-tight text-text-primary">
+                    {slide.title}
+                  </h1>
+                  <p className="mt-1 truncate text-xs text-text-muted">
+                    {[slide.starRating, slide.year, MEDIA_TYPE_LABEL[slide.mediaType], slide.genres.slice(0, 2).join(", ")]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <div className="mt-2.5 flex justify-center">{actions}</div>
+                </div>
+              </div>
+            </div>
+          )
+        }
 
         return (
           <div
@@ -315,11 +458,7 @@ export default function HeroBanner({
                   )}
 
                   <span className="rounded-md bg-white/15 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-text-primary">
-                    {slide.mediaType === "MOVIE"
-                      ? "Movie"
-                      : slide.mediaType === "TV"
-                        ? "TV"
-                        : "Anime"}
+                    {MEDIA_TYPE_LABEL[slide.mediaType]}
                   </span>
 
                   {slide.genres.length > 0 && (
@@ -332,75 +471,7 @@ export default function HeroBanner({
                   )}
                 </div>
 
-                {/* Primary Actions: More Info Link & Reversible Watchlist Toggle Button (HB03, HB04, PH07) */}
-                <div className="flex items-center gap-2.5 pt-0.5">
-                  <Link
-                    to={slide.detailUrl}
-                    tabIndex={isActive ? 0 : -1}
-                    onClick={() => {
-                      store.upsertMovie(slide.movie)
-                      try {
-                        sessionStorage.setItem(
-                          "last_selected_movie",
-                          JSON.stringify(slide.movie),
-                        )
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-white/90 active:scale-[0.98] min-h-[44px]"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="shrink-0"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="16" x2="12" y2="12" />
-                      <line x1="12" y1="8" x2="12.01" y2="8" />
-                    </svg>
-                    <span>More info</span>
-                  </Link>
-
-                  <button
-                    type="button"
-                    tabIndex={isActive ? 0 : -1}
-                    onClick={() => handleWatchlistToggle(slide.movie)}
-                    disabled={isSaving || isWatched}
-                    aria-busy={isSaving}
-                    title={
-                      isWatched
-                        ? "In Watched History"
-                        : isInWatchlist
-                          ? "Remove from Watchlist"
-                          : "Add to Watchlist"
-                    }
-                    aria-label={
-                      isSaving
-                        ? "Saving to Watchlist"
-                        : isWatched
-                          ? `${slide.title} is in your watched history`
-                          : isInWatchlist
-                            ? `Remove ${slide.title} from watchlist`
-                            : `Add ${slide.title} to watchlist`
-                    }
-                    className={`flex items-center justify-center rounded-lg min-h-[44px] min-w-[44px] transition-all font-bold text-lg ${
-                      isWatched
-                        ? "bg-surface border border-white/20 text-text-muted cursor-default"
-                        : isInWatchlist
-                          ? "bg-accent text-white hover:bg-accent/80 border border-accent cursor-pointer active:scale-95"
-                          : "bg-surface-raised/90 text-text-primary hover:bg-surface-raised hover:text-white border border-white/20 active:scale-95 cursor-pointer"
-                    }`}
-                  >
-                    {isWatched || isInWatchlist ? "✓" : "+"}
-                  </button>
-                </div>
+                {actions}
               </div>
             </div>
           </div>
@@ -408,7 +479,11 @@ export default function HeroBanner({
       })}
 
       {/* Hero Banner Controls: Indicator Dashes & Manual Pause/Play Toggle (PH04, PH07) */}
-      <div className="absolute bottom-4 right-5 sm:bottom-8 sm:right-8 lg:right-12 z-30 flex items-center gap-1 sm:gap-2 bg-surface/85 backdrop-blur-md px-2 sm:px-3 py-1 rounded-lg border border-white/10">
+      <div
+        className={`absolute z-30 flex items-center gap-1 sm:gap-2 rounded-lg border border-white/10 bg-surface/85 px-2 py-1 backdrop-blur-md sm:px-3 ${
+          posterLayout ? "bottom-1 left-1/2 -translate-x-1/2" : "bottom-4 right-5 sm:bottom-8 sm:right-8 lg:right-12"
+        }`}
+      >
         {/* Manual Pause / Play Toggle with >= 44x44px touch target and 6px radius */}
         <button
           type="button"

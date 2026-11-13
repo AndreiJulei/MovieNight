@@ -4,6 +4,7 @@ import { useStore } from "../store/MovieStore";
 import { GearIcon, MenuIcon } from "./NavRail.icons";
 import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay";
 import NavSearch from "./NavSearch";
+import { PHONE_BAR_HEIGHT, phoneMenuBottomOffset } from "./phoneMenuLogic";
 
 const EXPLORE_OPTIONS = [
   { label: "Movies", to: "/explore/movies" },
@@ -26,6 +27,45 @@ function isRouteActive(path: string, search: string, key: string): boolean {
   return false;
 }
 
+/** Gap kept between the phone menu's top edge and the visible viewport top. */
+const PHONE_MENU_TOP_GAP = 16;
+/** Smallest scrollable phone menu height, even with a tall keyboard open. */
+const PHONE_MENU_MIN_HEIGHT = 160;
+/** Height used before the first measurement. */
+const PHONE_MENU_INITIAL_MAX_HEIGHT = 480;
+
+/**
+ * Keeps the phone menu resting on the bar, or on the keyboard's top edge while
+ * the search keyboard is open (visualViewport).
+ */
+function usePhoneMenuPosition(active: boolean) {
+  const measure = () => {
+    const viewport = window.visualViewport;
+    // clientHeight tracks the layout viewport; iOS can shrink innerHeight with the keyboard.
+    const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+    const viewportHeight = viewport?.height ?? layoutHeight;
+    const viewportOffsetTop = viewport?.offsetTop ?? 0;
+    const bottom = phoneMenuBottomOffset({ layoutHeight, viewportHeight, viewportOffsetTop });
+    return { bottom, maxHeight: Math.max(PHONE_MENU_MIN_HEIGHT, layoutHeight - bottom - viewportOffsetTop - PHONE_MENU_TOP_GAP) };
+  };
+  const [position, setPosition] = useState(() => ({ bottom: PHONE_BAR_HEIGHT, maxHeight: PHONE_MENU_INITIAL_MAX_HEIGHT }));
+  useEffect(() => {
+    if (!active) return;
+    const update = () => setPosition(measure());
+    update();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [active]);
+  return position;
+}
+
 export default function NavRail({
   orientation,
 }: {
@@ -40,12 +80,27 @@ export default function NavRail({
 
   const menuContainerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  useOverlayFocus(menuOpen, panelRef, orientation === "horizontal");
+  const phone = orientation === "horizontal";
+  const [searchActive, setSearchActive] = useState(false);
+  const menuPosition = usePhoneMenuPosition(menuOpen && phone);
+  // PB02: the phone menu focuses its panel, never the search field, so no keyboard opens.
+  // Non-modal: the bottom bar stays usable while the menu is open, so focus is not trapped.
+  useOverlayFocus(menuOpen, panelRef, false, phone ? "container" : "first");
   useEscapeKey(menuOpen, () => {
     setMenuOpen(false);
     setDesktopExploreOpen(false);
   });
-  useBodyScrollLock(menuOpen && orientation === "horizontal");
+  useBodyScrollLock(menuOpen && phone);
+
+  // Navigating closes the menu.
+  useEffect(() => {
+    setMenuOpen(false);
+    setDesktopExploreOpen(false);
+  }, [path, search]);
+
+  useEffect(() => {
+    if (!menuOpen) setSearchActive(false);
+  }, [menuOpen]);
 
   // Close desktop menu on outside click
   useEffect(() => {
@@ -72,26 +127,35 @@ export default function NavRail({
     { key: "friends-rec", label: "Friends' Recommendations", to: "/suggestions/friends" },
   ];
 
-  /* ── Mobile: Bottom Nav Bar + Full Sheet Menu ── */
+  /* ── Mobile: Bottom Bar + Menu anchored on top of it (#27) ── */
   if (orientation === "horizontal") {
+    const closeMenu = () => setMenuOpen(false);
     return (
       <>
         {menuOpen && (
-          <div ref={panelRef} tabIndex={-1} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation Menu">
+          <>
+            {/* Catches outside taps; dims only while searching (PB04). Leaves the bar tappable. */}
             <div
-              className="absolute inset-0 bg-black/75 backdrop-blur-md transition-opacity"
-              onClick={() => setMenuOpen(false)}
+              data-testid="phone-menu-backdrop"
               aria-hidden="true"
+              onClick={closeMenu}
+              className={`fixed inset-x-0 top-0 z-40 transition-colors duration-100 lg:hidden ${
+                searchActive ? "bg-black/70" : "bg-transparent"
+              }`}
+              style={{ bottom: PHONE_BAR_HEIGHT }}
             />
-            <div className="absolute inset-x-0 bottom-14 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-white/15 bg-[#0b101b] p-5 shadow-2xl">
-              <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-white/20" />
-
-              {/* Mobile Search Bar inside menu */}
-              <div className="mb-5">
-                <NavSearch onNavigate={() => setMenuOpen(false)} className="w-full" />
+            <div
+              ref={panelRef}
+              tabIndex={-1}
+              role="dialog"
+              aria-label="Navigation Menu"
+              className="phone-menu-fade fixed inset-x-0 z-50 overflow-y-auto border-t border-white/15 bg-[#0b101b] px-4 pb-3 pt-4 shadow-[0_-12px_32px_rgba(0,0,0,0.45)] outline-none lg:hidden"
+              style={{ bottom: menuPosition.bottom, maxHeight: menuPosition.maxHeight }}
+            >
+              <div className="mb-4">
+                <NavSearch onNavigate={closeMenu} onActiveChange={setSearchActive} className="w-full" />
               </div>
 
-              {/* Clean Distilled Menu Buttons */}
               <div className="space-y-1.5" role="menu">
                 {mainMenuItems.map((item) => {
                   const active = isRouteActive(path, search, item.key);
@@ -104,16 +168,14 @@ export default function NavRail({
                           role="menuitem"
                           aria-expanded={mobileExploreOpen}
                           onClick={() => setMobileExploreOpen((o) => !o)}
-                          className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-all ${
+                          className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-colors ${
                             path.startsWith("/explore")
                               ? "border-accent/40 bg-accent/15 text-white"
                               : "border-white/[0.08] bg-white/[0.02] text-text-primary hover:border-white/20 hover:bg-white/[0.06]"
                           }`}
                         >
                           <span>{item.label}</span>
-                          <span className={`text-xs text-text-muted transition-transform ${mobileExploreOpen ? "rotate-90" : ""}`}>
-                            ›
-                          </span>
+                          <span className={`text-xs text-text-muted ${mobileExploreOpen ? "rotate-90" : ""}`}>›</span>
                         </button>
 
                         {mobileExploreOpen && (
@@ -124,10 +186,8 @@ export default function NavRail({
                                 to={sub.to}
                                 role="menuitem"
                                 aria-current={path === sub.to ? "page" : undefined}
-                                onClick={() => {
-                                  setMenuOpen(false);
-                                }}
-                                className={`flex h-10 w-full items-center rounded-lg border px-3 text-left text-[13px] font-medium transition-all ${
+                                onClick={closeMenu}
+                                className={`flex h-11 w-full items-center rounded-lg border px-3 text-left text-[13px] font-medium transition-colors ${
                                   path === sub.to
                                     ? "border-accent/40 bg-accent/20 text-white"
                                     : "border-white/[0.06] bg-white/[0.02] text-text-muted hover:text-white"
@@ -148,10 +208,8 @@ export default function NavRail({
                       to={item.to}
                       role="menuitem"
                       aria-current={active ? "page" : undefined}
-                      onClick={() => {
-                        setMenuOpen(false);
-                      }}
-                      className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-all ${
+                      onClick={closeMenu}
+                      className={`flex h-11 w-full items-center justify-between rounded-xl border px-4 text-left text-sm font-medium transition-colors ${
                         active
                           ? "border-accent/40 bg-accent/15 text-white font-semibold"
                           : "border-white/[0.08] bg-white/[0.02] text-text-primary hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
@@ -163,55 +221,47 @@ export default function NavRail({
                 })}
               </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Mobile Fixed Bottom Nav */}
-        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t border-white/[0.08] bg-[#05070d]/90 px-2 backdrop-blur-lg lg:hidden">
+        {/* Bottom bar: [MN] [☰] [⚙] (PB01). Settings becomes the profile avatar with #33. */}
+        <nav
+          aria-label="Primary"
+          className={`fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t px-2 lg:hidden ${
+            menuOpen ? "border-white/[0.06] bg-[#0b101b]" : "border-white/[0.08] bg-[#05070d]/90 backdrop-blur-lg"
+          }`}
+        >
           <Link
             to="/"
-            aria-label="Home"
+            aria-label="Movie Night home"
             aria-current={path === "/" || path === "/home" ? "page" : undefined}
-            className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              path === "/" || path === "/home" ? "bg-accent/20 text-white" : "text-text-muted hover:bg-white/[0.06] hover:text-white"
-            }`}
-            title="Home"
+            onClick={() => setMenuOpen(false)}
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-[17px] font-black tracking-tight transition-colors hover:bg-white/[0.06]"
+            title="Movie Night home"
           >
-            <span className="text-base">🎬</span>
+            <span className="text-white">M</span>
+            <span className="text-accent">N</span>
           </Link>
 
-          {/* 3-Line Menu Trigger without text, animated color */}
           <button
             type="button"
             onClick={() => setMenuOpen((o) => !o)}
-            className={`group flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
               menuOpen ? "text-[#4a9dec]" : "text-white/80 hover:text-[#4a9dec]"
             }`}
             title="Menu"
             aria-label="Menu"
           >
-            <MenuIcon className="h-5 w-5 transition-colors duration-200 text-current" />
+            <MenuIcon className="h-5 w-5 text-current" />
           </button>
 
-          {/* Quick Search */}
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:text-white transition-colors"
-            title="Search"
-            aria-label="Search"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-
-          {/* Settings */}
           <Link
             to="/settings"
             aria-current={path.startsWith("/settings") ? "page" : undefined}
-            className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+            onClick={() => setMenuOpen(false)}
+            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
               path.startsWith("/settings") ? "bg-accent/20 text-white" : "text-text-muted hover:bg-white/[0.06] hover:text-white"
             }`}
             title="Settings"

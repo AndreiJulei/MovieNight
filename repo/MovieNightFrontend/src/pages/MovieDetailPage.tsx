@@ -8,10 +8,14 @@ import type { Movie, MediaType } from "../store/data";
 import { titleId, parseTitleId, resourceType } from "../store/titleIdentity";
 import AppShell from "../components/AppShell";
 import AddToListPopover from "../components/AddToListPopover";
+import CompactTitleHero from "../components/CompactTitleHero";
+import TrailerEmbed from "../components/TrailerEmbed";
+import { usePhoneLayout } from "../hooks/useCompactLayout";
 import MovieGrid from "../components/MovieGrid";
 import ShelfReloadButton from "../components/ShelfReloadButton";
 import ShelfSection from "../components/ShelfSection";
 import {
+  COMPACT_ACTION_CLASS,
   SHELF_SPACING_CLASS,
   SHELF_TRACK_CLASS,
   WIDE_CONTENT_CLASS,
@@ -68,6 +72,8 @@ export default function MovieDetailPage() {
 
   // Inline hero trailer state
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
+  // #28: the poster title page is for phones; tablets keep the wide hero.
+  const compact = usePhoneLayout();
   const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
   const [ratingSyncAttempt, setRatingSyncAttempt] = useState(0);
 
@@ -369,201 +375,210 @@ export default function MovieDetailPage() {
   const runtimeFormatted = formatRuntime(movie.runtimeMinutes);
   const castList = movie.cast && movie.cast.length > 0 ? movie.cast : parseCastMembers("", []);
 
+  const heroDetails = (
+    <>
+      {/* Title Typography */}
+      {(() => {
+        const display = resolveDetailTitleDisplay(movie, failedLogos);
+        if (display.mode === "logo") {
+          return (
+            <h1 className="m-0">
+              <img
+                src={display.logoUrl}
+                alt={display.title}
+                onError={() => setFailedLogos((f) => ({ ...f, [movie.id]: true }))}
+                className="max-h-20 sm:max-h-28 max-w-full object-contain object-left drop-shadow-lg"
+              />
+            </h1>
+          );
+        }
+        return (
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
+            {display.title}
+          </h1>
+        );
+      })()}
+
+      <div>
+      {/* Metadata Line: Ratings, Year, Runtime, 4K, Media Type */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        {/* IMDb Rating Badge */}
+        {movie.imdb != null && (
+          <span className="nums inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-400">
+            <span className="rounded bg-amber-400 px-1 py-0.2 text-[10px] font-black text-black">
+              IMDb
+            </span>
+            {movie.imdb.toFixed(1)}
+          </span>
+        )}
+
+        {/* TMDb Rating Badge */}
+        {movie.tmdbRating != null && (
+          <span className="nums inline-flex items-center gap-1 rounded-md border border-indigo-500/30 bg-indigo-500/15 px-2 py-0.5 text-[11px] font-bold text-indigo-400">
+            ★ {movie.tmdbRating.toFixed(1)} TMDb
+          </span>
+        )}
+
+        {/* Rotten Tomatoes Badge */}
+        {movie.rt != null && (
+          <span className="nums inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-rose-300">
+            <span>🍅</span>
+            {movie.rt}%
+          </span>
+        )}
+
+        {providerRatingNotice(movie) && (
+          <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-text-muted">
+            {providerRatingNotice(movie)}
+          </span>
+        )}
+
+        {/* Personal Rating Badge */}
+        {entry?.status === "watched" && entry.rating != null && (
+          <span className="nums inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/25 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+            <span className="text-accent">★</span> {entry.rating.toFixed(1)}{" "}
+            <span className="text-text-muted text-[11px] font-normal">(Yours)</span>
+          </span>
+        )}
+
+        {movie.year && (
+          <>
+            <span className="text-white/30">·</span>
+            <span className="nums font-semibold text-text-primary">{movie.year}</span>
+          </>
+        )}
+
+        {runtimeFormatted && (
+          <>
+            <span className="text-white/30">·</span>
+            <span className="nums font-medium text-text-primary">{runtimeFormatted}</span>
+          </>
+        )}
+
+        {/* Sleek Quality Tag */}
+        {movie.mediaType !== "TV" && movie.mediaType !== "ANIME" && (
+          <>
+            <span className="text-white/30">·</span>
+            <span className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 text-[11px] font-bold tracking-wider text-text-primary">
+              4K
+            </span>
+          </>
+        )}
+
+        {movie.mediaType === "TV" && (
+          <span className="rounded-md border border-cyan-500/30 bg-cyan-500/15 px-2 py-0.5 text-xs font-semibold text-cyan-400">
+            TV Series{movie.seasonsCount ? <> • <span className="nums">{movie.seasonsCount}</span> Season{movie.seasonsCount > 1 ? "s" : ""}</> : ""}
+          </span>
+        )}
+
+        {movie.mediaType === "ANIME" && (
+          <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-400">
+            Anime{movie.episodesCount ? <> • <span className="nums">{movie.episodesCount}</span> Eps</> : ""}
+          </span>
+        )}
+      </div>
+
+      {/* Genres row */}
+      {movie.genres && movie.genres.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {movie.genres.map((genre) => (
+            <span
+              key={genre}
+              className="rounded-full border border-white/10 bg-black/40 px-3 py-0.5 text-xs font-medium text-text-primary backdrop-blur-sm"
+            >
+              {genre}
+            </span>
+          ))}
+          {movie.director && (
+            <span className="text-xs text-text-muted ml-1.5">
+              Dir. <span className="text-text-primary font-medium">{movie.director}</span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Clamped overview synopsis (2-3 lines) */}
+      {movie.overview && (
+        <p className="mt-3 line-clamp-2 sm:line-clamp-3 text-sm leading-relaxed text-text-primary/90 max-w-2xl drop-shadow-sm">
+          {movie.overview}
+        </p>
+      )}
+      </div>
+    </>
+  );
+
   return (
     <AppShell fullBleed>
       {/* ── 1. Full-Bleed Cinematic Hero Header (DP01) ── */}
-      <section
-        role="region"
-        aria-label={`${movie.title} hero banner`}
-        className="relative w-full min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] overflow-hidden bg-[#05070d] select-none"
-      >
-        {/* Backdrop artwork */}
-        <div className="absolute inset-0">
-          {isTrailerPlaying ? (
-            <div className="h-full w-full bg-black">
-              {movie.trailerKey ? (
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`}
-                  title={`${movie.title} Trailer`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="h-full w-full border-0"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm text-text-muted">
-                  No video trailer available for this title
-                </div>
-              )}
-            </div>
-          ) : backdropUrl ? (
-            <img
-              src={backdropUrl}
-              alt=""
-              aria-hidden="true"
-              className="h-full w-full object-cover object-center lg:object-top"
-            />
-          ) : (
-            <div className="h-full w-full bg-gradient-to-tr from-[#05070d] via-[#090e1c] to-[#12192e]" />
-          )}
-        </div>
-
-        {/* Cinematic Vignettes: dark bottom ground and side text vignettes */}
-        <div
-          aria-hidden="true"
-          className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0" : "opacity-100"}`}
+      {compact ? (
+        <CompactTitleHero
+          title={movie.title}
+          posterUrl={movie.posterUrl}
+          backdropUrl={movie.backdropUrl}
+          trailerKey={movie.trailerKey}
+          isTrailerPlaying={isTrailerPlaying}
+          onToggleTrailer={() => setIsTrailerPlaying((v) => !v)}
+          backLink={<BackLink onClick={handleBack} label={backLabel} />}
         >
-          <div className="absolute inset-x-0 bottom-0 h-48 sm:h-56 bg-gradient-to-t from-[#05070d] via-[#05070d]/60 to-transparent" />
-          <div className="absolute inset-y-0 left-0 w-full sm:w-1/2 bg-gradient-to-r from-[#05070d]/85 via-[#05070d]/40 to-transparent" />
-        </div>
-
-        {/* Hero Overlay Content */}
-        <div className={`relative z-20 mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-16 sm:pt-20 lg:pt-8 pb-6 sm:pb-8 flex flex-col justify-between min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] ${isTrailerPlaying ? "pointer-events-none" : ""}`}>
-          {/* Top Bar with Back Link */}
-          <div className="pointer-events-auto flex items-center justify-between gap-3">
-            <BackLink onClick={handleBack} label={backLabel} />
-          </div>
-
-          {/* Bottom aligned logo and details; fade out while the trailer plays */}
-          <div
-            aria-hidden={isTrailerPlaying}
-            data-testid="hero-details"
-            className={`max-w-3xl text-left transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-          >
-            {/* Title Typography */}
-            {(() => {
-              const display = resolveDetailTitleDisplay(movie, failedLogos);
-              if (display.mode === "logo") {
-                return (
-                  <h1 className="m-0">
-                    <img
-                      src={display.logoUrl}
-                      alt={display.title}
-                      onError={() => setFailedLogos((f) => ({ ...f, [movie.id]: true }))}
-                      className="max-h-20 sm:max-h-28 max-w-full object-contain object-left drop-shadow-lg"
-                    />
-                  </h1>
-                );
-              }
-              return (
-                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
-                  {display.title}
-                </h1>
-              );
-            })()}
-
-            <div>
-            {/* Metadata Line: Ratings, Year, Runtime, 4K, Media Type */}
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-              {/* IMDb Rating Badge */}
-              {movie.imdb != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-400">
-                  <span className="rounded bg-amber-400 px-1 py-0.2 text-[10px] font-black text-black">
-                    IMDb
-                  </span>
-                  {movie.imdb.toFixed(1)}
-                </span>
-              )}
-
-              {/* TMDb Rating Badge */}
-              {movie.tmdbRating != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-indigo-500/30 bg-indigo-500/15 px-2 py-0.5 text-[11px] font-bold text-indigo-400">
-                  ★ {movie.tmdbRating.toFixed(1)} TMDb
-                </span>
-              )}
-
-              {/* Rotten Tomatoes Badge */}
-              {movie.rt != null && (
-                <span className="nums inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-rose-300">
-                  <span>🍅</span>
-                  {movie.rt}%
-                </span>
-              )}
-
-              {providerRatingNotice(movie) && (
-                <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-text-muted">
-                  {providerRatingNotice(movie)}
-                </span>
-              )}
-
-              {/* Personal Rating Badge */}
-              {entry?.status === "watched" && entry.rating != null && (
-                <span className="nums inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/25 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
-                  <span className="text-accent">★</span> {entry.rating.toFixed(1)}{" "}
-                  <span className="text-text-muted text-[11px] font-normal">(Yours)</span>
-                </span>
-              )}
-
-              {movie.year && (
-                <>
-                  <span className="text-white/30">·</span>
-                  <span className="nums font-semibold text-text-primary">{movie.year}</span>
-                </>
-              )}
-
-              {runtimeFormatted && (
-                <>
-                  <span className="text-white/30">·</span>
-                  <span className="nums font-medium text-text-primary">{runtimeFormatted}</span>
-                </>
-              )}
-
-              {/* Sleek Quality Tag */}
-              {movie.mediaType !== "TV" && movie.mediaType !== "ANIME" && (
-                <>
-                  <span className="text-white/30">·</span>
-                  <span className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 text-[11px] font-bold tracking-wider text-text-primary">
-                    4K
-                  </span>
-                </>
-              )}
-
-              {movie.mediaType === "TV" && (
-                <span className="rounded-md border border-cyan-500/30 bg-cyan-500/15 px-2 py-0.5 text-xs font-semibold text-cyan-400">
-                  TV Series{movie.seasonsCount ? <> • <span className="nums">{movie.seasonsCount}</span> Season{movie.seasonsCount > 1 ? "s" : ""}</> : ""}
-                </span>
-              )}
-
-              {movie.mediaType === "ANIME" && (
-                <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-400">
-                  Anime{movie.episodesCount ? <> • <span className="nums">{movie.episodesCount}</span> Eps</> : ""}
-                </span>
-              )}
-            </div>
-
-            {/* Genres row */}
-            {movie.genres && movie.genres.length > 0 && (
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                {movie.genres.map((genre) => (
-                  <span
-                    key={genre}
-                    className="rounded-full border border-white/10 bg-black/40 px-3 py-0.5 text-xs font-medium text-text-primary backdrop-blur-sm"
-                  >
-                    {genre}
-                  </span>
-                ))}
-                {movie.director && (
-                  <span className="text-xs text-text-muted ml-1.5">
-                    Dir. <span className="text-text-primary font-medium">{movie.director}</span>
-                  </span>
-                )}
+          {heroDetails}
+        </CompactTitleHero>
+      ) : (
+        <section
+          role="region"
+          aria-label={`${movie.title} hero banner`}
+          className="relative w-full min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] overflow-hidden bg-[#05070d] select-none"
+        >
+          {/* Backdrop artwork */}
+          <div className="absolute inset-0">
+            {isTrailerPlaying ? (
+              <div className="h-full w-full bg-black">
+                <TrailerEmbed title={movie.title} trailerKey={movie.trailerKey} />
               </div>
+            ) : backdropUrl ? (
+              <img
+                src={backdropUrl}
+                alt=""
+                aria-hidden="true"
+                className="h-full w-full object-cover object-center lg:object-top"
+              />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-tr from-[#05070d] via-[#090e1c] to-[#12192e]" />
             )}
+          </div>
 
-            {/* Clamped overview synopsis (2-3 lines) */}
-            {movie.overview && (
-              <p className="mt-3 line-clamp-2 sm:line-clamp-3 text-sm leading-relaxed text-text-primary/90 max-w-2xl drop-shadow-sm">
-                {movie.overview}
-              </p>
-            )}
+          {/* Cinematic Vignettes: dark bottom ground and side text vignettes */}
+          <div
+            aria-hidden="true"
+            className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0" : "opacity-100"}`}
+          >
+            <div className="absolute inset-x-0 bottom-0 h-48 sm:h-56 bg-gradient-to-t from-[#05070d] via-[#05070d]/60 to-transparent" />
+            <div className="absolute inset-y-0 left-0 w-full sm:w-1/2 bg-gradient-to-r from-[#05070d]/85 via-[#05070d]/40 to-transparent" />
+          </div>
+
+          {/* Hero Overlay Content */}
+          <div className={`relative z-20 mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-16 sm:pt-20 lg:pt-8 pb-6 sm:pb-8 flex flex-col justify-between min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] ${isTrailerPlaying ? "pointer-events-none" : ""}`}>
+            {/* Top Bar with Back Link */}
+            <div className="pointer-events-auto flex items-center justify-between gap-3">
+              <BackLink onClick={handleBack} label={backLabel} />
+            </div>
+
+            {/* Bottom aligned logo and details; fade out while the trailer plays */}
+            <div
+              aria-hidden={isTrailerPlaying}
+              data-testid="hero-details"
+              className={`max-w-3xl text-left transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+            >
+              {heroDetails}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── 2. Action Button Row & Inline Rating Slider, below the hero (DP01, DP02, DP03) ── */}
       <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-5">
         <ActionArea
           movie={movie}
+          compact={compact}
           isTrailerPlaying={isTrailerPlaying}
           onToggleTrailer={() => setIsTrailerPlaying((v) => !v)}
         />
@@ -740,12 +755,16 @@ export default function MovieDetailPage() {
   );
 }
 
+const COMPACT_ACTION_BUTTON_CLASS = `${COMPACT_ACTION_CLASS} transition-colors active:scale-95 disabled:opacity-60`;
+
 function ActionArea({
   movie,
+  compact = false,
   isTrailerPlaying,
   onToggleTrailer,
 }: {
   movie: Movie;
+  compact?: boolean;
   isTrailerPlaying: boolean;
   onToggleTrailer: () => void;
 }) {
@@ -814,9 +833,47 @@ function ActionArea({
     });
   };
 
+  const watchedLabel = watched
+    ? `Edit personal rating: Watched${entry.rating != null ? ` (${entry.rating.toFixed(1)})` : ""}`
+    : "Mark as Watched";
+
   return (
     <div className="space-y-4">
-      {/* Primary Actions Row */}
+      {compact ? (
+        <div data-testid="title-actions" className="grid grid-flow-col auto-cols-fr gap-2">
+          {!watched && (
+            <button
+              type="button"
+              disabled={saving}
+              aria-busy={saving}
+              aria-pressed={inWatchlist}
+              aria-label={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+              onClick={() => toggleWatchlist(movie.id, movie)}
+              className={`${COMPACT_ACTION_BUTTON_CLASS} ${
+                inWatchlist ? "border-accent bg-accent/20 text-accent" : "border-white/20 bg-black/40 text-text-primary"
+              }`}
+            >
+              <span aria-hidden="true" className="text-base leading-none">{inWatchlist ? "✓" : "+"}</span>
+              <span>{saving ? "Saving" : "Watchlist"}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={saving}
+            aria-label={watchedLabel}
+            onClick={handleToggleSlider}
+            className={`${COMPACT_ACTION_BUTTON_CLASS} ${
+              watched ? "border-success/40 bg-success/20 text-success" : "border-white/20 bg-black/40 text-text-primary"
+            }`}
+          >
+            <span aria-hidden="true" className="text-base leading-none">{watched ? "★" : "✓"}</span>
+            <span className="nums">{watched ? (entry.rating != null ? entry.rating.toFixed(1) : "Rate") : "Watched"}</span>
+          </button>
+
+          <AddToListPopover movie={movie} compact />
+        </div>
+      ) : (
       <div className="flex flex-wrap items-center gap-3">
         {/* Play Trailer CTA */}
         <button
@@ -858,11 +915,7 @@ function ActionArea({
         <button
           type="button"
           disabled={saving}
-          aria-label={
-            watched
-              ? `Edit personal rating: Watched${entry.rating != null ? ` (${entry.rating.toFixed(1)})` : ""}`
-              : "Mark as Watched"
-          }
+          aria-label={watchedLabel}
           onClick={handleToggleSlider}
           className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all active:scale-95 disabled:opacity-60 ${
             watched
@@ -886,6 +939,7 @@ function ActionArea({
         {/* Add to List Popover */}
         <AddToListPopover movie={movie} />
       </div>
+      )}
 
       {watchlistError && <p role="alert" className="text-sm text-danger">{watchlistError}</p>}
       {!isSliderExpanded && error && <p role="alert" className="text-sm text-danger">{error}</p>}

@@ -126,16 +126,16 @@ test('navigation-focus', async browser => {
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog',{name:'Navigation Menu'});
     assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Opening phone navigation moves focus inside');
-    for(let i=0;i<20;i++) {
-      await page.keyboard.press('Tab');
-      assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Tab stays in modal navigation');
-    }
+    // #27: the phone menu is non-modal (the bar stays usable); Tab walks its items in order.
+    await page.keyboard.press('Tab');
+    assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Tab moves into the navigation items');
+    assert.equal(await dialog.getAttribute('aria-modal'),null,'Phone navigation is not modal');
     await page.keyboard.press('Escape');
     assert(await trigger.evaluate(el=>el===document.activeElement),'Dismissal returns focus');
     await noOverflow(page);
     await trigger.click();
     await page.setViewportSize({width:1440,height:900});
-    await waitUntil(()=>page.evaluate(()=>document.body.style.overflow!=='hidden'),'Resizing out of phone layout releases modal scroll lock');
+    await waitUntil(()=>page.evaluate(()=>document.body.style.overflow!=='hidden'),'Resizing out of phone layout releases the menu scroll lock');
   } finally {await context.close();}
 });
 
@@ -219,7 +219,7 @@ for (const viewport of [{width:360,height:800},{width:390,height:844},{width:430
       await openTitle(page,'Demo Seed');
       assert.equal((await readApi(page,'/api/movies/library')).length,0,'Browsing creates no library entry');
       await noOverflow(page);
-      await page.getByRole('button',{name:'+ Add to Watchlist',exact:true}).click();
+      await page.getByRole('button',{name:/^(\+ )?Add to Watchlist$/}).click();
       await waitUntil(async()=>(await readApi(page,'/api/movies/library')).length===1,'Watchlist save confirmed');
       await page.getByRole('button',{name:'Mark as Watched',exact:true}).click();
       await page.getByRole('button',{name:'Confirm Watched',exact:true}).click();
@@ -238,7 +238,7 @@ for (const viewport of [{width:360,height:800},{width:390,height:844},{width:430
       await notes.press('Tab');
       await waitUntil(async()=>(await readApi(page,'/api/movies/library'))[0].notes==='Responsive private note','Private note saved');
       await openTitle(page,'Demo Series','TV Series');
-      await page.getByRole('button',{name:'+ Add to Watchlist',exact:true}).click();
+      await page.getByRole('button',{name:/^(\+ )?Add to Watchlist$/}).click();
       await waitUntil(async()=>(await readApi(page,'/api/movies/library')).length===2,'Typed equal-ID watchlist save');
       await openTitle(page,'Demo Anime','Anime');
       await noOverflow(page);
@@ -318,16 +318,16 @@ test('states',async browser=>{
       await new Promise(resolve=>release=resolve);
       await route.fulfill({status:503,json:{message:'Controlled failure'}});
     });
-    await page.getByRole('button',{name:'+ Add to Watchlist',exact:true}).click();
+    await page.getByRole('button',{name:/^(\+ )?Add to Watchlist$/}).click();
     const pending=page.getByRole('button',{name:'Saving…',exact:true});
     await pending.waitFor(); assert(await pending.isDisabled());
     release();
     await page.getByRole('alert').waitFor();
-    await page.getByRole('button',{name:'+ Add to Watchlist',exact:true}).waitFor();
+    await page.getByRole('button',{name:/^(\+ )?Add to Watchlist$/}).waitFor();
     assert.equal((await readApi(page,'/api/movies/library')).length,0,'Controlled failed save changes no real membership');
     await noOverflow(page);
     await page.unroute('**/api/movies/library');
-    await page.getByRole('button',{name:'+ Add to Watchlist',exact:true}).click();
+    await page.getByRole('button',{name:/^(\+ )?Add to Watchlist$/}).click();
     await waitUntil(async()=>(await readApi(page,'/api/movies/library')).length===1,'Successful explicit retry');
   } finally {await context.close();}
 });

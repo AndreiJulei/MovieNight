@@ -32,11 +32,16 @@ export function useBodyScrollLock(active: boolean) {
   }, [active]);
 }
 
-/** Focus entry/return for overlays; modal overlays also contain keyboard focus. */
+/**
+ * Focus entry/return for overlays; modal overlays also contain keyboard focus.
+ * `initialFocus: "container"` focuses the overlay itself instead of its first
+ * control, so opening never lands in a text field and raises a phone keyboard.
+ */
 export function useOverlayFocus(
   active: boolean,
   container: import("react").RefObject<HTMLElement | null>,
   modal = false,
+  initialFocus: "first" | "container" = "first",
 ) {
   useEffect(() => {
     const panel = container.current;
@@ -45,7 +50,8 @@ export function useOverlayFocus(
     const controls = () => Array.from(panel.querySelectorAll<HTMLElement>(
       'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), iframe, [tabindex="0"]',
     )).filter(element => element.getClientRects().length && !element.closest('[inert]') && !element.hasAttribute('data-focus-guard'));
-    (controls()[0] ?? panel).focus();
+    const entry = () => (initialFocus === "container" ? panel : controls()[0] ?? panel);
+    entry().focus();
     const onTab = (event: KeyboardEvent) => {
       if (!modal || event.key !== "Tab") return;
       const items = controls();
@@ -59,7 +65,7 @@ export function useOverlayFocus(
     };
     // Native Tab can leave an iframe without a parent-document keydown event.
     const onFocus = (event: FocusEvent) => {
-      if (modal && !panel.contains(event.target as Node)) (controls()[0] ?? panel).focus();
+      if (modal && !panel.contains(event.target as Node)) entry().focus();
     };
     document.addEventListener("keydown", onTab);
     document.addEventListener("focusin", onFocus);
@@ -68,5 +74,5 @@ export function useOverlayFocus(
       document.removeEventListener("focusin", onFocus);
       if (trigger?.isConnected && trigger.getClientRects().length) trigger.focus();
     };
-  }, [active, container, modal]);
+  }, [active, container, modal, initialFocus]);
 }

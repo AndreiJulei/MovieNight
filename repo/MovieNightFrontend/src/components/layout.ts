@@ -7,6 +7,7 @@
  * gutters: PosterShelf bleeds its scroll track into them with matching
  * negative margins.
  */
+
 export const WIDE_GUTTER_CLASS = "px-4 sm:px-8"
 
 /** 1680px content + 2 × 32px gutters. */
@@ -43,3 +44,7 @@ export const POSTER_GRID_COLUMNS_CLASS =
   "grid-cols-2 min-[600px]:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]"
 
 export const POSTER_GRID_CLASS = `grid ${POSTER_GRID_COLUMNS_CLASS} gap-3 sm:gap-4`
+
+/** #28: phone title-page actions share one row of equal icon-over-label buttons (≥44px). */
+export const COMPACT_ACTION_CLASS =
+  "flex min-h-[52px] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 text-[11px] font-semibold leading-none"

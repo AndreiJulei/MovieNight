@@ -4,12 +4,15 @@ import { useStore } from "../store/MovieStore";
 import { useToast } from "./Toast";
 import { useEscapeKey, useOverlayFocus } from "../hooks/useOverlay";
 import type { Movie } from "../store/data";
+import { COMPACT_ACTION_CLASS } from "./layout";
 
 interface AddToListPopoverProps {
   movie: Movie;
+  /** #28: icon-over-label trigger that fills a one-row phone action grid. */
+  compact?: boolean;
 }
 
-export default function AddToListPopover({ movie }: AddToListPopoverProps) {
+export default function AddToListPopover({ movie, compact = false }: AddToListPopoverProps) {
   const { currentUser, listsFor, createList, toggleMovieInList, isMovieInList, listsContainingMovie, listsLoading, listsError, listsSaving, refreshLists } =
     useStore();
   const { toast } = useToast();
@@ -85,6 +88,9 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
   const userLists = listsFor(currentUser.id);
   const containingLists = listsContainingMovie(currentUser.id, movie);
   const inAnyList = containingLists.length > 0;
+  const fullLabel = inAnyList ? `In Lists (${containingLists.length})` : "+ Add to list";
+  // #28: the phone action row has room for a short label only.
+  const shortLabel = inAnyList ? `Lists (${containingLists.length})` : "List";
 
   const handleCreateAndAdd = async (e: FormEvent) => {
     e.preventDefault();
@@ -107,13 +113,18 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
   };
 
   return (
-    <div ref={popoverRef} className="relative inline-block">
+    <div ref={popoverRef} className={compact ? "relative min-w-0" : "relative inline-block"}>
       {/* Secondary affordance: small, quiet, visually subordinate */}
       <button
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-all active:scale-95 ${
+        aria-label={compact ? fullLabel : undefined}
+        className={`${
+          compact
+            ? COMPACT_ACTION_CLASS
+            : "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium"
+        } transition-all active:scale-95 ${
           inAnyList
             ? "border-white/20 bg-white/[0.08] text-white hover:border-white/30 hover:bg-white/[0.12]"
             : "border-white/10 bg-[#111726] text-text-muted hover:border-white/20 hover:text-text-primary hover:bg-[#151c2e]"
@@ -140,11 +151,7 @@ export default function AddToListPopover({ movie }: AddToListPopoverProps) {
           <line x1="3" y1="12" x2="3.01" y2="12" />
           <line x1="3" y1="18" x2="3.01" y2="18" />
         </svg>
-        <span>
-          {inAnyList
-            ? `In Lists (${containingLists.length})`
-            : "+ Add to list"}
-        </span>
+        <span>{compact ? shortLabel : fullLabel}</span>
       </button>
 
       {/* Floating checklist popover */}

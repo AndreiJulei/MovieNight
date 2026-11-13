@@ -10,6 +10,8 @@ import { useEscapeKey } from "../hooks/useOverlay";
 interface NavSearchProps {
   className?: string;
   onNavigate?: () => void;
+  /** Reports whether the field is focused or showing results (#27 dims the page only then). */
+  onActiveChange?: (active: boolean) => void;
 }
 
 const movieUrl = (movie: Movie) =>
@@ -17,7 +19,7 @@ const movieUrl = (movie: Movie) =>
 
 const addSearchUrl = (q: string) => `/movies/add?q=${encodeURIComponent(q.trim())}`;
 
-export default function NavSearch({ className = "", onNavigate }: NavSearchProps) {
+export default function NavSearch({ className = "", onNavigate, onActiveChange }: NavSearchProps) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const { navigate } = useRouter();
   const store = useStore();
@@ -27,10 +29,16 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
   const [backendResults, setBackendResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [keyboardFocus, setKeyboardFocus] = useState(false);
+  const [focused, setFocused] = useState(false);
   const interactionModeRef = useRef<"pointer" | "keyboard">("keyboard");
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const active = focused || (isOpen && query.trim().length > 0);
+  useEffect(() => {
+    onActiveChange?.(active);
+  }, [active, onActiveChange]);
 
   // Close on Escape
   useEscapeKey(isOpen, () => {
@@ -197,10 +205,12 @@ export default function NavSearch({ className = "", onNavigate }: NavSearchProps
             setSelectedIndex(-1);
           }}
           onFocus={() => {
+            setFocused(true);
             setIsOpen(true);
             setKeyboardFocus(interactionModeRef.current === "keyboard");
           }}
           onBlur={() => {
+            setFocused(false);
             setKeyboardFocus(false);
           }}
           onKeyDown={handleKeyDown}
