@@ -24,6 +24,7 @@ import {
   type MediaType,
   type User,
 } from "./data";
+import { isValidPersonalRating } from "../components/ratingSliderLogic";
 
 const AUTH_KEY = "movienight.currentUser";
 
@@ -536,8 +537,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     if (!currentUser || !authApi.getToken()) {
       return Promise.resolve({ ok: false, error: "Sign in to save watched history." });
     }
-    if (rating != null && (!Number.isFinite(rating) || rating < 0 || rating > 10 || !Number.isInteger(rating * 2))) {
-      return Promise.resolve({ ok: false, error: "Choose a rating from 0 to 10 in half-point steps." });
+    if (rating != null && !isValidPersonalRating(rating)) {
+      return Promise.resolve({ ok: false, error: "Choose a rating from 0 to 10 with at most one decimal place." });
     }
     const userId = String(currentUser.id);
     const generation = authGeneration.current;

@@ -106,13 +106,16 @@ public class PostgresStorageConfiguration {
                 if (result.getBoolean(1)) throw new IllegalStateException();
             }
             verifyRelationshipConstraints(connection);
-            if (!"1".equals(postgresMigrations.info().current().getVersion().getVersion())) {
+            var schemaVersion = postgresMigrations.info().current().getVersion();
+            if (!"1".equals(schemaVersion.getVersion())) {
                 try (var result = statement.executeQuery("""
                         SELECT pg_get_constraintdef(oid) FROM pg_constraint
                         WHERE conrelid='movienight.user_movie_entries'::regclass
                           AND conname='valid_personal_rating' AND contype='c' AND convalidated
                         """)) {
-                    String expected = "CHECK (((personal_rating IS NULL) OR (((personal_rating >= (0)::double precision) AND (personal_rating <= (10)::double precision)) AND ((personal_rating * (2)::double precision) = trunc((personal_rating * (2)::double precision))))))";
+                    // V2 allowed half-point steps; V6 allows one decimal place (0.1 steps).
+                    String ratingStepMultiplier = schemaVersion.isAtLeast("6") ? "10" : "2";
+                    String expected = "CHECK (((personal_rating IS NULL) OR (((personal_rating >= (0)::double precision) AND (personal_rating <= (10)::double precision)) AND ((personal_rating * (%1$s)::double precision) = trunc((personal_rating * (%1$s)::double precision))))))".formatted(ratingStepMultiplier);
                     if (!result.next() || !expected.equals(result.getString(1))) {
                         throw new IllegalStateException();
                     }

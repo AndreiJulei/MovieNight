@@ -152,7 +152,7 @@ class TvTitlesPersistenceTest {
             .content("{\"personalRating\":null,\"notes\":\"Private TV note\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.personalRating").isEmpty());
         mvc.perform(put("/api/movies/library/" + tvKey).header("Authorization", token()).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"personalRating\":7.2}" )).andExpect(status().isBadRequest());
+            .content("{\"personalRating\":7.25}" )).andExpect(status().isBadRequest());
         mvc.perform(delete("/api/movies/library/" + tvKey).header("Authorization", token())).andExpect(status().isOk());
         read("/api/movies/library").andExpect(jsonPath("$", hasSize(1)))
             .andExpect(jsonPath("$[0].movie.mediaType").value("MOVIE"));

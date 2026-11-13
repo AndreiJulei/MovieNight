@@ -1,9 +1,10 @@
-import React from "react"
+import React, { useId, useState } from "react"
 import {
   calculateNextRating,
   calculateTrackFillPercentage,
   formatRatingReadout,
   parseRatingInput,
+  parseTypedRating,
   ratingToSliderValue,
   MAX_RATING,
   MIN_RATING,
@@ -24,19 +25,46 @@ export default function PersonalRatingInput({
   const sliderVal = ratingToSliderValue(value)
   const fillPercentage = calculateTrackFillPercentage(value)
   const formattedReadout = formatRatingReadout(value)
+  const typedId = useId()
+  const typedHintId = useId()
+  // Text being typed; null shows the current rating. Invalid text is kept (and
+  // flagged) without changing the rating, which stays at its last valid value.
+  const [draft, setDraft] = useState<string | null>(null)
+  // "8." is a value still being typed: neither applied nor flagged.
+  const typedPending = draft !== null && /^\d+\.$/.test(draft.trim())
+  const typedInvalid = draft !== null && !typedPending && !parseTypedRating(draft).valid
+  const typedText = draft ?? (sliderVal > 0 ? sliderVal.toFixed(1) : "")
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDraft(null)
     const next = parseRatingInput(e.target.value)
     onChange(next)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (disabled) return
-    const next = calculateNextRating(value, e.key)
+    const next = calculateNextRating(value, e.key, { shiftKey: e.shiftKey })
     if (next !== undefined) {
       e.preventDefault()
+      setDraft(null)
       onChange(next)
     }
+  }
+
+  const handleTypedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value
+    setDraft(text)
+    const typed = parseTypedRating(text)
+    if (typed.valid && typed.rating !== value) onChange(typed.rating)
+  }
+
+  const handleTypedBlur = () => {
+    if (!typedInvalid) setDraft(null)
+  }
+
+  const handleClear = () => {
+    setDraft(null)
+    onChange(null)
   }
 
   // Thumb offset math: 22px thumb width
@@ -57,18 +85,47 @@ export default function PersonalRatingInput({
             (optional)
           </span>
         </label>
-        {sliderVal > 0 && !disabled && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            aria-label="Clear personal rating"
-            title="Reset to Unrated"
-            className="text-xs text-text-muted hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:underline"
-          >
-            Clear
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <label htmlFor={typedId} className="sr-only">
+            Personal rating value, 0 to 10
+          </label>
+          <input
+            id={typedId}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="–"
+            value={typedText}
+            disabled={disabled}
+            onChange={handleTypedChange}
+            onBlur={handleTypedBlur}
+            aria-invalid={typedInvalid}
+            aria-describedby={typedInvalid ? typedHintId : undefined}
+            data-testid="rating-typed-input"
+            className={`nums w-14 rounded-md border bg-black/40 px-2 py-1 text-center text-xs text-white placeholder:text-text-muted focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              typedInvalid
+                ? "border-red-400/70 focus:border-red-400"
+                : "border-white/10 focus:border-accent"
+            }`}
+          />
+          {(sliderVal > 0 || !!draft) && !disabled && (
+            <button
+              type="button"
+              onClick={handleClear}
+              aria-label="Clear personal rating"
+              title="Reset to Unrated"
+              className="text-xs text-text-muted hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
+      {typedInvalid && (
+        <p id={typedHintId} role="alert" className="mb-1 text-xs text-red-300">
+          Use 0–10 with at most one decimal, e.g. 8.2
+        </p>
+      )}
 
       {/* Floating Readout badge tracking the thumb position without overhang (RS02) */}
       <div className="relative w-full h-6 mb-1 pointer-events-none select-none">

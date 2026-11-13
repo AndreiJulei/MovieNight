@@ -51,7 +51,7 @@ public class MovieController {
     }
 
     /**
-     * Update by catalog movie ID. Ratings are optional, 0-10 in half-point steps.
+     * Update by catalog movie ID. Ratings are optional, 0-10 in 0.1 steps.
      */
     @PutMapping("/library/{movieId}")
     public ResponseEntity<UserMovieEntryResponse> updateMovieEntry(

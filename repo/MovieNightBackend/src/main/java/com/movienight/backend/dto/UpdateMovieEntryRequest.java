@@ -29,7 +29,7 @@ public class UpdateMovieEntryRequest {
     private MovieStatus status;
 
     /**
-     * Updated personal score (0 to 10 in half-point increments).
+     * Updated personal score (0 to 10 in 0.1 increments).
      */
     @PersonalRating
     private Double personalRating;

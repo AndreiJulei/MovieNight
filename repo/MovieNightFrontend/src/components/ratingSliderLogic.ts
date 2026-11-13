@@ -1,18 +1,42 @@
 /**
- * Logic and calculations for the 0-10 personal rating slider (Ticket 4: RS01-RS04).
+ * Logic and calculations for the 0-10 personal rating slider
+ * (Ticket 4: RS01-RS04; ticket #20: RP01-RP04, one decimal place).
  */
 
 export const MIN_RATING = 0
 export const MAX_RATING = 10
-export const RATING_STEP = 0.5
+export const RATING_STEP = 0.1
+export const COARSE_RATING_STEP = 0.5
+export const PAGE_RATING_STEP = 1.0
 
-const KEY_STEP_DELTAS: Record<string, number> = {
-  ArrowUp: RATING_STEP,
-  ArrowRight: RATING_STEP,
-  ArrowDown: -RATING_STEP,
-  ArrowLeft: -RATING_STEP,
-  PageUp: 1.0,
-  PageDown: -1.0,
+const ARROW_DIRECTIONS: Record<string, number> = {
+  ArrowUp: 1,
+  ArrowRight: 1,
+  ArrowDown: -1,
+  ArrowLeft: -1,
+}
+
+const PAGE_DIRECTIONS: Record<string, number> = {
+  PageUp: 1,
+  PageDown: -1,
+}
+
+/** Rounds to tenths without float drift (0.1 + 0.2 -> 0.3). */
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10
+}
+
+/**
+ * True when the value is a personal rating the API accepts:
+ * 0 to 10 with at most one decimal place.
+ */
+export function isValidPersonalRating(rating: number): boolean {
+  return (
+    Number.isFinite(rating) &&
+    rating >= MIN_RATING &&
+    rating <= MAX_RATING &&
+    rating * 10 === Math.round(rating * 10)
+  )
 }
 
 /**
@@ -24,7 +48,7 @@ export function ratingToSliderValue(rating: number | null | undefined): number {
     return 0
   }
   const clamped = Math.min(MAX_RATING, Math.max(MIN_RATING, rating))
-  return Math.round(clamped * 2) / 2
+  return roundToTenth(clamped)
 }
 
 /**
@@ -47,10 +71,26 @@ export function parseRatingInput(
   return sliderValueToRating(num)
 }
 
+export type TypedRating = { valid: true; rating: number | null } | { valid: false }
+
+/**
+ * Parses a rating typed into the number field. Unlike the slider, typed text is
+ * never rounded: anything other than 0-10 with at most one decimal is invalid.
+ * Empty text and 0 mean "Unrated", matching the slider.
+ */
+export function parseTypedRating(text: string): TypedRating {
+  const trimmed = text.trim()
+  if (trimmed === "") return { valid: true, rating: null }
+  if (!/^(\d+(\.\d)?|\.\d)$/.test(trimmed)) return { valid: false }
+  const rating = Number(trimmed)
+  if (!isValidPersonalRating(rating)) return { valid: false }
+  return { valid: true, rating: rating === 0 ? null : rating }
+}
+
 /**
  * Formats a rating value into human-readable text.
  * e.g. 0 or null -> "Unrated"
- * 7.5 -> "★ 7.5"
+ * 8.2 -> "★ 8.2"
  * 8.0 -> "★ 8.0"
  */
 export function formatRatingReadout(rating: number | null | undefined): string {
@@ -64,8 +104,8 @@ export function formatRatingReadout(rating: number | null | undefined): string {
 /**
  * Computes the next rating value based on keyboard navigation.
  * Accepts canonical KeyboardEvent.key values:
- * - ArrowLeft / ArrowDown: -0.5
- * - ArrowRight / ArrowUp: +0.5
+ * - ArrowLeft / ArrowDown: -0.1 (-0.5 with Shift)
+ * - ArrowRight / ArrowUp: +0.1 (+0.5 with Shift)
  * - PageDown: -1.0
  * - PageUp: +1.0
  * - Home: 0 (Unrated -> null)
@@ -75,6 +115,7 @@ export function formatRatingReadout(rating: number | null | undefined): string {
 export function calculateNextRating(
   currentRating: number | null | undefined,
   key: string,
+  modifiers: { shiftKey?: boolean } = {},
 ): number | null | undefined {
   const current = ratingToSliderValue(currentRating)
 
@@ -85,7 +126,12 @@ export function calculateNextRating(
     return MAX_RATING
   }
 
-  const delta = KEY_STEP_DELTAS[key]
+  let delta: number | undefined
+  if (key in ARROW_DIRECTIONS) {
+    delta = ARROW_DIRECTIONS[key] * (modifiers.shiftKey ? COARSE_RATING_STEP : RATING_STEP)
+  } else if (key in PAGE_DIRECTIONS) {
+    delta = PAGE_DIRECTIONS[key] * PAGE_RATING_STEP
+  }
   if (delta !== undefined) {
     const next = Math.min(MAX_RATING, Math.max(MIN_RATING, current + delta))
     return sliderValueToRating(next)

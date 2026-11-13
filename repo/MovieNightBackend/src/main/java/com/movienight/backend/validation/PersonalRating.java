@@ -11,12 +11,12 @@ import java.lang.annotation.Target;
 import static java.lang.annotation.ElementType.FIELD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
-/** Optional personal rating: zero through ten, in exact half-point steps. */
+/** Optional personal rating: zero through ten, with at most one decimal place. */
 @Target(FIELD)
 @Retention(RUNTIME)
 @Constraint(validatedBy = PersonalRating.Validator.class)
 public @interface PersonalRating {
-    String message() default "Personal rating must be 0 to 10 in half-point steps";
+    String message() default "Personal rating must be 0 to 10 with at most one decimal place";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 
@@ -24,7 +24,7 @@ public @interface PersonalRating {
         @Override
         public boolean isValid(Double value, ConstraintValidatorContext context) {
             return value == null || (Double.isFinite(value) && value >= 0 && value <= 10
-                    && value * 2 == Math.rint(value * 2));
+                    && value * 10 == Math.rint(value * 10));
         }
     }
 }

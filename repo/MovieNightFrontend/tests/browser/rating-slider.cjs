@@ -1,4 +1,5 @@
-// Browser verification for Ticket 4: Accessible personal rating slider (RS01-RS04).
+// Browser verification for Ticket 4: Accessible personal rating slider (RS01-RS04),
+// updated for ticket #20: 0.1 steps, Shift+arrow, typed values (RP01, RP03).
 // Runs against Vite preview/dev server at MOVIENIGHT_BROWSER_URL with Playwright.
 const assert = require("node:assert/strict")
 const os = require("node:os")
@@ -194,10 +195,10 @@ async function main() {
     const slider = page.getByRole("slider", { name: "Personal rating" })
     await slider.waitFor({ timeout: 5000 })
 
-    // RS01: Verify slider attributes: min=0, max=10, step=0.5
+    // RS01: Verify slider attributes: min=0, max=10, step=0.1
     assert.equal(await slider.getAttribute("min"), "0", "RS01: min is 0")
     assert.equal(await slider.getAttribute("max"), "10", "RS01: max is 10")
-    assert.equal(await slider.getAttribute("step"), "0.5", "RS01: step is 0.5")
+    assert.equal(await slider.getAttribute("step"), "0.1", "RP03: step is 0.1")
     assert.equal(
       await slider.getAttribute("value"),
       "7.5",
@@ -227,58 +228,23 @@ async function main() {
     console.log("Testing keyboard navigation (RS03)...")
     await slider.focus()
 
-    // Arrow Right -> increments by 0.5 to 8.0
-    await page.keyboard.press("ArrowRight")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "8",
-      "ArrowRight increments by 0.5",
-    )
-    assert.equal(
-      (await readout.innerText()).trim(),
-      "★ 8.0",
-      "RS02: Readout dynamically updates to ★ 8.0",
-    )
-
-    // Arrow Up -> increments by 0.5 to 8.5
-    await page.keyboard.press("ArrowUp")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "8.5",
-      "ArrowUp increments by 0.5",
-    )
-    assert.equal(
-      (await readout.innerText()).trim(),
-      "★ 8.5",
-      "RS02: Readout dynamically updates to ★ 8.5",
-    )
-
-    // Arrow Left -> decrements by 0.5 back to 8.0
-    await page.keyboard.press("ArrowLeft")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "8",
-      "ArrowLeft decrements by 0.5",
-    )
-    assert.equal((await readout.innerText()).trim(), "★ 8.0")
-
-    // Page Up -> increments by 1.0 to 9.0
-    await page.keyboard.press("PageUp")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "9",
-      "PageUp increments by 1.0",
-    )
-    assert.equal((await readout.innerText()).trim(), "★ 9.0")
-
-    // Page Down -> decrements by 1.0 back to 8.0
-    await page.keyboard.press("PageDown")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "8",
-      "PageDown decrements by 1.0",
-    )
-    assert.equal((await readout.innerText()).trim(), "★ 8.0")
+    const press = async (key, expectedValue, expectedReadout, message) => {
+      await page.keyboard.press(key)
+      assert.equal(await slider.getAttribute("value"), expectedValue, message)
+      assert.equal((await readout.innerText()).trim(), expectedReadout, message)
+    }
+    // RP03: arrows +/-0.1, Shift+arrows +/-0.5, PageUp/PageDown +/-1
+    await press("ArrowRight", "7.6", "★ 7.6", "ArrowRight increments by 0.1")
+    await press("ArrowUp", "7.7", "★ 7.7", "ArrowUp increments by 0.1")
+    await press("ArrowLeft", "7.6", "★ 7.6", "ArrowLeft decrements by 0.1")
+    await press("ArrowDown", "7.5", "★ 7.5", "ArrowDown decrements by 0.1")
+    await press("Shift+ArrowUp", "8", "★ 8.0", "Shift+ArrowUp increments by 0.5")
+    await press("Shift+ArrowRight", "8.5", "★ 8.5", "Shift+ArrowRight increments by 0.5")
+    await press("Shift+ArrowLeft", "8", "★ 8.0", "Shift+ArrowLeft decrements by 0.5")
+    await press("ArrowUp", "8.1", "★ 8.1", "ArrowUp increments by 0.1")
+    await press("Shift+ArrowDown", "7.6", "★ 7.6", "Shift+ArrowDown decrements by 0.5")
+    await press("PageUp", "8.6", "★ 8.6", "PageUp increments by 1.0")
+    await press("PageDown", "7.6", "★ 7.6", "PageDown decrements by 1.0")
 
     // End -> jumps to 10.0
     await page.keyboard.press("End")
@@ -294,23 +260,25 @@ async function main() {
       "RS02: Readout shows Unrated at 0",
     )
 
-    // Arrow Up from 0 -> steps to 0.5
-    await page.keyboard.press("ArrowUp")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "0.5",
-      "ArrowUp from 0 steps to 0.5",
-    )
-    assert.equal((await readout.innerText()).trim(), "★ 0.5")
+    await press("ArrowUp", "0.1", "★ 0.1", "ArrowUp from 0 steps to 0.1")
+    await press("ArrowDown", "0", "Unrated", "ArrowDown from 0.1 steps to 0")
 
-    // Arrow Down from 0.5 -> steps to 0 (Unrated)
-    await page.keyboard.press("ArrowDown")
-    assert.equal(
-      await slider.getAttribute("value"),
-      "0",
-      "ArrowDown from 0.5 steps to 0",
-    )
-    assert.equal((await readout.innerText()).trim(), "Unrated")
+    // RP03: typed values with one decimal apply; others are flagged and ignored
+    const typed = page.getByTestId("rating-typed-input")
+    await typed.fill("8.2")
+    assert.equal(await slider.getAttribute("value"), "8.2", "Typed 8.2 moves the slider")
+    assert.equal((await readout.innerText()).trim(), "★ 8.2")
+    await typed.fill("8.25")
+    assert.equal(await typed.getAttribute("aria-invalid"), "true", "8.25 is flagged")
+    await page.getByText("Use 0–10 with at most one decimal").waitFor({ timeout: 2000 })
+    assert.equal(await slider.getAttribute("value"), "8.2", "Invalid typed value keeps 8.2")
+    await typed.fill("10.1")
+    assert.equal(await typed.getAttribute("aria-invalid"), "true", "10.1 is flagged")
+    assert.equal(await slider.getAttribute("value"), "8.2", "Invalid typed value keeps 8.2")
+    await typed.fill("7.9")
+    assert.equal(await typed.getAttribute("aria-invalid"), "false", "7.9 is valid")
+    assert.equal(await slider.getAttribute("value"), "7.9")
+    await slider.focus()
 
     // Test Touch Drag interaction
     console.log("Testing touch drag on slider...")
@@ -326,18 +294,15 @@ async function main() {
     console.log(`Touch tap at 85% set slider value to: ${touchedVal}`)
     assert(touchedVal >= 8.0 && touchedVal <= 9.0, "Touch tap successfully changed slider value")
 
-    // Pointer drag gesture across slider track to 8.5
+    // Pointer drag gesture across slider track, then type 8.2 for persistence
     await page.mouse.move(box.x + box.width * 0.5, touchY)
     await page.mouse.down()
     await page.mouse.move(touchX, touchY, { steps: 5 })
     await page.mouse.up()
 
-    // Ensure slider is at 8.5 for persistence check
-    if (parseFloat(await slider.getAttribute("value")) !== 8.5) {
-      await slider.fill("8.5")
-    }
-    assert.equal(await slider.getAttribute("value"), "8.5")
-    assert.equal((await readout.innerText()).trim(), "★ 8.5")
+    await typed.fill("8.2")
+    assert.equal(await slider.getAttribute("value"), "8.2")
+    assert.equal((await readout.innerText()).trim(), "★ 8.2")
     console.log("PASS: Touch drag interaction confirmed")
 
     // RS04: Save rating and verify persistence
@@ -350,20 +315,20 @@ async function main() {
     console.log("PASS: Personal rating saved toast confirmed")
 
     // Verify detail page reflects updated rating
-    const updatedRatingText = await page.locator("text=/★.*8\\.5/").first()
+    const updatedRatingText = await page.locator("text=/★.*8\\.2/").first()
     await updatedRatingText.waitFor({ timeout: 5000 })
     assert.equal(
       libraryEntries[0].personalRating,
-      8.5,
-      "Backend mock received personalRating 8.5",
+      8.2,
+      "RP01: Backend mock received personalRating 8.2",
     )
-    console.log("PASS: Detail page displays updated rating 8.5/10")
+    console.log("PASS: Detail page displays updated rating 8.2/10")
 
-    // Test Reload Persistence: reload page and verify 8.5 remains
+    // Test Reload Persistence: reload page and verify 8.2 remains
     await page.reload()
-    const reloadedRatingText = page.locator("text=/★.*8\\.5/").first()
+    const reloadedRatingText = page.locator("text=/★.*8\\.2/").first()
     await reloadedRatingText.waitFor({ timeout: 10000 })
-    console.log("PASS RS04: Rating 8.5 persists across page reload")
+    console.log("PASS RP01: Rating 8.2 persists across page reload")
 
     // 2. Test Unrated movie flow (Mark as Watched with default Unrated slider)
     console.log("Testing unrated title flow...")

@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -87,8 +88,10 @@ class WatchedHistoryPersistenceTest {
     void invalidRatingsAreRejectedWithoutChangingPersistedStateAndRetryWorks() throws Exception {
         long id = movieId(add("WATCHED", "7.5").andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString());
-        for (String invalid : new String[]{"-0.5", "10.5", "7.25", "0.1"}) {
-            update(id, "{\"personalRating\":" + invalid + "}").andExpect(status().isBadRequest());
+        for (String invalid : new String[]{"-0.5", "-0.1", "10.1", "10.5", "8.25", "7.05"}) {
+            update(id, "{\"personalRating\":" + invalid + "}").andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.personalRating")
+                            .value("Personal rating must be 0 to 10 with at most one decimal place"));
             add("WATCHED", invalid).andExpect(status().isBadRequest());
             expectRating(7.5);
         }
@@ -97,17 +100,29 @@ class WatchedHistoryPersistenceTest {
     }
 
     @Test
-    void directWatchedAddCanStayUnratedAndAllHalfPointValuesSurviveReload() throws Exception {
+    void directWatchedAddCanStayUnratedAndAllTenthValuesSurviveReload() throws Exception {
         String response = mvc.perform(post("/api/movies/library").header("Authorization", authorization)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"mediaType\":\"MOVIE\",\"title\":\"Unrated fixture\",\"status\":\"WATCHED\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         expectRating(null);
         long id = movieId(response);
-        for (double rating = 0; rating <= 10; rating += 0.5) {
+        for (int tenths = 0; tenths <= 100; tenths++) {
+            String rating = BigDecimal.valueOf(tenths, 1).toPlainString();
             update(id, "{\"personalRating\":" + rating + "}").andExpect(status().isOk());
-            expectRating(rating);
+            expectRating(Double.valueOf(rating));
         }
+    }
+
+    @Test
+    void tenthRatingPersistsAndPreviousHalfPointRatingLoadsUnchanged() throws Exception {
+        long rated = movieId(add("WATCHED", "8.2").andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        expectRating(8.2);
+        update(rated, "{\"personalRating\":9.1}").andExpect(status().isOk());
+        expectRating(9.1);
+        update(rated, "{\"personalRating\":7.5}").andExpect(status().isOk());
+        expectRating(7.5);
     }
 
     @Test

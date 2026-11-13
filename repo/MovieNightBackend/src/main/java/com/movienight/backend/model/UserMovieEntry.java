@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  * This table stores private user data:
  * - Which movie they saved
  * - Their status (WATCHLIST, WATCHED, DROPPED)
- * - Their personal score (0 to 10 in half-point increments)
+ * - Their personal score (0 to 10 in 0.1 increments)
  * - Their personal review/notes (never visible to strangers)
  */
 @Entity
@@ -63,7 +63,7 @@ public class UserMovieEntry {
     private MovieStatus status;
 
     /**
-     * Personal rating from 0 to 10 in half-point increments.
+     * Personal rating from 0 to 10 in 0.1 increments.
      * Null means the owner has not supplied a rating, even when watched.
      */
     @Column
