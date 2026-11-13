@@ -157,7 +157,7 @@ async function verifyCoreScreensAndZoom(browser) {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2), 'Login has no horizontal overflow at 200% zoom reflow');
 
     // Test strict keyboard focus ring on an interactive login input
-    const loginInput = page.getByRole('textbox', { name: 'Email Address' });
+    const loginInput = page.getByRole('textbox', { name: 'Email or username' });
     await loginInput.focus();
     const loginFocusResult = await page.evaluate(() => {
       const el = document.activeElement;

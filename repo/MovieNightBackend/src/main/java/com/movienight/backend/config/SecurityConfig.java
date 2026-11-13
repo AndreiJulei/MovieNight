@@ -99,6 +99,7 @@ public class SecurityConfig {
                         // Friend-only data must precede the broad public catalog matcher.
                         .requestMatchers("/api/movies/*/friends-ratings").authenticated()
                         // Public endpoints
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/webhooks/incoming/**").permitAll()
                         .requestMatchers("/api/lists/public/**").permitAll()

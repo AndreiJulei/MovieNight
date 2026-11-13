@@ -3,6 +3,7 @@ import { matchPath, useRouter, useQuery, safeInternalUrl } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
 import { moviesApi, isAbortError } from "../api/movies";
+import { toSimilarTitle } from "../api/similarMovies";
 import type { Movie, MediaType } from "../store/data";
 import { titleId, parseTitleId, resourceType } from "../store/titleIdentity";
 import AppShell from "../components/AppShell";
@@ -222,27 +223,10 @@ export default function MovieDetailPage() {
       .getSimilarTitles(movie.tmdbId, movie.mediaType, 10)
       .then((items) => {
         if (controller.signal.aborted) return;
-        const mapped: Movie[] = items.map((item) => ({
-          id: item.id ? String(item.id) : titleId(item.tmdbId ?? 0, item.mediaType ?? "MOVIE"),
-          catalogMovieId: item.id,
-          tmdbId: item.tmdbId,
-          title: item.title,
-          year: item.releaseYear ?? null,
-          posterUrl: item.posterUrl ?? null,
-          backdropUrl: item.backdropUrl ?? null,
-          runtimeMinutes: item.runtimeMinutes ?? null,
-          imdb: item.imdbRating ?? null,
-          rt: item.rottenTomatoesRating ?? null,
-          tmdbRating: item.tmdbVoteAverage ?? null,
-          tmdbVotes: item.tmdbVoteCount ?? null,
-          overview: item.overview ?? "",
-          genres: item.genres?.split(",").map((g) => g.trim()).filter(Boolean) ?? [],
-          director: item.director,
-          trailerKey: item.trailerKey,
-          mediaType: (item.mediaType as MediaType) || "MOVIE",
-          seasonsCount: item.seasonsCount,
-          episodesCount: item.episodesCount,
-        }));
+        const sourceType = movie.mediaType;
+        const mapped = items
+          .map((item) => toSimilarTitle(item, sourceType))
+          .filter((item): item is Movie => item !== null);
         setSimilarMovies(mapped);
       })
       .catch(() => {})

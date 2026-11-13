@@ -12,6 +12,15 @@ Status: accepted for ticket 9 (local draft); amends feature 007, where anime is 
 - AniList `meanScore` only feeds the Discovery ranking score for Top Rated (50% blend with TMDB's weighted rating). It is not displayed; if it ever is, label the provider and its 0-100 scale (glossary: **Audience rating**).
 - Thresholds are constants in `AnimeShelfPolicy` and are tested.
 
+## Amendment (2026-11-13, #17)
+
+You May Also Like for an anime title applies the same curation as the anime
+shelves. Suggestions are TMDB TV recommendations classified as anime TV
+(Animation, original language `ja`, no Kids/Family genre). A suggestion is
+dropped when its stored AniList match is excluded from the curated shelves
+(adult or kids-targeted). Only stored mappings are read; building suggestions
+never calls AniList, and unmatched titles are kept.
+
 ## Open before shipping
 
 AniList terms of use for this deployment (non-commercial vs commercial) are unverified. Confirm before enabling in production; `app.anilist.enabled=false` disables enrichment.

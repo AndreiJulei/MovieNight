@@ -62,15 +62,19 @@ the release goal includes deployment. Anime films remain deferred.
 - A user has at most one library entry for a title.
 - Watchlist and watched are mutually exclusive states. Marking a title watched
   moves it out of watchlist or creates a watched entry directly.
-- Personal ratings are optional, with valid values 0, 0.5, 1, ... through 10.
+- Personal ratings are optional, with valid values 0.0, 0.1, 0.2, ... through
+  10.0 (one decimal place; changed from half-point steps on 2026-11-13, #20).
   Missing and zero must remain distinct throughout storage and display.
 - Private notes are owner-only. Friends can see viewing status and ratings.
-- Custom lists are owner-only and independent of library membership. A title
+  Watchlist and watched history are shared with accepted friends by default; the
+  owner can stop sharing either one (#33).
+- Custom lists are private by default and independent of library membership.
+  The owner may share a custom list with accepted friends (#33); lists are
+  never visible to non-friends. A title
   can appear once per custom list and in several different lists.
 - Removing a title from a custom list or deleting that list does not change
   the title's library entry.
-- Custom-list sharing and the backend's existing `DROPPED` status are outside
-  the initial product contract.
+- The backend's existing `DROPPED` status is outside the product contract.
 
 ### Friendship and recommendations
 
@@ -81,6 +85,9 @@ the release goal includes deployment. Anime films remain deferred.
   title, using only supplied ratings. A supplied zero participates in scoring.
 - Titles on friends' watchlists are presented as a separate source, not mixed
   into the rated ranking without an explanation.
+- Friend suggestions use only lists a friend shares: hiding Watched removes that
+  user's watched titles and ratings from friends' suggestions, and hiding
+  Watchlist removes the plan-to-watch source (#33).
 - Personal recommendations use the user's watched history. Unwatched rated
   records are not substitutes for watched history.
 - Friend and personal recommendations exclude the user's watchlist and watched
@@ -102,8 +109,12 @@ the release goal includes deployment. Anime films remain deferred.
 ### Desktop and phone access
 
 - Support responsive browser use of the same application on desktop and phone;
-  this does not require a native app, installation, offline mode or device sync
-  beyond the existing authenticated server persistence.
+  this does not require a native app or device sync beyond the existing
+  authenticated server persistence.
+- A read-only offline view of the signed-in user's watchlist, watched history and
+  custom lists is available from the last online snapshot. Edits, discovery and
+  search require a connection; nothing is queued offline. Signing out deletes the
+  snapshot (#34).
 - Navigation, discovery, details, watchlist/watched actions, ratings, notes,
   custom lists and friendships remain usable with touch and keyboard. Essential
   actions must not depend on hover. Content must reflow without page-level
@@ -116,6 +127,44 @@ the release goal includes deployment. Anime films remain deferred.
   the phone keyboard. Emulation alone does not certify physical-device behavior.
 - Responsive layout can be developed locally before hosting; actual phone access
   still requires a reachable backend and explicit frontend/API origin setup.
+- Sign-in accepts either the account email or the username (#19).
+- The phone bottom bar holds a home monogram, the menu and the profile/settings
+  entry. Opening the menu must not focus the search field or raise the keyboard;
+  the page is dimmed only while search is in use (#27).
+- Phone title pages and the main-page hero use portrait posters rather than
+  desktop-width backdrops; primary title actions fit in one row (#28).
+
+### Personal recommendation quality (2026-11-13)
+
+- Candidates need a TMDB audience rating of at least 6.5 from at least 300 votes.
+- Ranking is relevance weighted by quality. IMDb ≥ 7.0 and Rotten Tomatoes critic
+  approval ≥ 70% each add a bounded boost; IMDb < 6.5 or approval < 60% each apply
+  a smaller bounded penalty. Missing IMDb/RT data is neutral.
+- Recomputation may enrich at most 30 uncached top candidates per run through
+  OMDb, within 300 requests per day, preserving the remaining daily quota for
+  title pages (#24).
+
+### Profile and progression (2026-11-13)
+
+- Progress is derived from the number of distinct titles in the user's watched
+  history (movies, TV and anime TV count once each); un-marking a title lowers it.
+- A level is gained every 10 watched titles. Avatars unlock by current level.
+- The user's rank is a named stage of the watched count: Popcorn Rookie (0),
+  Matinee Regular (10), Night Owl (25), Cinephile (50), Veteran (100), Critic
+  (200), Auteur (350), Silver Screen Legend (500). The rank is shown as a badge;
+  there are no separate achievement badges.
+- Owners see their avatar, rank, progress toward the next rank and level progress
+  bar. Accepted friends see the avatar, rank badge, username and shared lists,
+  but not the progress bar or settings (#32, #33).
+
+### Appearance (2026-11-13)
+
+- The app uses a single solid dark background; selectable background themes are
+  removed (#19).
+- The pixel companion is off unless the user selects one, and it is never shown
+  in the phone layout (#19).
+- Poster transitions are optional: a user setting turns animations off, and the
+  operating system's reduced-motion preference is respected (#29).
 
 ### Main-page logo rotation
 
@@ -278,7 +327,7 @@ policy, supported recovery flow, configuration, and operating requirements.
 
 ## Out of scope for the initial deployed release
 
-Public custom-list sharing, anime films, episode-level tracking, webhook
+Public (non-friend) list sharing, anime films, episode-level tracking, webhook
 integrations, new ML training methods, and numeric performance guarantees.
 Existing code may contain these capabilities; their presence does not expand
 the agreed release scope.

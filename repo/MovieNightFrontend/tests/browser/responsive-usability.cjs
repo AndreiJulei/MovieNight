@@ -55,30 +55,64 @@ async function navigate(page, name) {
   await page.getByRole('menuitem', {name, exact:true}).click();
 }
 
+// Ticket #19 (PD-03) SF01-SF03: solid background only; companion off until chosen, never on phones.
 test('preferences', async browser => {
   const context = await browser.newContext({viewport:{width:1440,height:900}, reducedMotion:'reduce'});
   try {
     const page = await context.newPage(); page.setDefaultTimeout(10000);
     await signup(page);
+    const companionToggle = page.locator('.companion-control-btn');
+    assert.equal(await companionToggle.count(),0,'SF02: a new profile shows no companion');
+    assert.equal(await page.evaluate(()=>document.querySelectorAll('canvas').length),0,'SF01: no ambient background canvas');
+    assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el.parentElement).backgroundColor),'rgb(5, 7, 13)','SF01: solid obsidian background');
     await page.getByRole('link', {name:'Settings', exact:true}).click();
     assert.equal(await page.getByRole('textbox',{name:'Display Name',exact:true}).count(),1,'Profile input has an accessible label');
-    await page.getByRole('button', {name:/Pure Solid Black/}).click();
+    assert.equal(await page.getByRole('heading',{name:'Background Theme',exact:true}).count(),0,'SF01: no background picker');
+    assert.equal(await page.getByRole('button',{name:/Disabled/}).getAttribute('aria-pressed'),'true','SF02: picker starts on Disabled');
     await page.getByRole('button', {name:/Courage the Dog/}).click();
+    await companionToggle.waitFor();
+    await page.getByRole('img',{name:'Courage the Cowardly Dog'}).waitFor();
     for (const width of [360,390,844,1023]) {
       await page.setViewportSize({width,height:800});
-      assert.equal(await page.getByRole('heading',{name:'Background Theme',exact:true}).count(),0,'Compact layout hides background picker');
-      assert.equal(await page.getByRole('heading',{name:'Pixel Companion',exact:true}).count(),0,'Compact layout hides character picker');
-      assert.equal(await page.getByRole('button',{name:/Click to cycle companion/}).count(),0,'Compact layout hides quick-cycle');
+      assert.equal(await page.getByRole('heading',{name:'Pixel Companion',exact:true}).count(),0,'SF03: compact layout offers no companion picker');
+      assert.equal(await companionToggle.count(),0,'SF03: compact layout renders no companion');
+      assert.equal(await page.getByRole('img',{name:'Courage the Cowardly Dog'}).count(),0,'SF03: compact layout renders no companion sprite');
       await noOverflow(page);
     }
     await page.reload();
     await page.getByRole('link',{name:'Settings',exact:true}).click();
     for (const width of [1024,1025,1440]) {
       await page.setViewportSize({width,height:900});
-      await page.getByRole('heading',{name:'Background Theme',exact:true}).waitFor();
-      assert(await page.getByRole('button',{name:/Pure Solid Black/}).getAttribute('aria-pressed').then(value=>value==='true'));
-      assert(await page.getByRole('button',{name:/Courage the Dog/}).getAttribute('aria-pressed').then(value=>value==='true'));
+      await page.getByRole('heading',{name:'Pixel Companion',exact:true}).waitFor();
+      assert.equal(await page.getByRole('button',{name:/Courage the Dog/}).getAttribute('aria-pressed'),'true','SF02: explicit choice is kept');
+      await companionToggle.waitFor();
     }
+  } finally { await context.close(); }
+});
+
+// Ticket #19 (PD-03) SF04: sign in with a username or an email, in any letter case.
+test('sign-in-username', async browser => {
+  const context = await browser.newContext({viewport:{width:1280,height:800}, reducedMotion:'reduce'});
+  try {
+    const page = await context.newPage(); page.setDefaultTimeout(10000);
+    const account = await signup(page);
+    for (const identifier of [account.username.toUpperCase(), account.email.toUpperCase()]) {
+      await page.getByRole('link',{name:'Settings',exact:true}).click();
+      await page.getByRole('button',{name:'Log out',exact:true}).click();
+      const field = page.getByRole('textbox',{name:'Email or username',exact:true});
+      assert.equal(await field.getAttribute('type'),'text');
+      assert.equal(await field.getAttribute('autocomplete'),'username');
+      await field.fill(identifier);
+      await page.locator('input[aria-label="Password"]:visible').fill('Demo011-pass');
+      await page.getByRole('button',{name:'Sign In',exact:true}).click();
+      await page.getByRole('link',{name:'Settings',exact:true}).waitFor();
+    }
+    await page.getByRole('link',{name:'Settings',exact:true}).click();
+    await page.getByRole('button',{name:'Log out',exact:true}).click();
+    await page.getByRole('textbox',{name:'Email or username',exact:true}).fill(account.username);
+    await page.locator('input[aria-label="Password"]:visible').fill('wrong-pass');
+    await page.getByRole('button',{name:'Sign In',exact:true}).click();
+    await page.getByText('Invalid email/username or password',{exact:true}).waitFor();
   } finally { await context.close(); }
 });
 
@@ -245,7 +279,7 @@ for (const viewport of [{width:360,height:800},{width:390,height:844},{width:430
       }
       await page.getByRole('link',{name:'Settings',exact:true}).click();
       await page.getByRole('button',{name:'Log out',exact:true}).click();
-      await page.getByRole('textbox',{name:'Email Address',exact:true}).fill(account.email);
+      await page.getByRole('textbox',{name:'Email or username',exact:true}).fill(account.email);
       await page.locator('input[aria-label="Password"]:visible').fill('Demo011-pass');
       await page.getByRole('button',{name:'Sign In',exact:true}).click();
       await page.getByRole('link',{name:'Settings',exact:true}).waitFor();
@@ -329,7 +363,7 @@ async function friendship(browser, page, account, viewport) {
     await page.getByText('No accepted friends yet.',{exact:false}).waitFor();
     await page.getByRole('link',{name:'Settings',exact:true}).click();
     await page.getByRole('button',{name:'Log out',exact:true}).click();
-    await page.getByRole('textbox',{name:'Email Address',exact:true}).fill(friend.email);
+    await page.getByRole('textbox',{name:'Email or username',exact:true}).fill(friend.email);
     await page.locator('input[aria-label="Password"]:visible').fill('Demo011-pass');
     await page.getByRole('button',{name:'Sign In',exact:true}).click();
     await page.getByRole('link',{name:'Settings',exact:true}).waitFor();

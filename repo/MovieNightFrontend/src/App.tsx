@@ -18,6 +18,8 @@ import SettingsPage from "./pages/SettingsPage";
 import CustomListsIndexPage from "./pages/CustomListsIndexPage";
 import CustomListDetailPage from "./pages/CustomListDetailPage";
 import PixelCompanion from "./components/PixelCompanion";
+import ServerWakingNotice from "./components/ServerWakingNotice";
+import { wakeServer } from "./api/serverWake";
 
 const routeDefinitions: {
   matches: (path: string) => boolean;
@@ -112,12 +114,18 @@ function Routes() {
 }
 
 export default function App() {
+  // Fire-and-forget: start waking a sleeping backend while the first screen loads.
+  useEffect(() => {
+    void wakeServer();
+  }, []);
+
   return (
     <RouterProvider>
       <MovieStoreProvider>
         <PosterTransitionProvider>
           <ToastProvider>
             <Routes />
+            <ServerWakingNotice />
             {/* Global Pixel Companion stays permanently mounted across all page navigations */}
             <PixelCompanion />
           </ToastProvider>

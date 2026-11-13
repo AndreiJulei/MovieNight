@@ -26,7 +26,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<ViewMode>("login");
 
   // Login inputs
-  const [loginEmail, setLoginEmail] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPass, setLoginPass] = useState("");
 
   // Signup inputs
@@ -81,20 +81,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
 
-    const emailTrimmed = loginEmail.trim();
-    if (!emailTrimmed) {
-      return setError("Please enter your email.");
+    const identifier = loginIdentifier.trim();
+    if (!identifier) {
+      return setError("Please enter your email or username.");
     }
     if (!loginPass) {
       return setError("Please enter your password.");
     }
 
     setSubmitting(true);
-    const res = await login(emailTrimmed, loginPass);
+    const res = await login(identifier, loginPass);
     setSubmitting(false);
 
     if (!res.ok) {
-      return setError(res.error ?? "Invalid email or password.");
+      return setError(res.error ?? "Invalid email/username or password");
     }
     runSuccess();
   };
@@ -205,7 +205,7 @@ export default function LoginPage() {
     setForgotSuccess("Password updated successfully! You can now sign in.");
     setTimeout(() => {
       setMode("login");
-      setLoginEmail(forgotEmail);
+      setLoginIdentifier(forgotEmail);
       setForgotStep(1);
       setForgotCode("");
       setForgotNewPass("");
@@ -444,23 +444,23 @@ export default function LoginPage() {
                   </div>
                   <h2 className="text-lg font-semibold tracking-tight text-white/95">Sign In</h2>
                   <p className="mt-1 text-xs text-text-muted">
-                    Welcome back. Sign in with your registered email.
+                    Welcome back. Sign in with your email or username.
                   </p>
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-300">
-                      Email Address
+                    <label htmlFor="login-identifier" className="mb-1 block text-xs font-medium text-zinc-300">
+                      Email or username
                     </label>
                     <input
-                      type="email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="alex@example.com"
-                      aria-label="Email Address"
+                      id="login-identifier"
+                      type="text"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      placeholder="alex@example.com or alex"
                       autoCapitalize="none"
-                      autoComplete="email"
+                      autoComplete="username"
                       autoCorrect="off"
                       className={input3dCls}
                       required
@@ -476,7 +476,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => {
                           setMode("forgot");
-                          setForgotEmail(loginEmail);
+                          setForgotEmail(loginIdentifier.includes("@") ? loginIdentifier : "");
                           setForgotStep(1);
                           setError(null);
                         }}

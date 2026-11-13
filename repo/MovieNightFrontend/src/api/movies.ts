@@ -103,6 +103,9 @@ import {
   RequestTimeoutError,
   setDefaultScopeResolver,
 } from "./boundedRead";
+import { configureServerWake } from "./serverWake";
+
+configureServerWake(`${API_BASE}/api/health`);
 
 setDefaultScopeResolver(() => authApi.getToken());
 

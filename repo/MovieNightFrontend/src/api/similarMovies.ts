@@ -1,3 +1,6 @@
+import type { MediaType, Movie } from "../store/data";
+import { resourceType, titleId } from "../store/titleIdentity.ts";
+
 export interface SimilarMovieItem {
   id?: number;
   tmdbId?: number;
@@ -22,6 +25,42 @@ export interface SimilarMovieItem {
 }
 
 /**
+ * Map one similar-title response to a displayable title. Its identity comes from the provider
+ * (TMDB) ID like every other shelf; the catalog database ID is kept only as catalogMovieId.
+ */
+export function toSimilarTitle(item: SimilarMovieItem, sourceMediaType: string): Movie | null {
+  const mediaType = (item.mediaType || sourceMediaType) as MediaType;
+  let id: string;
+  try {
+    if (resourceType(mediaType) !== resourceType(sourceMediaType)) return null;
+    id = titleId(item.tmdbId, mediaType, item.id);
+  } catch {
+    return null;
+  }
+  return {
+    id,
+    catalogMovieId: item.id,
+    tmdbId: item.tmdbId,
+    title: item.title,
+    year: item.releaseYear ?? null,
+    posterUrl: item.posterUrl ?? null,
+    backdropUrl: item.backdropUrl ?? null,
+    runtimeMinutes: item.runtimeMinutes ?? null,
+    imdb: item.imdbRating ?? null,
+    rt: item.rottenTomatoesRating ?? null,
+    tmdbRating: item.tmdbVoteAverage ?? null,
+    tmdbVotes: item.tmdbVoteCount ?? null,
+    overview: item.overview ?? "",
+    genres: item.genres?.split(",").map((g) => g.trim()).filter(Boolean) ?? [],
+    director: item.director,
+    trailerKey: item.trailerKey,
+    mediaType,
+    seasonsCount: item.seasonsCount,
+    episodesCount: item.episodesCount,
+  };
+}
+
+/**
  * Fetch similar titles for a given movie/show from precomputed cosine similarity
  * with graceful fallback to TMDB recommendations. Responses are cached in sessionStorage.
  */
@@ -34,9 +73,10 @@ export async function fetchSimilarTitles<T extends SimilarMovieItem = SimilarMov
 ): Promise<T[]> {
   if (!tmdbId || tmdbId <= 0) return [];
 
-  // Key by similar_movies_${tmdbId} for movies/default to honor spec AC SIM04,
-  // or distinguish by mediaType (e.g. similar_movies_tv_${tmdbId}) to avoid ID collisions
-  const isTv = mediaType && mediaType.toLowerCase() === "tv";
+  // Key by provider resource: movies keep similar_movies_${tmdbId} (SIM04); TV and anime TV share
+  // similar_movies_tv_${tmdbId}, because a TMDB TV ID can equal an unrelated TMDB movie ID.
+  const category = mediaType?.toUpperCase();
+  const isTv = category === "TV" || category === "ANIME";
   const cacheKey = isTv ? `similar_movies_tv_${tmdbId}` : `similar_movies_${tmdbId}`;
 
   if (typeof window !== "undefined" && window.sessionStorage) {

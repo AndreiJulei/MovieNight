@@ -1,3 +1,5 @@
+import { beginSlowRead, SLOW_READ_MS, waitForServer } from "./serverWake.ts";
+
 export class RequestTimeoutError extends Error {
   isTimeout = true;
   constructor(message = "Request timed out.") {
@@ -12,6 +14,7 @@ export interface BoundedReadOptions {
   coalesceKey?: string;
   _delays?: number[];
   _timeoutMs?: number;
+  _slowMs?: number;
 }
 
 export const RETRY_DELAYS = [500, 1500];
@@ -159,6 +162,7 @@ export async function boundedRead<T>(
   const coalesceKey = options?.coalesceKey ?? `${scope}:${actionKey}`;
   const delays = options?._delays ?? RETRY_DELAYS;
   const timeoutMs = options?._timeoutMs ?? 15000;
+  const slowMs = options?._slowMs ?? SLOW_READ_MS;
 
   let existing = pendingReads.get(coalesceKey) as CoalescedRead<T> | undefined;
 
@@ -169,8 +173,18 @@ export async function boundedRead<T>(
     pendingReads.set(coalesceKey, entry);
 
     // Start background execution
+    let releaseSlow: (() => void) | null = null;
+    const slowTimer = setTimeout(() => {
+      releaseSlow = beginSlowRead();
+    }, slowMs);
+    const settleSlow = () => {
+      clearTimeout(slowTimer);
+      releaseSlow?.();
+    };
+
     (async () => {
       let attempt = 0;
+      let coldStartRetried = false;
       while (true) {
         if (underlyingController.signal.aborted) {
           cleanPending(coalesceKey, entry);
@@ -217,6 +231,26 @@ export async function boundedRead<T>(
           }
 
           const transient = isTransientError(err);
+          if (transient && !coldStartRetried && (releaseSlow || attempt >= delays.length)) {
+            // Slow, or out of ordinary retries: probably a cold start (#18). Show the notice and wait
+            // for the server's health check. A slow read then makes one final attempt; a read that
+            // failed fast makes it only if the server now answers, so an unreachable server still
+            // fails after the 3 attempts of the bounded-read contract.
+            coldStartRetried = true;
+            const wasSlow = releaseSlow !== null;
+            releaseSlow ??= beginSlowRead();
+            let awake: boolean;
+            try {
+              awake = await waitForServer(underlyingController.signal);
+            } catch {
+              cleanPending(coalesceKey, entry);
+              return;
+            }
+            if (wasSlow || awake) {
+              attempt = delays.length;
+              continue;
+            }
+          }
           if (!transient || attempt >= delays.length) {
             cleanPending(coalesceKey, entry);
             for (const sub of subscribers) {
@@ -243,7 +277,7 @@ export async function boundedRead<T>(
           }
         }
       }
-    })();
+    })().finally(settleSlow);
 
     existing = entry;
   }

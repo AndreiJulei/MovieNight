@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import useCompactLayout from "../hooks/useCompactLayout";
 import NavRail from "./NavRail";
-import AmbientBackground from "./AmbientBackground";
 
 /**
  * App chrome: a fixed top nav bar on desktop (h-14), a fixed bottom strip on
@@ -17,9 +16,6 @@ export default function AppShell({
   const compact = useCompactLayout();
   return (
     <div className="relative min-h-full bg-bg">
-      {/* Ambient Interactive Background */}
-      <AmbientBackground />
-
       <div className="relative z-20">
         <NavRail key={compact ? "compact" : "desktop"} orientation={compact ? "horizontal" : "vertical"} />
       </div>

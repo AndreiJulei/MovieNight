@@ -140,3 +140,42 @@ test("Boundary: Invalid or missing tmdbId returns empty array immediately withou
   assert.deepEqual(await moviesApi.getSimilarTitles(null), []);
   assert.equal(fetchCalled, false, "fetch should not be called for non-positive tmdbId");
 });
+
+test("YML01: a similar title opens by its provider identity, not its catalog database ID", async () => {
+  const { toSimilarTitle } = await import("../../src/api/similarMovies.ts");
+  // Catalog row 1891 is a different title from TMDB movie 1891 (The Empire Strikes Back).
+  const movie = toSimilarTitle({ id: 42, tmdbId: 1891, title: "The Empire Strikes Back", mediaType: "MOVIE" }, "MOVIE");
+  assert.equal(movie.id, "movie:1891");
+  assert.equal(movie.catalogMovieId, 42);
+  assert.equal(movie.tmdbId, 1891);
+  assert.equal(movie.mediaType, "MOVIE");
+});
+
+test("YML03: a suggestion of a different resource type than its source title is dropped", async () => {
+  const { toSimilarTitle } = await import("../../src/api/similarMovies.ts");
+  assert.equal(toSimilarTitle({ tmdbId: 11, title: "Star Wars", mediaType: "MOVIE" }, "ANIME"), null);
+  assert.equal(toSimilarTitle({ tmdbId: 1399, title: "Game of Thrones", mediaType: "TV" }, "MOVIE"), null);
+  const anime = toSimilarTitle({ tmdbId: 30984, title: "Bleach", mediaType: "ANIME" }, "TV");
+  assert.equal(anime.id, "tv:30984");
+});
+
+test("YML04: anime and TV share the TV cache namespace; a movie with the same numeric ID never collides", async () => {
+  const urls = [];
+  global.fetch = async (url) => {
+    urls.push(String(url));
+    const tv = String(url).includes("mediaType=ANIME") || String(url).includes("mediaType=TV");
+    return { ok: true, json: async () => [{ tmdbId: tv ? 2 : 3, title: tv ? "Anime" : "Movie" }] };
+  };
+
+  const anime = await moviesApi.getSimilarTitles(30984, "ANIME");
+  assert.ok(global.sessionStorage.getItem("similar_movies_tv_30984"), "ANIME is cached in the TV namespace");
+  assert.equal(global.sessionStorage.getItem("similar_movies_30984"), null, "ANIME must not use the movie namespace");
+
+  const tv = await moviesApi.getSimilarTitles(30984, "TV");
+  assert.deepEqual(tv, anime);
+  assert.equal(urls.length, 1, "TV reuses the cached ANIME entry for the same TV resource");
+
+  const movie = await moviesApi.getSimilarTitles(30984, "MOVIE");
+  assert.equal(urls.length, 2, "a movie with the same numeric ID fetches separately");
+  assert.equal(movie[0].title, "Movie");
+});

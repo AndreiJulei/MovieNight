@@ -1,6 +1,10 @@
 package com.movienight.backend.service;
 
+import com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary;
 import com.movienight.backend.model.AniListMapping;
+
+import java.util.List;
+import java.util.Set;
 
 /**
  * AniList-based curation of ANIME shelves. Pure and threshold-driven. Unmatched titles are never
@@ -18,7 +22,26 @@ public final class AnimeShelfPolicy {
     /** Share of AniList meanScore (scaled to 0-10) in the Top Rated discovery ranking score. */
     public static final double TOP_RATED_ANILIST_WEIGHT = 0.5;
 
+    /** TMDB TV genre ids Kids and Family, as excluded by the anime shelves (SuggestionScheduler.KIDS_AND_FAMILY_GENRES). */
+    public static final Set<Integer> KIDS_AND_FAMILY_TMDB_GENRES = Set.of(10762, 10751);
+
     private AnimeShelfPolicy() {}
+
+    /** Original language the anime shelves request from TMDB discover (with_original_language). */
+    public static final String ANIME_ORIGINAL_LANGUAGE = "ja";
+
+    /**
+     * Whether a TMDB TV recommendation may be suggested for an anime title, using the anime shelves'
+     * rules: anime TV in original language ja, no Kids/Family genre, and not excluded by its stored
+     * AniList match (if any).
+     */
+    public static boolean qualifiesAsAnimeSuggestion(TmdbMovieSummary summary, AniListMapping storedMapping) {
+        if (!"ANIME".equals(summary.getResolvedMediaType())) return false;
+        if (!ANIME_ORIGINAL_LANGUAGE.equalsIgnoreCase(summary.getOriginalLanguage())) return false;
+        List<Integer> genres = summary.getGenreIds();
+        if (genres != null && genres.stream().anyMatch(KIDS_AND_FAMILY_TMDB_GENRES::contains)) return false;
+        return !excludedFromCuratedShelves(storedMapping);
+    }
 
     /** Adult or kids-targeted matches never appear on curated shelves. */
     public static boolean excludedFromCuratedShelves(AniListMapping mapping) {

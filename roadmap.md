@@ -33,6 +33,14 @@ shipping a slice that exposes them.
 
 ## Current work
 
+### Selected follow-up — 2026-11-13
+
+Post-deployment feedback is tracked as ordered tickets PD-01–PD-18 under
+[#16](https://github.com/AndreiJulei/MovieNight/issues/16). Work them top to bottom:
+bug fixes and quick wins, then the row/grid/discovery sequence, phone layout,
+navigation and search, account/profile/progression, and offline. Tickets
+labelled `needs-info` wait on recorded decisions before implementation.
+
 ### Selected follow-up — 2026-10-31
 
 Specify and implement the reported frontend reliability and navigation fixes

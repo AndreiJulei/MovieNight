@@ -33,7 +33,7 @@ The titles a user has marked as watched, whether or not they have rated them.
 _Avoid_: Watchlist.
 
 **Personal rating**:
-An optional opinion on a watched title, from 0 to 10 in half-point increments.
+An optional opinion on a watched title, from 0 to 10 in 0.1 increments.
 Zero is a rating; no rating means the user has not supplied one.
 _Avoid_: Provider rating when referring to the user's own opinion.
 
@@ -57,9 +57,25 @@ An owner's personal text about a library entry, visible only to that owner.
 _Avoid_: Public review, friend review.
 
 **Custom list**:
-An owner-only named collection of titles, independent of viewing status. A title
-may belong to several custom lists without belonging to the owner's library.
+A named collection of titles owned by one user, independent of viewing status.
+It is private unless the owner shares it with accepted friends. A title may
+belong to several custom lists without belonging to the owner's library.
 _Avoid_: Watchlist when referring to an arbitrary collection.
+
+**Level**:
+A user's progression step, gained for every 10 titles in their watched history.
+Levels unlock avatars.
+_Avoid_: XP when referring to the level itself.
+
+**Rank**:
+The named stage of a user's watched-history count (e.g. Veteran at 100), shown
+on the profile as a badge to the user and their friends.
+_Avoid_: Title (a title is a movie or TV series); achievement.
+
+**Shared list**:
+A watchlist, watched history or custom list that its owner makes visible to
+accepted friends. Watchlist and watched history are shared by default.
+_Avoid_: Public list; nothing is visible to non-friends.
 
 **Friend**:
 A user with whom a friendship has been accepted by both parties.

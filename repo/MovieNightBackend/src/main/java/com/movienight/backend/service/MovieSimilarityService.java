@@ -36,6 +36,7 @@ public class MovieSimilarityService {
     private final CachedMovieListRepository cachedMovieListRepository;
     private final MovieCatalogLookupService movieCatalogLookupService;
     private final TmdbClient tmdbClient;
+    private final AnimeEnrichmentService animeEnrichment;
 
     /**
      * Retrieve top similar titles for a given TMDB ID.
@@ -47,12 +48,15 @@ public class MovieSimilarityService {
         }
 
         int effectiveLimit = (limit == null || limit < 1) ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
-        boolean isTv = "tv".equalsIgnoreCase(mediaType);
+        String category = mediaType == null ? "MOVIE" : mediaType.trim().toUpperCase(Locale.ROOT);
 
         // Domain isolation: MovieLens dataset strictly computes movie-to-movie similarities.
-        // TMDB TV IDs collide with TMDB Movie IDs in integer space; route TV requests directly
-        // to TMDB TV recommendations to prevent cross-domain contamination.
-        if (isTv) {
+        // TMDB TV IDs collide with TMDB Movie IDs in integer space; route TV and anime TV requests
+        // directly to TMDB TV recommendations to prevent cross-domain contamination.
+        if ("ANIME".equals(category)) {
+            return fetchAnimeRecommendations(tmdbId, effectiveLimit);
+        }
+        if ("TV".equals(category)) {
             return fetchTmdbFallback(tmdbId, effectiveLimit, true);
         }
 
@@ -82,6 +86,8 @@ public class MovieSimilarityService {
                 Map<Long, CachedMovieList> cachedMap = missingIds.isEmpty() ? Collections.emptyMap() :
                         cachedMovieListRepository.findByTmdbIdIn(missingIds).stream()
                                 .filter(c -> c.getTitle() != null && !c.getTitle().isBlank())
+                                // Discovery caches also hold TV rows whose TMDB ids collide with movie ids.
+                                .filter(c -> ResourceType.fromCategory(c.getMediaType()) == ResourceType.MOVIE)
                                 .collect(Collectors.toMap(CachedMovieList::getTmdbId, c -> c, (c1, c2) -> c1));
 
                 List<MovieResponse> responses = new ArrayList<>();
@@ -114,9 +120,11 @@ public class MovieSimilarityService {
                     ? tmdbClient.getTvRecommendations(tmdbId, 1)
                     : tmdbClient.getMovieRecommendations(tmdbId, 1);
 
+            ResourceType requested = isTv ? ResourceType.TV : ResourceType.MOVIE;
             if (recs != null && !recs.isEmpty()) {
                 return recs.stream()
                         .filter(r -> r.getId() != null && hasTitle(r))
+                        .filter(r -> ResourceType.fromCategory(r.getResolvedMediaType()) == requested)
                         .limit(limit)
                         .map(this::mapSummaryToResponse)
                         .toList();
@@ -126,6 +134,23 @@ public class MovieSimilarityService {
         }
 
         return Collections.emptyList();
+    }
+
+    /** TV recommendations limited to anime TV, classified like the anime Explore shelves; may be empty. */
+    private List<MovieResponse> fetchAnimeRecommendations(Long tmdbId, int limit) {
+        try {
+            List<TmdbMovieSummary> recs = tmdbClient.getTvRecommendations(tmdbId, 1);
+            recs.forEach(r -> r.setMediaType("tv")); // TV recommendations are TV resources
+            return recs.stream()
+                    .filter(r -> r.getId() != null && hasTitle(r))
+                    .filter(r -> AnimeShelfPolicy.qualifiesAsAnimeSuggestion(r, animeEnrichment.findStored(r.getId())))
+                    .limit(limit)
+                    .map(this::mapSummaryToResponse)
+                    .toList();
+        } catch (Exception ex) {
+            log.warn("TMDB anime recommendations unavailable for tmdbId {}: {}", tmdbId, ex.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private boolean hasTitle(TmdbMovieSummary summary) {

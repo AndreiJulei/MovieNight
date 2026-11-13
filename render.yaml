@@ -29,3 +29,6 @@ services:
         sync: false
       - key: MN_ALLOWED_ORIGINS
         sync: false
+      # Not secret: the service requests its own public health URL every 10 minutes to stay awake.
+      - key: MN_SELF_PING_URL
+        value: https://movienight-backend-zye9.onrender.com/api/health

@@ -216,8 +216,8 @@ async function main() {
     await guestPage.waitForURL(/\/login\?returnTo=/);
     const destination = new URL(guestPage.url()).searchParams.get('returnTo');
     assert.equal(destination, '/explore/tv?category=airing');
-    await guestPage.getByRole('textbox', { name: 'Email Address' }).fill('new@example.test');
-    await guestPage.locator('form').filter({ has: guestPage.getByRole('textbox', { name: 'Email Address' }) }).locator('input[aria-label="Password"]').fill('password');
+    await guestPage.getByRole('textbox', { name: 'Email or username' }).fill('new@example.test');
+    await guestPage.locator('form').filter({ has: guestPage.getByRole('textbox', { name: 'Email or username' }) }).locator('input[aria-label="Password"]').fill('password');
     await guestPage.getByRole('button', { name: 'Sign In', exact: true }).click();
     await guestPage.waitForURL(`${app}/explore/tv?category=airing`);
     console.log('BN03 safe login return passed');

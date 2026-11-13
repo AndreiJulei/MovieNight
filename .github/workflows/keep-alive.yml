@@ -1,9 +1,10 @@
 name: Keep alive
 
 # Free-tier hosting sleeps when idle: Render stops the backend after ~15 min without requests,
-# and Supabase pauses a project after ~7 days without database activity. This ping requests an
-# endpoint that queries the database (a 404 for a missing title is the expected answer), which
-# keeps both awake. GitHub may delay scheduled runs, so the interval leaves headroom.
+# and Supabase pauses a project after ~7 days without database activity. /api/health runs
+# `select 1`, so a ping touches both. GitHub delays scheduled runs by hours, so this is only the
+# safety net that wakes the service after a restart; once awake, the backend's own self-ping
+# (MN_SELF_PING_URL) keeps it awake.
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -20,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ping backend (and through it, the database)
+      - name: Ping backend health (and through it, the database)
         run: |
           code=$(curl --silent --output /dev/null --max-time 120 --retry 2 --retry-delay 10 \
-            --write-out '%{http_code}' 'https://movienight-backend-zye9.onrender.com/api/movies/1' || true)
+            --write-out '%{http_code}' 'https://movienight-backend-zye9.onrender.com/api/health' || true)
           echo "backend answered HTTP ${code}"
-          # 404 is expected (no such title). Fail only if the service is unreachable or erroring.
-          case "$code" in 000|5*) exit 1 ;; esac
+          # 200 means the service and its database answered; anything else fails the run.
+          [ "$code" = "200" ] || exit 1

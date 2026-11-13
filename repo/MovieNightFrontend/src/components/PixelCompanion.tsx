@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "../router";
+import useCompactLayout from "../hooks/useCompactLayout";
 import EvilEye from "./EvilEye";
+import {
+  COMPANION_CHANGED_EVENT,
+  isCompanionShown,
+  readCompanionChoice,
+  saveCompanionChoice,
+  type CompanionCharacter,
+} from "./companionPreference";
 
 // John Wick Sprites
 import wickLeftIdle from "../assets/wick-left-idle.png";
@@ -24,7 +32,6 @@ import courageScream1 from "../assets/courage-scream-1.png";
 import courageScream2 from "../assets/courage-scream-2.png";
 import courageScream3 from "../assets/courage-scream-3.png";
 
-export type CompanionCharacter = "wick" | "pulp" | "courage" | "sauron" | "none";
 type Pose = "left" | "center" | "right";
 
 const prefersReduced = () =>
@@ -42,16 +49,10 @@ const COURAGE_SCREAM_FRAMES = [
 
 export default function PixelCompanion() {
   const { path } = useRouter();
+  const compact = useCompactLayout();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [character, setCharacter] = useState<CompanionCharacter>(() => {
-    if (typeof window !== "undefined") {
-      return (
-        (localStorage.getItem("pixel_companion_char") as CompanionCharacter) ||
-        "wick"
-      );
-    }
-    return "wick";
-  });
+  const [character, setCharacter] = useState<CompanionCharacter>(() => readCompanionChoice());
+  const shown = isCompanionShown({ choice: character, compact, path });
 
   const [pose, setPose] = useState<Pose>("left");
   const [tilt, setTilt] = useState(0);
@@ -73,31 +74,28 @@ export default function PixelCompanion() {
   // Listen for storage / custom events to update character dynamically
   useEffect(() => {
     const handleStorage = () => {
-      const saved =
-        (localStorage.getItem("pixel_companion_char") as CompanionCharacter) ||
-        "wick";
-      setCharacter(saved);
+      setCharacter(readCompanionChoice());
       clearAllActionTimers();
       setIsActing(false);
     };
     window.addEventListener("storage", handleStorage);
-    window.addEventListener("companion_changed", handleStorage);
+    window.addEventListener(COMPANION_CHANGED_EVENT, handleStorage);
     return () => {
       window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("companion_changed", handleStorage);
+      window.removeEventListener(COMPANION_CHANGED_EVENT, handleStorage);
       clearAllActionTimers();
     };
   }, []);
 
   // Courage slow idle cycle: changes only once every 2.5 seconds among 3 states
   useEffect(() => {
-    if (character !== "courage" || isActing || isHovered || prefersReduced())
+    if (!shown || character !== "courage" || isActing || isHovered || prefersReduced())
       return;
     const interval = window.setInterval(() => {
       setCourageIdleIdx((prev) => (prev + 1) % COURAGE_IDLE_FRAMES.length);
     }, 2500);
     return () => window.clearInterval(interval);
-  }, [character, isActing, isHovered]);
+  }, [shown, character, isActing, isHovered]);
 
   const cycleCharacter = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,12 +103,11 @@ export default function PixelCompanion() {
     const currIdx = order.indexOf(character);
     const next = order[(currIdx + 1) % order.length];
     setCharacter(next);
-    localStorage.setItem("pixel_companion_char", next);
-    window.dispatchEvent(new Event("companion_changed"));
+    saveCompanionChoice(next);
   };
 
   useEffect(() => {
-    if (prefersReduced() || character === "none") return;
+    if (prefersReduced() || !shown) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       const el = containerRef.current;
@@ -202,10 +199,10 @@ export default function PixelCompanion() {
       window.removeEventListener("mousedown", handleMouseDown);
       clearAllActionTimers();
     };
-  }, [character]);
+  }, [character, shown]);
 
-  // Completely hide on the login page
-  if (path === "/login" || character === "none") return null;
+  // Hidden on sign-in, in the compact (phone) layout, and until a companion is chosen.
+  if (!shown) return null;
 
   // Character-specific rendering
   const renderCharacterContent = () => {
@@ -410,13 +407,13 @@ export default function PixelCompanion() {
       ref={containerRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="relative z-10 mx-auto flex w-fit flex-col items-center pb-20 pointer-events-none select-none lg:fixed lg:bottom-5 lg:right-7 lg:z-40 lg:pb-0 lg:pointer-events-auto lg:cursor-pointer"
+      className="fixed bottom-5 right-7 z-40 flex w-fit cursor-pointer select-none flex-col items-center"
     >
       {/* Switch Character Quick Toggle Pill */}
       <button
         onClick={cycleCharacter}
         title="Click to cycle companion (or configure in Settings)"
-        className="companion-control-btn mb-1.5 hidden lg:flex items-center gap-1.5 rounded-full border border-white/10 bg-black/65 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-zinc-300 backdrop-blur-md transition-all hover:border-accent hover:bg-black/90 hover:text-white active:scale-95 shadow-md"
+        className="companion-control-btn mb-1.5 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/65 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-zinc-300 backdrop-blur-md transition-all hover:border-accent hover:bg-black/90 hover:text-white active:scale-95 shadow-md"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         {getLabel()}

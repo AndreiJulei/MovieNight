@@ -3,11 +3,13 @@ import { useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "../components/Toast";
 import AppShell from "../components/AppShell";
-import type { CompanionCharacter } from "../components/PixelCompanion";
-import type { BackgroundType } from "../components/AmbientBackground";
+import useCompactLayout from "../hooks/useCompactLayout";
 import EvilEye from "../components/EvilEye";
-import GradientBlinds from "../components/GradientBlinds";
-import CursorGrid from "../components/CursorGrid";
+import {
+  readCompanionChoice,
+  saveCompanionChoice,
+  type CompanionCharacter,
+} from "../components/companionPreference";
 import {
   webhooksApi,
   type ApiWebhookSubscriptionResponse,
@@ -64,59 +66,14 @@ const CHARACTERS: CharacterOption[] = [
   },
 ];
 
-interface BackgroundOption {
-  id: BackgroundType;
-  name: string;
-  subtitle: string;
-  tag: string;
-}
-
-const BACKGROUNDS: BackgroundOption[] = [
-  {
-    id: "grid",
-    name: "Neon Cursor Grid",
-    subtitle: "Dense matrix grid with real-time cursor line illumination & phosphor trail",
-    tag: "Cyber",
-  },
-  {
-    id: "blinds",
-    name: "Gradient Blinds",
-    subtitle: "Chromatic violet/pink blinds with interactive spotlight tracking",
-    tag: "Atmospheric",
-  },
-  {
-    id: "blank",
-    name: "Pure Solid Black",
-    subtitle: "Minimalist, distraction-free solid obsidian background",
-    tag: "Minimal",
-  },
-];
-
 export default function SettingsPage() {
   const store = useStore();
   const { navigate } = useRouter();
   const { toast } = useToast();
   const user = store.currentUser;
 
-  const [selectedChar, setSelectedChar] = useState<CompanionCharacter>(() => {
-    if (typeof window !== "undefined") {
-      return (
-        (localStorage.getItem("pixel_companion_char") as CompanionCharacter) ||
-        "wick"
-      );
-    }
-    return "wick";
-  });
-
-  const [selectedBg, setSelectedBg] = useState<BackgroundType>(() => {
-    if (typeof window !== "undefined") {
-      return (
-        (localStorage.getItem("app_background_type") as BackgroundType) ||
-        "grid"
-      );
-    }
-    return "grid";
-  });
+  const compact = useCompactLayout();
+  const [selectedChar, setSelectedChar] = useState<CompanionCharacter>(() => readCompanionChoice());
 
   // Profile Form State
   const [displayName, setDisplayName] = useState(user?.displayName || "");
@@ -130,17 +87,9 @@ export default function SettingsPage() {
 
   const handleSelectChar = (id: CompanionCharacter) => {
     setSelectedChar(id);
-    localStorage.setItem("pixel_companion_char", id);
-    window.dispatchEvent(new Event("companion_changed"));
+    saveCompanionChoice(id);
     const charName = CHARACTERS.find((c) => c.id === id)?.name ?? id;
     toast({ message: `Companion changed to ${charName}`, type: "info" });
-  };
-
-  const handleSelectBg = (id: BackgroundType) => {
-    setSelectedBg(id);
-    localStorage.setItem("app_background_type", id);
-    window.dispatchEvent(new Event("background_changed"));
-    toast({ message: "Background theme updated", type: "info" });
   };
 
   const handleProfileSubmit = async (e: FormEvent) => {
@@ -470,98 +419,9 @@ export default function SettingsPage() {
           </form>
         </section>
 
-        {/* 3. Ambient Background Theme Section */}
-        <section className="hidden lg:block mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary">
-                Background Theme
-              </h2>
-              <p className="text-xs text-text-muted">
-                Select your preferred ambient background visual effect.
-              </p>
-            </div>
-            <span className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent">
-              Visuals
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {BACKGROUNDS.map((bg) => {
-              const isSelected = selectedBg === bg.id;
-              return (
-                <button
-                  key={bg.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => handleSelectBg(bg.id)}
-                  className={`group relative flex flex-col justify-between rounded-lg border p-4 text-left transition-all ${
-                    isSelected
-                      ? "border-accent bg-accent/10"
-                      : "border-white/10 bg-black/30 hover:border-white/20 hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {/* Visual Preview Box */}
-                  <div className="relative mb-3.5 h-20 w-full overflow-hidden rounded-md border border-white/5 bg-[#05070D]">
-                    {bg.id === "grid" && (
-                      <CursorGrid
-                        cellSize={18}
-                        color="#D946EF"
-                        radius={45}
-                        gridOpacity={0.12}
-                        className="h-full w-full"
-                      />
-                    )}
-                    {bg.id === "blinds" && (
-                      <div className="h-full w-full opacity-70">
-                        <GradientBlinds
-                          gradientColors={["#FF9FFC", "#5227FF"]}
-                          angle={20}
-                          blindCount={8}
-                          spotlightRadius={0.35}
-                          className="h-full w-full"
-                        />
-                      </div>
-                    )}
-                    {bg.id === "blank" && (
-                      <div className="flex h-full w-full items-center justify-center bg-[#05070D] text-[10px] text-zinc-600">
-                        Obsidian
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-text-primary">
-                        {bg.name}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-text-muted line-clamp-2 leading-relaxed">
-                      {bg.subtitle}
-                    </p>
-                  </div>
-
-                  {/* Active Radio Dot */}
-                  <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/5">
-                    <span className="text-[10px] font-medium text-text-muted uppercase">
-                      {bg.tag}
-                    </span>
-                    <div
-                      className={`h-3 w-3 rounded-full border ${
-                        isSelected
-                          ? "border-accent bg-accent"
-                          : "border-white/20 bg-transparent"
-                      }`}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* 4. Pixel Companion Character Picker Section */}
-        <section className="hidden lg:block mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
+        {/* 3. Pixel Companion Character Picker Section (desktop only) */}
+        {!compact && (
+        <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-primary">
@@ -637,8 +497,9 @@ export default function SettingsPage() {
             })}
           </div>
         </section>
+        )}
 
-        {/* 5. Webhooks & Integrations Section */}
+        {/* 4. Webhooks & Integrations Section */}
         <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -1095,7 +956,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* 6. Account / Session Section */}
+        {/* 5. Account / Session Section */}
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
           <h2 className="text-base font-semibold text-text-primary">Account</h2>
           <p className="mt-0.5 text-xs text-text-muted">

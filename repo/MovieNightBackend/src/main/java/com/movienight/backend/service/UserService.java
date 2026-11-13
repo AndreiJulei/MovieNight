@@ -129,18 +129,18 @@ public class UserService {
         String cleanIdentifier = request.getEffectiveIdentifier().toLowerCase();
 
         if (cleanIdentifier.isBlank()) {
-            throw new IllegalArgumentException("Email address is required to sign in");
+            throw new IllegalArgumentException("Please enter your email or username");
         }
 
         // 1. Fetch user by email or username
         User user = userRepository.findByEmailIgnoreCase(cleanIdentifier)
                 .or(() -> userRepository.findByUsernameIgnoreCase(cleanIdentifier))
                 .or(() -> userRepository.findByUsername(cleanIdentifier))
-                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
+                .orElseThrow(() -> new IllegalArgumentException("Invalid email/username or password"));
 
         // 2. Verify raw password against stored BCrypt hash
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("Invalid email or password");
+            throw new IllegalArgumentException("Invalid email/username or password");
         }
 
         // 3. Generate signed JWT token

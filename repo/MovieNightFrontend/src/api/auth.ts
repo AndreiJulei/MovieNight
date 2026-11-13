@@ -1,3 +1,5 @@
+import { boundedRead } from "./boundedRead";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface ApiUser {
@@ -30,15 +32,22 @@ export const authApi = {
   async currentProfile(): Promise<ApiUser | null> {
     const token = this.getToken();
     if (!token) return null;
-    const response = await fetch(`${API_BASE}/api/users/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (response.status === 401 || response.status === 403) return null;
-    if (!response.ok) throw new Error("Session verification is temporarily unavailable.");
-    const profile = await response.json() as ApiUser;
-    if (profile?.id == null || !profile.username) throw new Error("Invalid session profile.");
-    return profile;
+    // The first read after a cold start: boundedRead shows the waking notice and retries once.
+    return boundedRead("currentProfile", async (signal) => {
+      const response = await fetch(`${API_BASE}/api/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal,
+      });
+      if (response.status === 401 || response.status === 403) return null;
+      if (!response.ok) {
+        const err = new Error("Session verification is temporarily unavailable.");
+        (err as any).status = response.status;
+        throw err;
+      }
+      const profile = await response.json() as ApiUser;
+      if (profile?.id == null || !profile.username) throw new Error("Invalid session profile.");
+      return profile;
+    }, { coalesceKey: "session:currentProfile" });
   },
   /**
    * Check if a display name is unique and valid on the backend.
@@ -115,7 +124,7 @@ export const authApi = {
       if (!res.ok) {
         return {
           ok: false,
-          error: data.message || "Invalid email or password.",
+          error: data.message || "Invalid email/username or password",
         };
       }
 
