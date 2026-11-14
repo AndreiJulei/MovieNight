@@ -334,3 +334,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .phone-menu-fade {
   animation: phoneMenuFade 100ms ease-out;
 }
+
+/* #30: the search field draws its own clear button. */
+.nav-search-field input[type="search"]::-webkit-search-cancel-button,
+.nav-search-field input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}

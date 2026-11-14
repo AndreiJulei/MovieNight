@@ -108,6 +108,54 @@ public class TmdbClient {
         throw new IllegalStateException("Provider returned invalid discovery data. Retry.");
     }
 
+    /** Which TMDB search endpoint a paged search uses (#30). */
+    public enum SearchScope {
+        MULTI("/search/multi", null), MOVIE("/search/movie", "movie"), TV("/search/tv", "tv");
+
+        private final String path;
+        private final String mediaType;
+
+        SearchScope(String path, String mediaType) {
+            this.path = path;
+            this.mediaType = mediaType;
+        }
+    }
+
+    /**
+     * One page of a TMDB search. Single-type endpoints omit {@code media_type}, so it is filled in;
+     * people are dropped from multi-search.
+     */
+    public TmdbSearchResponse searchPage(SearchScope scope, String query, int page) {
+        if (!isConfigured()) {
+            return new TmdbSearchResponse();
+        }
+        TmdbSearchResponse response;
+        try {
+            response = restClient.get()
+                    .uri(uriBuilder -> applyAuth(uriBuilder)
+                            .path(scope.path)
+                            .queryParam("query", query)
+                            .queryParam("include_adult", false)
+                            .queryParam("language", "en-US")
+                            .queryParam("page", Math.max(1, page))
+                            .build())
+                    .retrieve()
+                    .body(TmdbSearchResponse.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Provider search request failed. Retry.");
+        }
+        if (response == null || response.getResults() == null) {
+            throw new IllegalStateException("Provider returned invalid search data. Retry.");
+        }
+        if (scope.mediaType != null) {
+            response.getResults().forEach(item -> item.setMediaType(scope.mediaType));
+        }
+        response.setResults(response.getResults().stream()
+                .filter(item -> !"person".equalsIgnoreCase(item.getMediaType()))
+                .toList());
+        return response;
+    }
+
     /**
      * Search catalog items (searches movies, TV series, and anime via multi-search).
      */

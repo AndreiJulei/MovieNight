@@ -1,4 +1,3 @@
-import { titleId } from "../store/titleIdentity";
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
 import { Link, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
@@ -6,6 +5,12 @@ import { moviesApi } from "../api/movies";
 import type { Movie } from "../store/data";
 import { SearchIcon, CloseIcon } from "./NavRail.icons";
 import { useEscapeKey } from "../hooks/useOverlay";
+import {
+  DROPDOWN_RESULT_LIMIT,
+  mediaTypeLabel,
+  searchResultsUrl,
+  toSearchMovie,
+} from "./searchResultsLogic";
 
 interface NavSearchProps {
   className?: string;
@@ -31,6 +36,8 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
   const [keyboardFocus, setKeyboardFocus] = useState(false);
   const [focused, setFocused] = useState(false);
   const interactionModeRef = useRef<"pointer" | "keyboard">("keyboard");
+  /** Whether selectedIndex came from the arrow keys (Enter opens it) or from hovering (it does not). */
+  const arrowSelectionRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -100,26 +107,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
       try {
         const apiMovies = await moviesApi.search(trimmed);
         if (!active) return;
-        if (apiMovies && apiMovies.length > 0) {
-          const mapped: Movie[] = apiMovies.map((m) => ({
-            id: titleId(m.tmdbId, m.mediaType ?? "", m.id),
-            catalogMovieId: m.id,
-            tmdbId: m.tmdbId,
-            title: m.title,
-            year: m.releaseYear ?? null,
-            director: m.director || "Unknown",
-            overview: m.overview || "",
-            posterUrl: m.posterUrl || null,
-            imdb: m.imdbRating != null ? Number(m.imdbRating) : undefined,
-            rt: m.rottenTomatoesRating != null ? Number(m.rottenTomatoesRating) : undefined,
-            mediaType: ((m.mediaType || "MOVIE").toUpperCase()) as any,
-            seasonsCount: m.seasonsCount,
-            episodesCount: m.episodesCount,
-          }));
-          setBackendResults(mapped);
-        } else {
-          setBackendResults([]);
-        }
+        setBackendResults(apiMovies.map(toSearchMovie));
       } catch (error) {
         if (!active) return;
         setSearchError(error instanceof Error ? error.message : "Could not search. Retry.");
@@ -132,8 +120,8 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
     return () => { active = false; clearTimeout(timer); };
   }, [query, store.currentUser?.id]);
 
-  // Display backend results directly from live TMDB search
-  const displayedResults = backendResults.slice(0, 8);
+  // #30: up to six larger rows; the full list is one Enter away.
+  const displayedResults = backendResults.slice(0, DROPDOWN_RESULT_LIMIT);
 
   const handleSelect = useCallback(
     (movie: Movie) => {
@@ -153,28 +141,37 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
     [navigate, onNavigate, store],
   );
 
+  /** #30 SR01: Enter (or the phone keyboard's Go/Search key) opens the full results page. */
+  const openResultsPage = useCallback(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setIsOpen(false);
+    setSelectedIndex(-1);
+    inputRef.current?.blur();
+    onNavigate?.();
+    navigate(searchResultsUrl(trimmed));
+  }, [navigate, onNavigate, query]);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (!isOpen || displayedResults.length === 0) {
-      if (e.key === "Enter" && query.trim()) {
-        navigate(addSearchUrl(query));
-        setIsOpen(false);
-      }
+    if (e.key === "Enter" && (!isOpen || !arrowSelectionRef.current || selectedIndex < 0 || selectedIndex >= displayedResults.length)) {
+      e.preventDefault();
+      openResultsPage();
       return;
     }
+    if (!isOpen || displayedResults.length === 0) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      arrowSelectionRef.current = true;
       setSelectedIndex((prev) => (prev < displayedResults.length - 1 ? prev + 1 : 0));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      arrowSelectionRef.current = true;
       setSelectedIndex((prev) => (prev > 0 ? prev - 1 : displayedResults.length - 1));
     } else if (e.key === "Enter") {
+      // An arrow-key selection opens that title; otherwise Enter was handled above.
       e.preventDefault();
-      if (selectedIndex >= 0 && selectedIndex < displayedResults.length) {
-        handleSelect(displayedResults[selectedIndex]);
-      } else if (displayedResults.length > 0) {
-        handleSelect(displayedResults[0]);
-      }
+      handleSelect(displayedResults[selectedIndex]);
     } else if (e.key === "Escape") {
       setIsOpen(false);
       inputRef.current?.blur();
@@ -197,12 +194,14 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
         <SearchIcon className="h-4 w-4 shrink-0 text-text-muted transition-colors group-focus-within:text-text-primary" />
         <input
           ref={inputRef}
-          type="text"
+          type="search"
+          enterKeyHint="search"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setIsOpen(true);
             setSelectedIndex(-1);
+            arrowSelectionRef.current = false;
           }}
           onFocus={() => {
             setFocused(true);
@@ -244,7 +243,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
       {isOpen && query.trim().length > 0 && (
         <div
           id="nav-search-popover"
-          className="absolute left-0 top-full z-50 mt-2 max-h-[min(420px,55dvh)] w-[min(24rem,calc(100vw-2.5rem))] overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320]/95 p-1.5 shadow-2xl backdrop-blur-xl lg:w-96"
+          className="absolute left-0 top-full z-50 mt-2 max-h-[min(680px,70dvh)] w-[min(28rem,calc(100vw-2.5rem))] overflow-y-auto rounded-xl border border-white/15 bg-[#0e1320]/95 p-1.5 shadow-2xl backdrop-blur-xl lg:w-[28rem]"
           style={{ scrollbarWidth: "thin" }}
         >
           {searchError && (
@@ -273,56 +272,48 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
                     href={movieUrl(movie)}
                     role="option"
                     aria-selected={isSelected}
-                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onMouseEnter={() => {
+                      arrowSelectionRef.current = false;
+                      setSelectedIndex(idx);
+                    }}
                     onClick={(event) => {
                       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
                       event.preventDefault();
                       handleSelect(movie);
                     }}
+                    aria-label={`${movie.title}${movie.year != null ? ` (${movie.year})` : ""}, ${mediaTypeLabel(movie.mediaType)}`}
                     className={`flex items-center gap-3 rounded-lg p-2 cursor-pointer transition-colors ${
                       isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    {/* Poster Thumbnail */}
-                    <div className="h-12 w-8 shrink-0 overflow-hidden rounded bg-surface border border-white/10">
+                    {/* Poster Thumbnail (#30 SR04: 56×84) */}
+                    <div
+                      className="h-[84px] w-14 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-surface"
+                    >
                       {movie.posterUrl ? (
                         <img
                           src={movie.posterUrl}
-                          alt={movie.title}
+                          alt=""
                           className="h-full w-full object-cover"
                           loading="lazy"
                         />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-white/5 text-[9px] text-text-muted">
-                          🎬
+                        <div className="flex h-full w-full items-center justify-center bg-white/5 p-1 text-center text-xs leading-tight text-text-muted">
+                          No poster
                         </div>
                       )}
                     </div>
 
-                    {/* Movie Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[13px] font-semibold text-white">
-                          {movie.title}
+                    {/* Title, year and type */}
+                    <div className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-[15px] font-semibold leading-snug text-white">
+                        {movie.title}
+                      </span>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs text-text-muted">
+                        {movie.year != null && <span className="nums">{movie.year}</span>}
+                        <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium text-text-primary">
+                          {mediaTypeLabel(movie.mediaType)}
                         </span>
-                        {movie.mediaType && movie.mediaType !== "MOVIE" && (
-                          <span className="rounded bg-accent/20 px-1 py-0.2 text-[9px] font-bold text-accent">
-                            {movie.mediaType === "ANIME" ? "Anime" : "TV"}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-                        <span>{movie.year}</span>
-                        {movie.imdb != null && (
-                          <span className="nums font-semibold text-amber-400">
-                            ★ {movie.imdb.toFixed(1)}
-                          </span>
-                        )}
-                        {movie.director && movie.director !== "Unknown" && (
-                          <span className="truncate text-text-muted/70">
-                            · {movie.director}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </a>
@@ -330,14 +321,14 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
               })}
               </div>
 
-              <div className="border-t border-white/[0.08] pt-1.5 mt-1 px-2 pb-1 flex items-center justify-between text-[11px] text-text-muted">
-                <span>Navigate with <kbd className="rounded border border-white/20 px-1 text-[9px]">↑</kbd> <kbd className="rounded border border-white/20 px-1 text-[9px]">↓</kbd></span>
+              <div className="border-t border-white/[0.08] pt-2 mt-1 px-2 pb-1 flex items-center justify-between gap-3 text-xs text-text-muted">
+                <span className="hidden shrink-0 lg:inline">Navigate with <kbd className="rounded border border-white/20 px-1 text-[9px]">↑</kbd> <kbd className="rounded border border-white/20 px-1 text-[9px]">↓</kbd></span>
                 <Link
-                  to={addSearchUrl(query)}
-                  onClick={() => setIsOpen(false)}
-                  className="prose-link text-link font-semibold transition-colors hover:text-white"
+                  to={searchResultsUrl(query)}
+                  onClick={() => { setIsOpen(false); onNavigate?.(); }}
+                  className="prose-link min-w-0 truncate text-link font-semibold transition-colors hover:text-white"
                 >
-                  Full Search →
+                  See all results for &ldquo;{query.trim()}&rdquo;
                 </Link>
               </div>
             </div>

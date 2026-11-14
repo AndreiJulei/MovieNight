@@ -3,6 +3,7 @@ package com.movienight.backend.service;
 import com.movienight.backend.client.OmdbClient;
 import com.movienight.backend.client.TmdbClient;
 import com.movienight.backend.dto.MovieResponse;
+import com.movienight.backend.dto.SearchPageResponse;
 import com.movienight.backend.dto.external.OmdbResponse;
 import com.movienight.backend.dto.external.TmdbMovieDetailsResponse;
 import com.movienight.backend.dto.external.TmdbSearchResponse;
@@ -97,6 +98,71 @@ public class MovieCatalogLookupService {
         }
 
         return results;
+    }
+
+    /** Provider pages one search request may read, so filtered tabs and people-only pages still fill. */
+    private static final int SEARCH_READ_AHEAD_PAGES = 3;
+    /** A results page stops reading ahead once it holds this many titles. */
+    private static final int SEARCH_MIN_PAGE_RESULTS = 10;
+
+    /**
+     * One page of the full search results page (#30), from TMDB only so paging stays consistent.
+     * {@code type} is ALL, MOVIE, TV or ANIME; anime is TV classified by the anime policy.
+     */
+    public SearchPageResponse searchPage(String query, int page, String type) {
+        String cleanQuery = query == null ? "" : query.trim();
+        String cleanType = type == null || type.isBlank() ? "ALL" : type.trim().toUpperCase(Locale.ROOT);
+        TmdbClient.SearchScope scope = switch (cleanType) {
+            case "ALL" -> TmdbClient.SearchScope.MULTI;
+            case "MOVIE" -> TmdbClient.SearchScope.MOVIE;
+            case "TV", "ANIME" -> TmdbClient.SearchScope.TV;
+            default -> throw new IllegalArgumentException("Search type must be ALL, MOVIE, TV or ANIME");
+        };
+        int requestedPage = Math.max(1, page);
+        if (cleanQuery.isEmpty() || !tmdbClient.isConfigured()) {
+            return SearchPageResponse.builder().query(cleanQuery).type(cleanType)
+                    .page(requestedPage).totalPages(0).hasMore(false).results(List.of()).build();
+        }
+
+        // TV and Anime share /search/tv, and multi-search pages lose their people, so one provider
+        // page can hold few or no titles; read a few pages ahead so "Load more" adds a real page.
+        boolean classified = "TV".equals(cleanType) || "ANIME".equals(cleanType);
+        int maxPage = requestedPage + SEARCH_READ_AHEAD_PAGES - 1;
+        List<MovieResponse> results = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        int currentPage = requestedPage;
+        int totalPages = requestedPage;
+        while (true) {
+            TmdbSearchResponse response = tmdbClient.searchPage(scope, cleanQuery, currentPage);
+            totalPages = response.getTotalPages() == null ? currentPage : response.getTotalPages();
+            for (TmdbSearchResponse.TmdbMovieSummary item : response.getResults()) {
+                if (item.getId() == null || item.getEffectiveTitle() == null) continue;
+                String mediaType = item.getResolvedMediaType();
+                if (classified && !cleanType.equals(mediaType)) continue;
+                if (seen.add(ResourceType.fromCategory(mediaType) + ":" + item.getId())) {
+                    results.add(toSearchResult(item));
+                }
+            }
+            if (results.size() >= SEARCH_MIN_PAGE_RESULTS || currentPage >= totalPages || currentPage >= maxPage) break;
+            currentPage++;
+        }
+        return SearchPageResponse.builder().query(cleanQuery).type(cleanType)
+                .page(currentPage).totalPages(totalPages).hasMore(currentPage < totalPages)
+                .results(results).build();
+    }
+
+    private MovieResponse toSearchResult(TmdbSearchResponse.TmdbMovieSummary item) {
+        return MovieResponse.builder()
+                .tmdbId(item.getId())
+                .title(item.getEffectiveTitle())
+                .releaseYear(parseYear(item.getEffectiveReleaseDate()))
+                .overview(item.getOverview())
+                .posterUrl(tmdbClient.buildPosterUrl(item.getPosterPath()))
+                .backdropUrl(tmdbClient.buildBackdropUrl(item.getBackdropPath()))
+                .mediaType(item.getResolvedMediaType())
+                .tmdbVoteAverage(item.getVoteAverage())
+                .tmdbVoteCount(item.getVoteCount())
+                .build();
     }
 
     private final ConcurrentHashMap<String, Long> lastBackfillAttempt = new ConcurrentHashMap<>();

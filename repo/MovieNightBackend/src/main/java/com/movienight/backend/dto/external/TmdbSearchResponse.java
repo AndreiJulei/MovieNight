@@ -14,6 +14,11 @@ public class TmdbSearchResponse {
     @JsonProperty("results")
     private List<TmdbMovieSummary> results = Collections.emptyList();
 
+    private Integer page;
+
+    @JsonProperty("total_pages")
+    private Integer totalPages;
+
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TmdbMovieSummary {

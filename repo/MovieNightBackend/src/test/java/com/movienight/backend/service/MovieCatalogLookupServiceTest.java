@@ -3,6 +3,7 @@ package com.movienight.backend.service;
 import com.movienight.backend.client.OmdbClient;
 import com.movienight.backend.client.TmdbClient;
 import com.movienight.backend.dto.MovieResponse;
+import com.movienight.backend.dto.SearchPageResponse;
 import com.movienight.backend.dto.external.OmdbResponse;
 import com.movienight.backend.dto.external.TmdbMovieDetailsResponse;
 import com.movienight.backend.dto.external.TmdbSearchResponse;
@@ -260,5 +261,128 @@ class MovieCatalogLookupServiceTest {
         assertNotNull(response);
         assertEquals(550L, response.getTmdbId());
         assertEquals("https://image.tmdb.org/t/p/w500/fight_club_logo.png", response.getLogoUrl());
+    }
+
+    // ── #30 (PD-14) paged search for the full results page ──
+
+    private static TmdbSearchResponse.TmdbMovieSummary summary(long id, String mediaType, String name, Integer... genres) {
+        TmdbSearchResponse.TmdbMovieSummary item = new TmdbSearchResponse.TmdbMovieSummary();
+        item.setId(id);
+        item.setMediaType(mediaType);
+        if ("movie".equals(mediaType)) item.setTitle(name); else item.setName(name);
+        item.setGenreIds(List.of(genres));
+        return item;
+    }
+
+    private static TmdbSearchResponse tmdbPage(int page, int totalPages, TmdbSearchResponse.TmdbMovieSummary... items) {
+        TmdbSearchResponse response = new TmdbSearchResponse();
+        response.setPage(page);
+        response.setTotalPages(totalPages);
+        response.setResults(List.of(items));
+        return response;
+    }
+
+    @Test
+    void searchPage_allTypes_returnsRequestedMultiSearchPageWithPaging() {
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MULTI, "spiderman", 2)).thenReturn(tmdbPage(2, 2,
+                summary(557, "movie", "Spider-Man"), summary(1, "tv", "Spider-Man TAS")));
+
+        SearchPageResponse response = lookupService.searchPage("  spiderman ", 2, "ALL");
+
+        assertEquals(2, response.getPage());
+        assertEquals(2, response.getTotalPages());
+        assertFalse(response.isHasMore());
+        assertEquals(List.of("Spider-Man", "Spider-Man TAS"),
+                response.getResults().stream().map(MovieResponse::getTitle).toList());
+        assertEquals(List.of("MOVIE", "TV"),
+                response.getResults().stream().map(MovieResponse::getMediaType).toList());
+    }
+
+    @Test
+    void searchPage_moviesTab_usesMovieSearchOnly() {
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MOVIE, "spiderman", 1)).thenReturn(tmdbPage(1, 1,
+                summary(557, "movie", "Spider-Man")));
+
+        SearchPageResponse response = lookupService.searchPage("spiderman", 1, "movie");
+
+        assertEquals("MOVIE", response.getType());
+        assertFalse(response.isHasMore());
+        assertEquals(List.of("Spider-Man"), response.getResults().stream().map(MovieResponse::getTitle).toList());
+        verify(tmdbClient, never()).searchPage(eq(TmdbClient.SearchScope.MULTI), anyString(), anyInt());
+    }
+
+    @Test
+    void searchPage_animeAndTvTabs_splitTvSearchByAnimePolicy() {
+        TmdbSearchResponse.TmdbMovieSummary titan = summary(1429, "tv", "Attack on Titan", 16, 10759);
+        titan.setOriginalLanguage("ja");
+        TmdbSearchResponse.TmdbMovieSummary westernCartoon = summary(2, "tv", "Spider-Man TAS", 16);
+        westernCartoon.setOriginalLanguage("en");
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.TV, "titan", 1))
+                .thenReturn(tmdbPage(1, 1, titan, westernCartoon));
+
+        SearchPageResponse anime = lookupService.searchPage("titan", 1, "ANIME");
+        SearchPageResponse tv = lookupService.searchPage("titan", 1, "TV");
+
+        assertEquals(List.of("Attack on Titan"), anime.getResults().stream().map(MovieResponse::getTitle).toList());
+        assertEquals(List.of("ANIME"), anime.getResults().stream().map(MovieResponse::getMediaType).toList());
+        assertEquals(List.of("Spider-Man TAS"), tv.getResults().stream().map(MovieResponse::getTitle).toList());
+    }
+
+    @Test
+    void searchPage_filteredTab_readsAheadPastProviderPagesWithNoMatches() {
+        TmdbSearchResponse.TmdbMovieSummary titan = summary(1429, "tv", "Attack on Titan", 16);
+        titan.setOriginCountry(List.of("JP"));
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.TV, "titan", 1))
+                .thenReturn(tmdbPage(1, 6, summary(3, "tv", "Titans")));
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.TV, "titan", 2))
+                .thenReturn(tmdbPage(2, 6, titan));
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.TV, "titan", 3))
+                .thenReturn(tmdbPage(3, 6));
+
+        SearchPageResponse anime = lookupService.searchPage("titan", 1, "ANIME");
+
+        assertEquals(List.of("Attack on Titan"), anime.getResults().stream().map(MovieResponse::getTitle).toList());
+        assertEquals(3, anime.getPage(), "the next request continues after the last provider page read");
+        assertTrue(anime.isHasMore());
+    }
+
+    @Test
+    void searchPage_dropsDuplicateTitlesWithinAPage() {
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MULTI, "dune", 1)).thenReturn(tmdbPage(1, 1,
+                summary(438631, "movie", "Dune"), summary(438631, "movie", "Dune"), summary(438631, "tv", "Dune")));
+
+        SearchPageResponse response = lookupService.searchPage("dune", 1, "ALL");
+
+        assertEquals(List.of("MOVIE", "TV"), response.getResults().stream().map(MovieResponse::getMediaType).toList());
+    }
+
+    @Test
+    void searchPage_blankQueryOrUnknownType_isEmptyOrRejected() {
+        assertTrue(lookupService.searchPage("  ", 1, "ALL").getResults().isEmpty());
+        verify(tmdbClient, never()).searchPage(any(), anyString(), anyInt());
+        assertThrows(IllegalArgumentException.class, () -> lookupService.searchPage("dune", 1, "PODCAST"));
+    }
+
+    @Test
+    void searchPage_allTab_readsAheadWhenAProviderPageHoldsOnlyPeople() {
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        // TMDB pages that held only people arrive empty once people are dropped.
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MULTI, "nolan", 1)).thenReturn(tmdbPage(1, 4));
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MULTI, "nolan", 2)).thenReturn(tmdbPage(2, 4,
+                summary(27205, "movie", "Inception")));
+        when(tmdbClient.searchPage(TmdbClient.SearchScope.MULTI, "nolan", 3)).thenReturn(tmdbPage(3, 4,
+                summary(157336, "movie", "Interstellar")));
+
+        SearchPageResponse response = lookupService.searchPage("nolan", 1, "ALL");
+
+        assertEquals(List.of("Inception", "Interstellar"),
+                response.getResults().stream().map(MovieResponse::getTitle).toList());
+        assertEquals(3, response.getPage());
+        assertTrue(response.isHasMore());
     }
 }

@@ -1,6 +1,7 @@
 package com.movienight.backend.controller;
 
 import com.movienight.backend.dto.MovieResponse;
+import com.movienight.backend.dto.SearchPageResponse;
 import com.movienight.backend.dto.SuggestionsResponse;
 import com.movienight.backend.model.Movie;
 import com.movienight.backend.service.MovieCatalogLookupService;
@@ -72,6 +73,20 @@ public class MovieCatalogController {
     @GetMapping("/search")
     public ResponseEntity<List<MovieResponse>> searchMovies(@RequestParam String query) {
         return ResponseEntity.ok(movieCatalogLookupService.searchMovies(query));
+    }
+
+    /**
+     * One page of the full search results page (#30). Present {@code page} selects this mapping;
+     * without it the dropdown keeps the list response above.
+     * Example: GET /api/movies/search?query=spiderman&page=2&type=ANIME
+     */
+    @GetMapping(value = "/search", params = "page")
+    public ResponseEntity<SearchPageResponse> searchPage(
+            @RequestParam String query,
+            @RequestParam int page,
+            @RequestParam(required = false, defaultValue = "ALL") String type
+    ) {
+        return ResponseEntity.ok(movieCatalogLookupService.searchPage(query, page, type));
     }
 
     /**

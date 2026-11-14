@@ -15,6 +15,7 @@ import ExploreContentPage from "./pages/ExploreContentPage";
 import FriendsPage from "./pages/FriendsPage";
 import FriendProfilePage from "./pages/FriendProfilePage";
 import SettingsPage from "./pages/SettingsPage";
+import SearchResultsPage from "./pages/SearchResultsPage";
 import CustomListsIndexPage from "./pages/CustomListsIndexPage";
 import CustomListDetailPage from "./pages/CustomListDetailPage";
 import PixelCompanion from "./components/PixelCompanion";
@@ -40,6 +41,7 @@ const routeDefinitions: {
   { matches: path => Boolean(matchPath("/friends/:id", path)), title: "Friends", component: FriendProfilePage },
   { matches: path => path === "/friends", title: "Friends", component: FriendsPage },
   { matches: path => path === "/settings", title: "Settings", component: SettingsPage },
+  { matches: path => path === "/search", title: "Search", component: SearchResultsPage },
 ];
 
 function Routes() {

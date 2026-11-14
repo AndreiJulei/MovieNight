@@ -33,6 +33,15 @@ export interface ApiMovieResponse {
   episodesCount?: number;
 }
 
+export interface ApiSearchPageResponse {
+  query: string;
+  type: string;
+  page: number;
+  totalPages: number;
+  hasMore: boolean;
+  results: ApiMovieResponse[];
+}
+
 export interface ApiUserMovieEntryResponse {
   id: number;
   movie: ApiMovieResponse;
@@ -96,6 +105,8 @@ const EXPLORE_OVERVIEW_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 10 * 60
 const EXPLORE_PAGE_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 5 * 60_000 };
 // Explore highlights (#26) are charts refreshed daily (spotlight) and every 4 hours (Top 10).
 const EXPLORE_HIGHLIGHTS_CACHE: CacheWindow = { freshMs: 5 * 60_000, maxAgeMs: 30 * 60_000 };
+// Search pages (#30) are cached briefly so back/forward and reload of loaded pages render at once.
+const SEARCH_PAGE_CACHE: CacheWindow = { freshMs: 2 * 60_000, maxAgeMs: 10 * 60_000 };
 import {
   boundedRead,
   type BoundedReadOptions,
@@ -208,6 +219,25 @@ export const moviesApi = {
       if (!Array.isArray(response)) throw new Error("Invalid search response. Retry.");
       return response;
     }, options);
+  },
+
+  /** One page of the full search results page (#30); `page` is the next provider page to read. */
+  async searchPage(query: string, page: number, type: string, options?: BoundedReadOptions): Promise<ApiSearchPageResponse> {
+    const q = query.trim();
+    const actionKey = `searchPage:${type}:${page}:${q.toLowerCase()}`;
+    const scope = options?.userScope ?? authApi.getToken() ?? "anon";
+    return cachedRead(`${scope}:${actionKey}`, SEARCH_PAGE_CACHE, (background) =>
+      boundedRead(actionKey, async (signal) => {
+        const response = await libraryRequest<ApiSearchPageResponse>(
+          `${API_BASE}/api/movies/search?query=${encodeURIComponent(q)}&page=${page}&type=${encodeURIComponent(type)}`,
+          { signal },
+        );
+        if (!response || !Array.isArray(response.results) || typeof response.page !== "number") {
+          throw new Error("Invalid search response. Retry.");
+        }
+        return response;
+      }, background ? { ...options, signal: undefined } : options),
+    );
   },
 
   /**
