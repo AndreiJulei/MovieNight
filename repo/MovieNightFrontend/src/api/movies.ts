@@ -107,6 +107,9 @@ const EXPLORE_PAGE_CACHE: CacheWindow = { freshMs: 60_000, maxAgeMs: 5 * 60_000 
 const EXPLORE_HIGHLIGHTS_CACHE: CacheWindow = { freshMs: 5 * 60_000, maxAgeMs: 30 * 60_000 };
 // Search pages (#30) are cached briefly so back/forward and reload of loaded pages render at once.
 const SEARCH_PAGE_CACHE: CacheWindow = { freshMs: 2 * 60_000, maxAgeMs: 10 * 60_000 };
+// Title details (#29): a poster press prefetches them so the page renders as the transition ends.
+// Short windows, because critic scores arrive moments after a first open.
+const TITLE_DETAILS_CACHE: CacheWindow = { freshMs: 15_000, maxAgeMs: 5 * 60_000 };
 import {
   boundedRead,
   type BoundedReadOptions,
@@ -241,17 +244,28 @@ export const moviesApi = {
   },
 
   /**
-   * Get or fetch full media details by TMDB ID (enriched with OMDb ratings).
+   * Get or fetch full media details by TMDB ID. Critic scores (OMDb) are filled in the background
+   * and arrive on a later read, so this never waits for them.
    */
-  async getByTmdbId(tmdbId: number, mediaType?: string, options?: BoundedReadOptions): Promise<ApiMovieResponse | null> {
+  async getByTmdbId(tmdbId: number, mediaType?: string, options?: BoundedReadOptions & { fresh?: boolean }): Promise<ApiMovieResponse | null> {
     if (!mediaType) throw new Error("Explicit title resource type is required.");
     const actionKey = `getByTmdbId:${mediaType.toUpperCase()}:${tmdbId}`;
-    return boundedRead(actionKey, (signal) => {
+    const read = (readOptions?: BoundedReadOptions) => boundedRead(actionKey, (signal) => {
       return libraryRequest<ApiMovieResponse>(
         `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
         { signal },
       );
-    }, options);
+    }, readOptions);
+    const cacheKey = `${options?.userScope ?? authApi.getToken() ?? "anon"}:${actionKey}`;
+    // The critic-score poll must see the server, not the prefetched copy.
+    if (options?.fresh) forgetCachedRead(cacheKey);
+    return cachedRead(cacheKey, TITLE_DETAILS_CACHE, (background) =>
+      read(background ? { ...options, signal: undefined } : options));
+  },
+
+  /** Warm the details cache when a poster is pressed or hovered (#29). Errors are ignored. */
+  prefetchByTmdbId(tmdbId: number, mediaType: string, userScope?: string): void {
+    void this.getByTmdbId(tmdbId, mediaType, { userScope }).catch(() => { /* the page retries */ });
   },
 
   /**

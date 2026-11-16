@@ -71,7 +71,7 @@ const errors = [];
         const input = req.postData() ? req.postDataJSON() : {};
         if (path === '/api/lists') {
           assert.ok((input.initialMovieIds || []).every((id) => id === movie.id), 'create uses the exact catalog key');
-          const list = { id: nextId++, userId: 101, title: input.title, isPublic: false,
+          const list = { id: nextId++, userId: 101, title: input.title, shared: false,
             entries: input.initialMovieIds?.length ? [{ id: 501, movie, position: 0 }] : [],
             createdAt: '2026-10-19T12:00:00' };
           lists.unshift(list);
@@ -235,7 +235,7 @@ const errors = [];
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     await page.setViewportSize({ width: 1440, height: 1000 });
     // A catalog-only movie must not collide with a discovered movie's provider ID.
-    lists.push({ id: 90, userId: 101, title: 'Catalog-only list', isPublic: false,
+    lists.push({ id: 90, userId: 101, title: 'Catalog-only list', shared: false,
       entries: [{ id: 601, movie: { id: 900001, title: 'Catalog-only Fixture', mediaType: 'MOVIE' }, position: 0 }],
       createdAt: '2026-10-19T12:00:00' });
     await reloadLists().click();

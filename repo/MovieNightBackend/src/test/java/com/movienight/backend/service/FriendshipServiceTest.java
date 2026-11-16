@@ -1,14 +1,12 @@
 package com.movienight.backend.service;
 
 import com.movienight.backend.dto.FriendProfileResponse;
+import com.movienight.backend.dto.RankResponse;
 import com.movienight.backend.dto.UserMovieEntryResponse;
 import com.movienight.backend.model.Friendship;
-import com.movienight.backend.model.Movie;
 import com.movienight.backend.model.MovieStatus;
 import com.movienight.backend.model.User;
-import com.movienight.backend.model.UserMovieEntry;
 import com.movienight.backend.repository.FriendshipRepository;
-import com.movienight.backend.repository.UserMovieEntryRepository;
 import com.movienight.backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +33,7 @@ class FriendshipServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserMovieEntryRepository userMovieEntryRepository;
+    private ProgressionService progressionService;
 
     @Mock
     private UserMovieService userMovieService;
@@ -73,32 +71,18 @@ class FriendshipServiceTest {
 
     @Test
     void getFriends_returnsFriendsWithStats() {
-        UserMovieEntry watchedEntry = UserMovieEntry.builder()
-                .id(101L)
-                .user(friendUser)
-                .movie(Movie.builder().id(50L).title("Terminator").build())
-                .status(MovieStatus.WATCHED)
-                .personalRating(9.0)
-                .build();
-
-        UserMovieEntry watchlistEntry = UserMovieEntry.builder()
-                .id(102L)
-                .user(friendUser)
-                .movie(Movie.builder().id(51L).title("Aliens").build())
-                .status(MovieStatus.WATCHLIST)
-                .build();
-
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
         when(friendshipRepository.findAcceptedByUserId(1L)).thenReturn(List.of(sampleFriendship));
-        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(2L)).thenReturn(List.of(watchedEntry, watchlistEntry));
+        when(progressionService.badgeOf(friendUser)).thenReturn(new ProgressionService.Badge(
+                2, RankResponse.of(Progression.Rank.MATINEE_REGULAR), null));
 
         List<FriendProfileResponse> friends = friendshipService.getFriends("john@example.com");
 
         assertEquals(1, friends.size());
         assertEquals("SarahConnor", friends.get(0).getDisplayName());
-        assertEquals(1, friends.get(0).getWatchedCount());
-        assertEquals(1, friends.get(0).getWatchlistCount());
-        assertEquals(9.0, friends.get(0).getAvgRating());
+        // #32 LV04: the friend view carries the badge (level, rank, avatar) and no counts.
+        assertEquals(2, friends.get(0).getLevel());
+        assertEquals("Matinee Regular", friends.get(0).getRank().label());
     }
 
     @Test

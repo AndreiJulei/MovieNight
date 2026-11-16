@@ -1,14 +1,19 @@
 import { authApi } from "./auth"
 import type { ApiUserMovieEntryResponse } from "./movies"
+import type { ApiAvatar, ApiRank } from "./profile"
+import type { ApiCustomListSummaryResponse } from "./lists"
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080"
 export interface ApiFriendProfile {
   id: number
   username: string
   displayName: string
-  watchedCount: number
-  watchlistCount: number
-  avgRating: number | null
+  /** Level, rank badge and avatar only; friends never receive counts or XP-bar data (#32). */
+  level?: number
+  rank?: ApiRank | null
+  avatar?: ApiAvatar | null
+  sharesWatchlist?: boolean
+  sharesWatched?: boolean
   createdAt?: string
 }
 export interface ApiFriendInvitation {
@@ -100,6 +105,9 @@ export const friendsApi = {
     friendRequest<{ message: string }>(`/${id}`, "DELETE"),
   getFriendProfile: (id: string | number) =>
     friendRequest<ApiFriendProfile>(`/${id}/profile`),
+  /** Custom lists this friend shares with accepted friends (#33). */
+  getFriendLists: (id: string | number) =>
+    friendRequest<ApiCustomListSummaryResponse[]>(`/${id}/lists`),
   getFriendLibrary: (id: string | number, status?: "WATCHED" | "WATCHLIST") =>
     friendRequest<ApiFriendLibraryEntry[]>(
       `/${id}/library${status ? `?status=${status}` : ""}`,

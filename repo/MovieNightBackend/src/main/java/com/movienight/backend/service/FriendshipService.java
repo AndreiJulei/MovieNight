@@ -7,9 +7,8 @@ import com.movienight.backend.dto.FriendLibraryEntryResponse;
 import com.movienight.backend.model.Friendship;
 import com.movienight.backend.model.MovieStatus;
 import com.movienight.backend.model.User;
-import com.movienight.backend.model.UserMovieEntry;
 import com.movienight.backend.repository.FriendshipRepository;
-import com.movienight.backend.repository.UserMovieEntryRepository;
+import com.movienight.backend.repository.UserLookup;
 import com.movienight.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.stream.Collectors;
 
 /**
@@ -31,9 +29,9 @@ public class FriendshipService {
 
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
-    private final UserMovieEntryRepository userMovieEntryRepository;
     private final UserMovieService userMovieService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final ProgressionService progressionService;
 
     /**
      * Retrieve all friends of the current user, each enriched with their profile stats.
@@ -142,8 +140,9 @@ public class FriendshipService {
         User friend = userRepository.findById(friendId)
                 .orElseThrow(() -> new IllegalArgumentException("Friend not found with ID: " + friendId));
 
+        // Only the lists the friend shares; hidden lists are absent rather than forbidden (#33).
         return userMovieService.getUserLibrary(friend.getUsername(), status).stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHED || e.getStatus() == MovieStatus.WATCHLIST)
+                .filter(e -> friend.sharesStatus(e.getStatus()))
                 .map(FriendLibraryEntryResponse::from).toList();
     }
 
@@ -168,37 +167,21 @@ public class FriendshipService {
 
     private User findUserByUsername(String username) {
         String clean = username != null ? username.trim() : "";
-        return userRepository.findByUsername(clean)
-                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
-                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+        return UserLookup.byAccountName(userRepository, clean)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + clean));
     }
 
     private FriendProfileResponse buildFriendProfileResponse(User friend) {
-        List<UserMovieEntry> entries = userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(friend.getId());
-
-        long watchedCount = entries.stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHED)
-                .count();
-
-        long watchlistCount = entries.stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHLIST)
-                .count();
-
-        OptionalDouble avg = entries.stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHED && e.getPersonalRating() != null)
-                .mapToDouble(UserMovieEntry::getPersonalRating)
-                .average();
-
-        Double avgRating = avg.isPresent() ? Math.round(avg.getAsDouble() * 10.0) / 10.0 : null;
-
+        ProgressionService.Badge badge = progressionService.badgeOf(friend);
         return FriendProfileResponse.builder()
                 .id(friend.getId())
                 .username(friend.getUsername())
                 .displayName(friend.getDisplayName())
-                .watchedCount(watchedCount)
-                .watchlistCount(watchlistCount)
-                .avgRating(avgRating)
+                .level(badge.level())
+                .rank(badge.rank())
+                .avatar(badge.avatar())
+                .sharesWatchlist(friend.isSharesWatchlist())
+                .sharesWatched(friend.isSharesWatched())
                 .createdAt(friend.getCreatedAt())
                 .build();
     }

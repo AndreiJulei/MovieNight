@@ -1,21 +1,21 @@
-import { titleId } from "../store/titleIdentity";
 import useWatchlistSave from "../hooks/useWatchlistSave"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, matchPath, useRouter } from "../router"
 import { useStore } from "../store/MovieStore"
-import {
-  friendsApi,
-  type ApiFriendProfile,
-  type ApiFriendLibraryEntry,
-} from "../api/friends"
-import type { Movie, Status } from "../store/data"
+import { friendsApi, type ApiFriendProfile } from "../api/friends"
+import type { ApiCustomListSummaryResponse } from "../api/lists"
 import AppShell from "../components/AppShell"
-import MovieGrid from "../components/MovieGrid"
+import ProfileView, { type ProfileTabContent } from "../components/ProfileView"
 import { friendLibraryCardCaption } from "../components/libraryCard"
-import SegmentedRadio from "../components/SegmentedRadio"
+import { loadCustomListTab, movieFromApi } from "../components/profileMovies"
+import type { ProfileTab } from "../components/profileLogic"
 import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay"
 import { useToast } from "../components/Toast"
 
+/**
+ * A friend's profile (#33): avatar, highlighted rank badge, username and the lists they share.
+ * Friends never see the XP bar, Settings or list sharing controls (PF01).
+ */
 export default function FriendProfilePage() {
   const store = useStore()
   const { saveWatchlist } = useWatchlistSave()
@@ -26,14 +26,10 @@ export default function FriendProfilePage() {
   const viewGeneration = useRef(0)
 
   const [profile, setProfile] = useState<ApiFriendProfile | null>(null)
-  const [backendMovies, setBackendMovies] = useState<Movie[]>([])
+  const [lists, setLists] = useState<ApiCustomListSummaryResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retry, setRetry] = useState(0)
-  const [libraryEntries, setLibraryEntries] = useState<ApiFriendLibraryEntry[]>(
-    [],
-  )
-  const [tab, setTab] = useState<Status>("watched")
   const [showConfirmRemove, setShowConfirmRemove] = useState(false)
 
   const removeDialogRef = useRef<HTMLDivElement>(null)
@@ -42,79 +38,47 @@ export default function FriendProfilePage() {
   useEscapeKey(showConfirmRemove, () => setShowConfirmRemove(false))
   useBodyScrollLock(showConfirmRemove)
 
-  // Fetch friend profile and their live library from backend
   useEffect(() => {
     if (!friendId) return
-
     let active = true
     viewGeneration.current += 1
     setLoading(true)
-
     setError(null)
     setProfile(null)
-    setBackendMovies([])
-    setLibraryEntries([])
-    Promise.all([
-      friendsApi.getFriendProfile(friendId),
-      friendsApi.getFriendLibrary(
-        friendId,
-        tab === "watched" ? "WATCHED" : "WATCHLIST",
-      ),
-    ])
-      .then(([friendProfile, entries]) => {
+    setLists([])
+    Promise.all([friendsApi.getFriendProfile(friendId), friendsApi.getFriendLists(friendId)])
+      .then(([friendProfile, sharedLists]) => {
         if (!active) return
         setProfile(friendProfile)
-        setLibraryEntries(entries)
-        if (entries.length > 0) {
-          const mapped: Movie[] = entries.map((item) => {
-            const m = item.movie
-            return {
-              id: titleId(m.tmdbId, m.mediaType ?? "", m.id),
-            catalogMovieId: m.id,
-              tmdbId: m.tmdbId,
-              title: m.title,
-              year: m.releaseYear ?? null,
-              posterSeed: null,
-              posterUrl: m.posterUrl ?? null,
-              imdb: m.imdbRating ?? null,
-              rt: m.rottenTomatoesRating ?? null,
-              tmdbRating: m.tmdbVoteAverage ?? null,
-              overview: m.overview ?? "",
-              genres: m.genres ? m.genres.split(",").map((g) => g.trim()) : [],
-              director: m.director,
-              trailerKey: m.trailerKey,
-              mediaType: (m.mediaType ?? "MOVIE") as Movie["mediaType"],
-            }
-          })
-          setBackendMovies(mapped)
-        } else {
-          setBackendMovies([])
-        }
+        setLists(sharedLists)
       })
       .catch((err) => {
-        if (active) {
-          setProfile(null)
-          setBackendMovies([])
-          setLibraryEntries([])
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Could not load friend. Retry.",
-          )
-        }
+        if (active) setError(err instanceof Error ? err.message : "Could not load friend. Retry.")
       })
       .finally(() => {
         if (active) setLoading(false)
       })
-
     return () => {
       active = false
       viewGeneration.current += 1
     }
-  }, [friendId, tab, store.currentUser?.id, retry])
+  }, [friendId, store.currentUser?.id, retry])
+
+  const loadTab = useCallback(async (tab: ProfileTab): Promise<ProfileTabContent> => {
+    if (!friendId) return { movies: [] }
+    if (tab.kind === "custom") return loadCustomListTab(tab.listId!)
+    const status = tab.kind
+    const entries = await friendsApi.getFriendLibrary(friendId, status === "watched" ? "WATCHED" : "WATCHLIST")
+    const movies = entries.map((entry) => movieFromApi(entry.movie))
+    const ratings = new Map(movies.map((movie, i) => [movie.id, entries[i].personalRating ?? null]))
+    return {
+      movies,
+      captionFor: (movie) =>
+        friendLibraryCardCaption(status, { year: movie.year, friendRating: ratings.get(movie.id), tmdbRating: movie.tmdbRating }),
+    }
+  }, [friendId])
 
   const displayName = profile?.displayName
-  const username = profile?.username
   if (loading || error || !profile) {
     return (
       <AppShell width="wide">
@@ -123,7 +87,7 @@ export default function FriendProfilePage() {
         </Link>
         {loading ? (
           <p role="status" className="mt-8 text-text-muted">
-            Loading friend library…
+            Loading friend profile…
           </p>
         ) : (
           <div className="mt-8">
@@ -141,16 +105,6 @@ export default function FriendProfilePage() {
       </AppShell>
     )
   }
-  const watchedCount = profile.watchedCount
-  const watchlistCount = profile.watchlistCount
-  const avgRating = profile.avgRating
-  const displayMovies = backendMovies
-  const friendRatingByMovieId = new Map(
-    libraryEntries.map(({ movie: m, personalRating }) => [
-      titleId(m.tmdbId, m.mediaType ?? "", m.id),
-      personalRating ?? null,
-    ]),
-  )
 
   // Check if current user already has a movie in any list
   const userHasMovie = (movieId: string) => {
@@ -178,105 +132,42 @@ export default function FriendProfilePage() {
     navigate("/friends")
   }
 
-  const referrerPath = `/friends/${friendId}`
-
   return (
     <AppShell width="wide">
-      <div className="flex items-center justify-between">
-        <Link
-          to="/friends"
-          className="prose-link text-sm text-text-muted transition-colors hover:text-white"
-        >
-          ← Back to Friends
-        </Link>
-        <div className="flex items-center gap-4">
-          <span className="nums text-sm font-medium text-text-muted">
-            {displayName}
-            {avgRating != null && ` · avg ${avgRating.toFixed(1)}`}
-          </span>
-
-          {profile && (
-            <button
-              type="button"
-              onClick={() => setShowConfirmRemove(true)}
-              className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-danger/80 transition-colors hover:border-danger/30 hover:bg-danger/10 hover:text-danger"
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Profile Header Card */}
-      <div className="mt-6 flex items-center gap-4 rounded-xl border border-white/10 bg-surface/60 p-5 shadow-lg backdrop-blur-md">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/20 text-xl font-black text-accent shadow-inner">
-          {displayName ? displayName.charAt(0).toUpperCase() : "?"}
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-white">
-            {displayName}
-          </h1>
-          <p className="text-xs text-text-muted">@{username}</p>
-        </div>
-      </div>
-
-      {/* Segmented Radio Tabs */}
-      <div className="mt-6">
-        <SegmentedRadio
-          name="friend_tab"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "watched", label: "Watched", count: watchedCount },
-            { value: "watchlist", label: "Watchlist", count: watchlistCount },
-          ]}
-        />
-      </div>
-
-      <p className="mt-4 text-sm text-text-muted">
-        Viewing status and ratings are shared. Notes stay private.
-      </p>
-      {tab === "watched" && libraryEntries.length > 0 && (
-        <ul
-          aria-label="Personal ratings"
-          className="nums mt-4 space-y-2 text-sm text-text-primary"
-        >
-          {libraryEntries.map((entry) => (
-            <li key={entry.id}>
-              {entry.movie.title}:{" "}
-              {entry.personalRating == null
-                ? "Unrated"
-                : entry.personalRating.toFixed(1)}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-8">
-        {loading && displayMovies.length === 0 ? (
-          <div className="flex min-h-[30vh] flex-col items-center justify-center text-center">
-            <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-            <p className="mt-3 text-xs text-text-muted">
-              Loading friend library...
-            </p>
-          </div>
-        ) : (
-          <MovieGrid
-            movies={displayMovies}
-            empty={`${displayName || "This user"} has nothing on their ${tab} list yet.`}
-            referrerOverride={referrerPath}
-            showAddToWatchlist
-            onAddToWatchlist={saveWatchlist}
-            userHasMovie={userHasMovie}
-            captionFor={(m) =>
-              friendLibraryCardCaption(tab, {
-                year: m.year,
-                friendRating: friendRatingByMovieId.get(m.id),
-                tmdbRating: m.tmdbRating,
-              })
-            }
-          />
-        )}
-      </div>
+      <Link
+        to="/friends"
+        className="prose-link mb-4 inline-block text-sm text-text-muted transition-colors hover:text-white"
+      >
+        ← Back to Friends
+      </Link>
+      <ProfileView
+        owner={false}
+        displayName={profile.displayName}
+        username={profile.username}
+        avatar={profile.avatar}
+        rank={profile.rank}
+        sharing={{
+          sharesWatchlist: profile.sharesWatchlist ?? true,
+          sharesWatched: profile.sharesWatched ?? true,
+          lists: lists.map((list) => ({ id: list.id, title: list.title, shared: true })),
+        }}
+        loadTab={loadTab}
+        headerAction={
+          <button
+            type="button"
+            onClick={() => setShowConfirmRemove(true)}
+            className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-danger/80 transition-colors hover:border-danger/30 hover:bg-danger/10 hover:text-danger"
+          >
+            Remove
+          </button>
+        }
+        gridProps={{
+          referrerOverride: `/friends/${friendId}`,
+          showAddToWatchlist: true,
+          onAddToWatchlist: saveWatchlist,
+          userHasMovie,
+        }}
+      />
 
       {/* Remove Friend Confirmation Modal */}
       {showConfirmRemove && (

@@ -15,7 +15,7 @@ import java.util.List;
 @Entity
 @Table(name = "custom_lists", indexes = {
     @Index(name = "idx_custom_list_user", columnList = "user_id"),
-    @Index(name = "idx_custom_list_public", columnList = "is_public")
+    @Index(name = "idx_custom_list_shared", columnList = "shared")
 })
 @Getter
 @Setter
@@ -38,9 +38,10 @@ public class CustomList {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /** Shared with the owner's accepted friends (#33); never visible to anyone else. */
     @Builder.Default
-    @Column(name = "is_public", nullable = false)
-    private boolean isPublic = false;
+    @Column(name = "shared", nullable = false)
+    private boolean shared = false;
 
     @Builder.Default
     @OneToMany(mappedBy = "customList", cascade = CascadeType.ALL, orphanRemoval = true)

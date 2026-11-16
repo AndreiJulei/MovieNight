@@ -211,10 +211,7 @@ export default function FriendsPage() {
                     </span>
                   </span>
                   <span className="nums text-sm text-text-muted">
-                    {f.watchedCount} watched · {f.watchlistCount} to watch
-                    {f.avgRating != null
-                      ? ` · avg ${f.avgRating.toFixed(1)}`
-                      : ""}
+                    {[f.rank?.label, f.level != null ? `Level ${f.level}` : null].filter(Boolean).join(" · ")}
                   </span>
                 </Link>
               </li>

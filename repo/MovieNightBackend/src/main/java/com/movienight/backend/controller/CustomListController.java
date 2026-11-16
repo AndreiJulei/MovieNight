@@ -63,7 +63,7 @@ public class CustomListController {
     }
 
     /**
-     * Update list metadata (title, description, isPublic).
+     * Update list metadata (title, description, sharing).
      */
     @PutMapping("/{id}")
     public ResponseEntity<CustomListResponse> updateList(

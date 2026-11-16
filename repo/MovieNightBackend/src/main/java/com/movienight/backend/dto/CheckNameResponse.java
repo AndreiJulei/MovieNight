@@ -9,8 +9,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+/** Availability of a display name or username; {@code name} is the trimmed value that was checked. */
 public class CheckNameResponse {
-    private String displayName;
+    private String name;
     private boolean available;
     private String message;
 }

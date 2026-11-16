@@ -9,7 +9,9 @@ import com.movienight.backend.model.Movie;
 import com.movienight.backend.model.User;
 import com.movienight.backend.repository.CustomListEntryRepository;
 import com.movienight.backend.repository.CustomListRepository;
+import com.movienight.backend.repository.FriendshipRepository;
 import com.movienight.backend.repository.MovieRepository;
+import com.movienight.backend.repository.UserLookup;
 import com.movienight.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ public class CustomListService {
     private final MovieRepository movieRepository;
     private final MovieCatalogLookupService movieCatalogLookupService;
     private final ApplicationEventPublisher eventPublisher;
+    private final FriendshipRepository friendshipRepository;
 
     /**
      * Create a new custom list.
@@ -45,7 +48,7 @@ public class CustomListService {
                 .user(user)
                 .title(req.getTitle().trim())
                 .description(req.getDescription() != null ? req.getDescription().trim() : null)
-                .isPublic(false)
+                .shared(false)
                 .build();
 
         customList = customListRepository.save(customList);
@@ -76,7 +79,7 @@ public class CustomListService {
                 Map.of(
                         "listId", customList.getId(),
                         "title", customList.getTitle(),
-                        "isPublic", customList.isPublic(),
+                        "shared", customList.isShared(),
                         "movieCount", customList.getEntries().size()
                 )
         ));
@@ -97,7 +100,22 @@ public class CustomListService {
     }
 
     /**
-     * Compatibility endpoint: custom lists are owner-only, including legacy public rows.
+     * Custom lists the owner shares with accepted friends (#33). Non-friends are denied.
+     */
+    @Transactional(readOnly = true)
+    public List<CustomListSummaryResponse> getListsSharedWithFriend(String viewerUsername, Long ownerId) {
+        User viewer = findUserByUsername(viewerUsername);
+        if (!friendshipRepository.existsAcceptedByUserIdAndFriendId(viewer.getId(), ownerId)) {
+            throw new AccessDeniedException("You can only view lists your friends share.");
+        }
+        return customListRepository.findByUserIdOrderByCreatedAtDesc(ownerId).stream()
+                .filter(CustomList::isShared)
+                .map(this::mapToSummaryResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Compatibility endpoint: nothing is visible to non-friends, so there is no public index.
      */
     @Transactional(readOnly = true)
     public List<CustomListSummaryResponse> getPublicLists() {
@@ -112,7 +130,15 @@ public class CustomListService {
         CustomList list = customListRepository.findById(listId)
                 .orElseThrow(() -> new ResourceNotFoundException("Custom list not found with ID: " + listId));
 
-        if (currentUsername == null || !list.getUser().getUsername().equalsIgnoreCase(currentUsername.trim())) {
+        if (currentUsername == null) {
+            throw new AccessDeniedException("You do not have permission to view this private list.");
+        }
+        boolean owner = list.getUser().getUsername().equalsIgnoreCase(currentUsername.trim());
+        // A shared list is visible to the owner's accepted friends, never to anyone else (#33).
+        boolean sharedWithViewer = !owner && list.isShared() && userRepository.findByIdentifier(currentUsername)
+                .map(viewer -> friendshipRepository.existsAcceptedByUserIdAndFriendId(viewer.getId(), list.getUser().getId()))
+                .orElse(false);
+        if (!owner && !sharedWithViewer) {
             throw new AccessDeniedException("You do not have permission to view this private list.");
         }
 
@@ -120,7 +146,7 @@ public class CustomListService {
     }
 
     /**
-     * Update list metadata (title, description, isPublic).
+     * Update list metadata (title, description, sharing).
      */
     @Transactional
     public CustomListResponse updateList(String username, Long listId, UpdateCustomListRequest req) {
@@ -133,7 +159,9 @@ public class CustomListService {
         if (req.getDescription() != null) {
             list.setDescription(req.getDescription().trim());
         }
-        list.setPublic(false);
+        if (req.getShared() != null) {
+            list.setShared(req.getShared());
+        }
 
         list = customListRepository.save(list);
 
@@ -144,7 +172,7 @@ public class CustomListService {
                 Map.of(
                         "listId", list.getId(),
                         "title", list.getTitle(),
-                        "isPublic", list.isPublic()
+                        "shared", list.isShared()
                 )
         ));
 
@@ -283,9 +311,7 @@ public class CustomListService {
 
     private User findUserByUsername(String username) {
         String clean = username != null ? username.trim() : "";
-        return userRepository.findByUsername(clean)
-                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
-                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+        return UserLookup.byAccountName(userRepository, clean)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + clean));
     }
 
@@ -313,7 +339,7 @@ public class CustomListService {
                 .displayName(list.getUser().getDisplayName())
                 .title(list.getTitle())
                 .description(list.getDescription())
-                .isPublic(false)
+                .shared(list.isShared())
                 .movieCount(entryResponses.size())
                 .entries(entryResponses)
                 .createdAt(list.getCreatedAt())
@@ -339,7 +365,7 @@ public class CustomListService {
                 .displayName(list.getUser().getDisplayName())
                 .title(list.getTitle())
                 .description(list.getDescription())
-                .isPublic(false)
+                .shared(list.isShared())
                 .movieCount(count)
                 .previewPosterUrls(previewPosters)
                 .createdAt(list.getCreatedAt())

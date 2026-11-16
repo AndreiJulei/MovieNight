@@ -55,6 +55,14 @@ public class JwtTokenProvider {
     }
 
     /**
+     * Extracts the user ID claim, or null for tokens without one.
+     */
+    public Long getUserIdFromToken(String token) {
+        Object id = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().get("userId");
+        return id instanceof Number n ? n.longValue() : null;
+    }
+
+    /**
      * Validates whether a JWT token is valid and unexpired.
      */
     public boolean validateToken(String token) {

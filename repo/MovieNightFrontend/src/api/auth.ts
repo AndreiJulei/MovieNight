@@ -9,6 +9,43 @@ export interface ApiUser {
   email?: string;
   role: string;
   createdAt?: string;
+  /** Owner-only sharing flags (#33). */
+  sharesWatchlist?: boolean;
+  sharesWatched?: boolean;
+}
+
+const TOKEN_KEY = "movienight_token";
+const readToken = (): string | null => localStorage.getItem(TOKEN_KEY);
+
+export type AccountResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/**
+ * Authenticated JSON request for the signed-in account. It never reports an unconfirmed
+ * change as saved (#31): a missing body, a timeout or an error status all come back as errors.
+ */
+export async function accountRequest<T>(path: string, method: string, body: object | undefined, fallback: string): Promise<AccountResult<T>> {
+  try {
+    const token = readToken();
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) return { ok: false, error: "Your session expired. Sign in again, then retry." };
+      const message = data?.message || (data?.errors ? Object.values(data.errors).join(", ") : null);
+      return { ok: false, error: message || fallback };
+    }
+    if (data == null) return { ok: false, error: "Could not confirm the change. Reload to check, then retry." };
+    return { ok: true, value: data as T };
+  } catch (err) {
+    if (err instanceof Error && ["AbortError", "TimeoutError"].includes(err.name)) {
+      return { ok: false, error: "Confirmation timed out. Reload to check whether it saved before retrying." };
+    }
+    return { ok: false, error: "Could not reach the server. Check your connection and retry." };
+  }
 }
 
 export interface LoginApiResponse {
@@ -23,7 +60,8 @@ export interface LoginApiResponse {
 }
 
 export interface CheckNameApiResponse {
-  displayName: string;
+  /** The trimmed display name or username that was checked. */
+  name: string;
   available: boolean;
   message: string;
 }
@@ -129,7 +167,7 @@ export const authApi = {
       }
 
       const loginData = data as LoginApiResponse;
-      localStorage.setItem("movienight_token", loginData.token);
+      localStorage.setItem(TOKEN_KEY, loginData.token);
 
       return {
         ok: true,
@@ -241,6 +279,39 @@ export const authApi = {
   },
 
   /**
+   * Check whether a username is free, reusing the signup availability check (#31).
+   */
+  async checkUsername(username: string, signal?: AbortSignal): Promise<{ available: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/api/auth/check-name?username=${encodeURIComponent(username)}`, { signal });
+    if (!res.ok) throw new Error("Could not check that username. Retry.");
+    const data: CheckNameApiResponse = await res.json();
+    return { available: data.available, message: data.message };
+  },
+
+  /**
+   * Change the username. The JWT subject is the username, so the response's fresh token
+   * replaces the stored one only after the server confirms the change.
+   */
+  async changeUsername(username: string): Promise<AccountResult<ApiUser>> {
+    const res = await accountRequest<LoginApiResponse>("/api/users/username", "PUT", { username }, "Could not change your username.");
+    if (!res.ok) return res;
+    if (!res.value.token || !res.value.username) return { ok: false, error: "Could not confirm the new username. Reload, then retry." };
+    localStorage.setItem(TOKEN_KEY, res.value.token);
+    const { token: _token, tokenType: _type, ...user } = res.value;
+    return { ok: true, value: user };
+  },
+
+  /** Change the email; the current password is required and no verification email is sent. */
+  changeEmail(email: string, currentPassword: string): Promise<AccountResult<ApiUser>> {
+    return accountRequest<ApiUser>("/api/users/email", "PUT", { email, currentPassword }, "Could not change your email.");
+  },
+
+  /** Share or hide the watchlist and watched history from accepted friends (#33). */
+  updateSharing(sharing: { sharesWatchlist?: boolean; sharesWatched?: boolean }): Promise<AccountResult<ApiUser>> {
+    return accountRequest<ApiUser>("/api/users/me/sharing", "PUT", sharing, "Could not update sharing.");
+  },
+
+  /**
    * Change user password.
    */
   async changePassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
@@ -273,13 +344,13 @@ export const authApi = {
    * Helper to retrieve the current JWT token.
    */
   getToken(): string | null {
-    return localStorage.getItem("movienight_token");
+    return readToken();
   },
 
   /**
    * Logout helper.
    */
   logout() {
-    localStorage.removeItem("movienight_token");
+    localStorage.removeItem(TOKEN_KEY);
   },
 };

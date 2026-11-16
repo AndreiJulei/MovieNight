@@ -94,6 +94,9 @@ class SuggestionServiceTest {
 
         // 2. Friends Consensus
         when(friendshipRepository.findAcceptedFriendIdsForUser(1L)).thenReturn(List.of(2L, 3L));
+        // #33: both friends keep the default sharing of Watched and Watchlist.
+        when(userRepository.findAllById(List.of(2L, 3L))).thenReturn(List.of(
+                User.builder().id(2L).build(), User.builder().id(3L).build()));
 
         FriendsConsensusProjection consensusMock = mock(FriendsConsensusProjection.class);
         when(consensusMock.getTmdbId()).thenReturn(300L);

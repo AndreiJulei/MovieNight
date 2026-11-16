@@ -19,11 +19,8 @@ public class CustomListSummaryResponse {
     private String displayName;
     private String title;
     private String description;
-    private boolean isPublic;
-
-    public boolean getIsPublic() {
-        return this.isPublic;
-    }
+    /** Shared with the owner's accepted friends (#33). */
+    private boolean shared;
 
     private int movieCount;
     private List<String> previewPosterUrls;

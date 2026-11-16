@@ -17,7 +17,8 @@ export interface ApiCustomListResponse {
   displayName: string;
   title: string;
   description?: string | null;
-  isPublic: boolean;
+  /** Shared with the owner's accepted friends (#33). */
+  shared: boolean;
   movieCount: number;
   entries: ApiCustomListEntryResponse[];
   createdAt: string;
@@ -31,7 +32,8 @@ export interface ApiCustomListSummaryResponse {
   displayName: string;
   title: string;
   description?: string | null;
-  isPublic: boolean;
+  /** Shared with the owner's accepted friends (#33). */
+  shared: boolean;
   movieCount: number;
   previewPosterUrls: string[];
   createdAt: string;
@@ -47,6 +49,8 @@ export interface ApiCreateCustomListRequest {
 export interface ApiUpdateCustomListRequest {
   title?: string;
   description?: string;
+  /** True shares the list with accepted friends only (#33). */
+  shared?: boolean;
 }
 
 // Failures must remain distinguishable from an empty list or confirmed write.
@@ -58,6 +62,9 @@ async function listRequest<T>(path: string, init: RequestInit = {}): Promise<T> 
       signal: AbortSignal.timeout(15000),
     });
     if (!response.ok) {
+      if (response.status === 403 && !init.method && /^\/api\/lists\/\d+$/.test(path) && authApi.getToken()) {
+        throw new Error("This list is private or no longer shared. Reload and try again.");
+      }
       if (response.status === 401 || response.status === 403) {
         throw new Error("Your session could not be verified. Sign in again and retry.");
       }
@@ -100,6 +107,12 @@ export const listsApi = {
   },
   async updateList(id: string, req: ApiUpdateCustomListRequest): Promise<ApiCustomListResponse> {
     return confirmedList(await listRequest(`/api/lists/${id}`, { method: "PUT", body: JSON.stringify(req) }));
+  },
+  /** Share a custom list with accepted friends, or stop sharing it (#33). */
+  async setShared(id: string | number, shared: boolean): Promise<ApiCustomListResponse> {
+    const list = confirmedList(await listRequest(`/api/lists/${id}`, { method: "PUT", body: JSON.stringify({ shared }) }));
+    if (list.shared !== shared) throw new Error("Could not confirm the sharing change. Reload and try again.");
+    return list;
   },
   async deleteList(id: string): Promise<void> {
     await listRequest(`/api/lists/${id}`, { method: "DELETE" });

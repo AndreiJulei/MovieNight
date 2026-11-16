@@ -1,7 +1,6 @@
 package com.movienight.backend.dto;
 
 import jakarta.validation.constraints.Size;
-import jakarta.validation.constraints.AssertFalse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +18,6 @@ public class UpdateCustomListRequest {
 
     private String description;
 
-    @AssertFalse(message = "Custom lists are private; public sharing is unavailable")
-    private Boolean isPublic;
+    /** True shares the list with accepted friends only (#33); null leaves sharing unchanged. */
+    private Boolean shared;
 }

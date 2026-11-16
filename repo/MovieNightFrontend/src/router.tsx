@@ -43,6 +43,23 @@ type RouterState = {
 };
 
 const RouterContext = createContext<RouterState | null>(null);
+
+/** Info about a browser Back/Forward step, for an optional animated update (#29). */
+export type PopTransitionInfo = {
+  fromUrl: string;
+  toUrl: string;
+  scrollY: number;
+  /** The browser already animates this step (e.g. an iOS swipe-back), so the app must not. */
+  hasUAVisualTransition: boolean;
+};
+type PopTransitionHandler = (update: () => void, info: PopTransitionInfo) => void;
+const applyImmediately: PopTransitionHandler = (update) => update();
+let popTransitionHandler: PopTransitionHandler = applyImmediately;
+
+/** Lets the poster transition wrap Back/Forward updates; `null` restores instant updates. */
+export function setPopTransitionHandler(handler: PopTransitionHandler | null) {
+  popTransitionHandler = handler ?? applyImmediately;
+}
 let entrySequence = 0;
 const generateEntryKey = () => {
   const bytes = new Uint32Array(2);
@@ -71,6 +88,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<LocationState>(initialLocation);
   const [previewFallback, setPreviewFallback] = useState(false);
   const fallbackEntries = useRef<LocationState[]>([location]);
+  const locationRef = useRef(location);
+  locationRef.current = location;
 
   const navigate = useCallback((to: string, opts?: NavigateOptions) => {
     const target = safeInternalUrl(to);
@@ -108,9 +127,20 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, [previewFallback, location.url]);
 
   useEffect(() => {
-    const onPop = () => {
+    const onPop = (event: PopStateEvent) => {
       const entry = historyEntry() ?? { key: generateEntryKey(), scrollY: 0 };
-      setLocation((previous) => ({ url: currentUrl(), entry, action: "pop", fromUrl: previous.url }));
+      const toUrl = currentUrl();
+      const update = () => setLocation((previous) => ({ url: toUrl, entry, action: "pop", fromUrl: previous.url }));
+      try {
+        popTransitionHandler(update, {
+          fromUrl: locationRef.current.url,
+          toUrl,
+          scrollY: entry.scrollY,
+          hasUAVisualTransition: Boolean((event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition),
+        });
+      } catch {
+        update();
+      }
     };
     window.addEventListener("popstate", onPop);
     (window as Window & { __navigate?: typeof navigate }).__navigate = navigate;

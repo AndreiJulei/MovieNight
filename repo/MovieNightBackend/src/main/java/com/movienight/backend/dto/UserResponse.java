@@ -18,4 +18,7 @@ public class UserResponse {
     private String displayName;
     private String role;
     private LocalDateTime createdAt;
+    /** Owner-only sharing flags for the watchlist and watched history (#33). */
+    private boolean sharesWatchlist;
+    private boolean sharesWatched;
 }

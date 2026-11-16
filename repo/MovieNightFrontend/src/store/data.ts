@@ -10,6 +10,9 @@ export type User = {
   displayName: string;
   email?: string;
   password?: string;
+  /** Owner-only sharing flags (#33); undefined means the server default (shared). */
+  sharesWatchlist?: boolean;
+  sharesWatched?: boolean;
 };
 
 export type Movie = {

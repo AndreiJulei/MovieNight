@@ -120,6 +120,9 @@ type StoreValue = {
   removeFriend: (friendId: string) => Promise<FriendshipResult>;
   changePassword: (oldPw: string, newPw: string) => Promise<{ ok: boolean; error?: string }>;
   changeDisplayName: (newName: string) => Promise<{ ok: boolean; error?: string }>;
+  changeUsername: (newUsername: string) => Promise<{ ok: boolean; error?: string }>;
+  changeEmail: (newEmail: string, currentPassword: string) => Promise<{ ok: boolean; error?: string }>;
+  updateSharing: (sharing: { sharesWatchlist?: boolean; sharesWatched?: boolean }) => Promise<{ ok: boolean; error?: string }>;
 
   // selectors for suggestions
   allEntries: () => Entry[];
@@ -248,6 +251,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         const user: User = {
           id: String(profile.id), username: profile.username,
           displayName: profile.displayName, email: profile.email, password: "",
+          sharesWatchlist: profile.sharesWatchlist, sharesWatched: profile.sharesWatched,
         };
         setCurrentUser(user);
         sessionStorage.setItem("movienight_current_user", JSON.stringify(user));
@@ -834,6 +838,49 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     [currentUser],
   );
 
+  // Apply only server-confirmed account fields, so a failed save never shows as saved (#31).
+  const applyConfirmedUser = useCallback((confirmed: { username: string; displayName: string; email?: string; sharesWatchlist?: boolean; sharesWatched?: boolean }) => {
+    setCurrentUser((previous) => {
+      if (!previous) return previous;
+      const updated: User = {
+        ...previous,
+        username: confirmed.username,
+        displayName: confirmed.displayName,
+        email: confirmed.email ?? previous.email,
+        sharesWatchlist: confirmed.sharesWatchlist ?? previous.sharesWatchlist,
+        sharesWatched: confirmed.sharesWatched ?? previous.sharesWatched,
+      };
+      setUsers((prev) => prev.map((u) => (u.id === previous.id ? updated : u)));
+      sessionStorage.setItem("movienight_current_user", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const changeUsername = useCallback<StoreValue["changeUsername"]>(async (newUsername) => {
+    if (!currentUser) return { ok: false, error: "Not logged in." };
+    const res = await authApi.changeUsername(newUsername.trim());
+    if (!res.ok) return { ok: false, error: res.error };
+    applyConfirmedUser(res.value);
+    return { ok: true };
+  }, [currentUser, applyConfirmedUser]);
+
+  const changeEmail = useCallback<StoreValue["changeEmail"]>(async (newEmail, currentPassword) => {
+    if (!currentUser) return { ok: false, error: "Not logged in." };
+    if (!currentPassword) return { ok: false, error: "Enter your current password to change your email." };
+    const res = await authApi.changeEmail(newEmail.trim(), currentPassword);
+    if (!res.ok) return { ok: false, error: res.error };
+    applyConfirmedUser(res.value);
+    return { ok: true };
+  }, [currentUser, applyConfirmedUser]);
+
+  const updateSharing = useCallback<StoreValue["updateSharing"]>(async (sharing) => {
+    if (!currentUser) return { ok: false, error: "Not logged in." };
+    const res = await authApi.updateSharing(sharing);
+    if (!res.ok) return { ok: false, error: res.error };
+    applyConfirmedUser(res.value);
+    return { ok: true };
+  }, [currentUser, applyConfirmedUser]);
+
   const allEntries = useCallback(() => entries, [entries]);
 
   const listsFor = useCallback(
@@ -1020,6 +1067,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       removeFriend,
       changePassword,
       changeDisplayName,
+      changeUsername,
+      changeEmail,
+      updateSharing,
       allEntries,
       refreshLibrary,
       upsertMovie,
@@ -1069,6 +1119,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       removeFriend,
       changePassword,
       changeDisplayName,
+      changeUsername,
+      changeEmail,
+      updateSharing,
       allEntries,
       refreshLibrary,
       upsertMovie,

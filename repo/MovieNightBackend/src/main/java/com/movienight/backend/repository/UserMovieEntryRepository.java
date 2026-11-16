@@ -21,6 +21,9 @@ public interface UserMovieEntryRepository extends JpaRepository<UserMovieEntry, 
      */
     List<UserMovieEntry> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, MovieStatus status);
 
+    /** Distinct titles with this status; one entry exists per user and title. */
+    long countByUserIdAndStatus(Long userId, MovieStatus status);
+
     /**
      * Find a user's specific entry for a movie (matching either local movie PK ID or external tmdbId).
      */

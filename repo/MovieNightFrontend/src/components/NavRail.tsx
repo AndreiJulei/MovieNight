@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
-import { GearIcon, MenuIcon } from "./NavRail.icons";
+import { MenuIcon } from "./NavRail.icons";
+import UserAvatar from "./UserAvatar";
+import useMyAvatar from "../hooks/useMyAvatar";
 import { useEscapeKey, useBodyScrollLock, useOverlayFocus } from "../hooks/useOverlay";
 import NavSearch from "./NavSearch";
 import { PHONE_BAR_HEIGHT, phoneMenuBottomOffset } from "./phoneMenuLogic";
@@ -24,6 +26,7 @@ function isRouteActive(path: string, search: string, key: string): boolean {
   if (key === "personal-rec") return path === "/suggestions" || path === "/suggestions/for-you";
   if (key === "friends-rec") return path.startsWith("/suggestions/friends");
   if (key === "settings") return path.startsWith("/settings");
+  if (key === "profile") return path === "/profile" || path.startsWith("/settings");
   return false;
 }
 
@@ -224,7 +227,7 @@ export default function NavRail({
           </>
         )}
 
-        {/* Bottom bar: [MN] [☰] [⚙] (PB01). Settings becomes the profile avatar with #33. */}
+        {/* Bottom bar: [MN] [☰] [avatar → profile] (PB01, #33). */}
         <nav
           aria-label="Primary"
           className={`fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t px-2 lg:hidden ${
@@ -257,18 +260,7 @@ export default function NavRail({
             <MenuIcon className="h-5 w-5 text-current" />
           </button>
 
-          <Link
-            to="/settings"
-            aria-current={path.startsWith("/settings") ? "page" : undefined}
-            onClick={() => setMenuOpen(false)}
-            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-              path.startsWith("/settings") ? "bg-accent/20 text-white" : "text-text-muted hover:bg-white/[0.06] hover:text-white"
-            }`}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <GearIcon className="h-4 w-4" />
-          </Link>
+          <ProfileLink compact onClick={() => setMenuOpen(false)} />
         </nav>
       </>
     );
@@ -399,20 +391,30 @@ export default function NavRail({
 
       {/* Right Cluster: [Settings] (Kept on far right for visual balance) */}
       <div className="ml-auto flex items-center gap-2">
-        <Link
-          to="/settings"
-          aria-current={path.startsWith("/settings") ? "page" : undefined}
-          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-all cursor-pointer ${
-            path.startsWith("/settings")
-              ? "border-accent/40 bg-white/[0.1] text-white"
-              : "border-transparent text-text-muted hover:border-white/10 hover:bg-white/[0.04] hover:text-text-primary"
-          }`}
-          title="Account Settings"
-          aria-label="Settings"
-        >
-          <GearIcon />
-        </Link>
+        <ProfileLink />
       </div>
     </nav>
+  );
+}
+
+/** The user's avatar replaces the old gear and opens their profile (#33). */
+function ProfileLink({ compact = false, onClick }: { compact?: boolean; onClick?: () => void }) {
+  const { path, search } = useRouter();
+  const { currentUser } = useStore();
+  const avatar = useMyAvatar(currentUser?.id);
+  const active = isRouteActive(path, search, "profile");
+  return (
+    <Link
+      to="/profile"
+      aria-current={path === "/profile" ? "page" : undefined}
+      onClick={onClick}
+      title="Your profile"
+      aria-label="Your profile"
+      className={`flex items-center justify-center rounded-full transition-all ${compact ? "h-11 w-11" : "h-9 w-9"} ${
+        active ? "ring-2 ring-accent ring-offset-2 ring-offset-[#05070d]" : "opacity-90 hover:opacity-100"
+      }`}
+    >
+      <UserAvatar avatar={avatar} displayName={currentUser?.displayName} username={currentUser?.username} size="sm" className={compact ? "" : "!h-8 !w-8 !text-sm"} />
+    </Link>
   );
 }

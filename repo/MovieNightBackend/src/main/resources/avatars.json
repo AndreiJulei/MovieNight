@@ -1,0 +1,8 @@
+[
+  {"id": "clapper", "file": "clapper.svg", "unlockLevel": 1},
+  {"id": "popcorn", "file": "popcorn.svg", "unlockLevel": 2},
+  {"id": "film-camera", "file": "film-camera.svg", "unlockLevel": 3},
+  {"id": "3d-glasses", "file": "3d-glasses.svg", "unlockLevel": 5},
+  {"id": "megaphone", "file": "megaphone.svg", "unlockLevel": 8},
+  {"id": "golden-star", "file": "golden-star.svg", "unlockLevel": 12}
+]

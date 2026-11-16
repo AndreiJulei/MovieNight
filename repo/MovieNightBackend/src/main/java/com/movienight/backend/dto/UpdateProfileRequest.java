@@ -17,6 +17,6 @@ import lombok.NoArgsConstructor;
 public class UpdateProfileRequest {
 
     @NotBlank(message = "Display name cannot be blank")
-    @Size(min = 2, max = 50, message = "Display name must be between 2 and 50 characters")
+    @Size(min = 1, max = 50, message = "Display name must be between 1 and 50 characters")
     private String displayName;
 }

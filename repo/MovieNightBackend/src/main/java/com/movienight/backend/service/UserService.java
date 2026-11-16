@@ -2,6 +2,7 @@ package com.movienight.backend.service;
 
 import com.movienight.backend.dto.*;
 import com.movienight.backend.model.User;
+import com.movienight.backend.repository.UserLookup;
 import com.movienight.backend.repository.UserRepository;
 import com.movienight.backend.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,11 @@ import java.util.regex.Pattern;
 public class UserService {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    /** Changed usernames are sign-in handles: no spaces and no "@", so they never collide with an email. */
+    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{2,50}$");
+    private static final String USERNAME_RULE = "Username must be 2–50 letters, numbers, dots, dashes or underscores.";
+    private static final String USERNAME_TAKEN = "That username is already taken.";
+    private static final String EMAIL_TAKEN = "An account with this email already exists.";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -32,7 +38,7 @@ public class UserService {
     public CheckNameResponse isDisplayNameAvailable(String rawDisplayName) {
         if (rawDisplayName == null || rawDisplayName.trim().isEmpty()) {
             return CheckNameResponse.builder()
-                    .displayName("")
+                    .name("")
                     .available(false)
                     .message("Display name cannot be blank")
                     .build();
@@ -42,7 +48,7 @@ public class UserService {
 
         if (trimmed.length() < 2 || trimmed.length() > 50) {
             return CheckNameResponse.builder()
-                    .displayName(trimmed)
+                    .name(trimmed)
                     .available(false)
                     .message("Display name must be between 2 and 50 characters")
                     .build();
@@ -52,17 +58,31 @@ public class UserService {
 
         if (exists) {
             return CheckNameResponse.builder()
-                    .displayName(trimmed)
+                    .name(trimmed)
                     .available(false)
                     .message("Display name is already taken")
                     .build();
         } else {
             return CheckNameResponse.builder()
-                    .displayName(trimmed)
+                    .name(trimmed)
                     .available(true)
                     .message("Display name is available")
                     .build();
         }
+    }
+
+    /**
+     * Check whether a username is free to claim (case-insensitive); reused by signup and Settings.
+     */
+    @Transactional(readOnly = true)
+    public CheckNameResponse isUsernameAvailable(String rawUsername) {
+        String trimmed = rawUsername == null ? "" : rawUsername.trim();
+        if (!USERNAME_PATTERN.matcher(trimmed).matches()) {
+            return CheckNameResponse.builder().name(trimmed).available(false).message(USERNAME_RULE).build();
+        }
+        boolean taken = userRepository.existsByUsernameIgnoreCase(trimmed);
+        return CheckNameResponse.builder().name(trimmed).available(!taken)
+                .message(taken ? USERNAME_TAKEN : "Username is available").build();
     }
 
     /**
@@ -90,8 +110,9 @@ public class UserService {
             throw new IllegalArgumentException("Passwords do not match. Please verify your password confirmation.");
         }
 
-        // 4. Verify username / email uniqueness
-        if (userRepository.existsByUsername(cleanUsername)) {
+        // 4. Verify username / email uniqueness. Case-insensitive, like a username change (#31),
+        //    since sign-in matches usernames case-insensitively.
+        if (userRepository.existsByUsernameIgnoreCase(cleanUsername)) {
             throw new IllegalArgumentException("Username/email is already registered: " + cleanUsername);
         }
         if (!cleanEmail.equalsIgnoreCase(cleanUsername) && userRepository.existsByEmailIgnoreCase(cleanEmail)) {
@@ -143,7 +164,11 @@ public class UserService {
             throw new IllegalArgumentException("Invalid email/username or password");
         }
 
-        // 3. Generate signed JWT token
+        return loginResponse(user);
+    }
+
+    /** A fresh signed token plus the user's profile; the token subject is the current username. */
+    private LoginResponse loginResponse(User user) {
         String jwt = jwtTokenProvider.generateToken(user.getUsername(), user.getId(), user.getRole());
 
         return LoginResponse.builder()
@@ -247,6 +272,66 @@ public class UserService {
     }
 
     /**
+     * Change the username. The JWT subject is the username, so the caller receives a fresh token.
+     */
+    @Transactional
+    public LoginResponse changeUsername(String currentUsername, String rawUsername) {
+        String clean = rawUsername == null ? "" : rawUsername.trim();
+        if (!USERNAME_PATTERN.matcher(clean).matches()) throw new IllegalArgumentException(USERNAME_RULE);
+        User user = lockUser(currentUsername);
+        if (!user.getUsername().equals(clean)) {
+            userRepository.findByUsernameIgnoreCase(clean)
+                    .filter(other -> !other.getId().equals(user.getId()))
+                    .ifPresent(other -> { throw new IllegalArgumentException(USERNAME_TAKEN); });
+            user.setUsername(clean);
+            userRepository.saveAndFlush(user);
+            log.info("User {} changed username", user.getId());
+        }
+        return loginResponse(user);
+    }
+
+    /**
+     * Change the email after verifying the current password. No verification email is sent (#31).
+     */
+    @Transactional
+    public UserResponse changeEmail(String currentUsername, String rawEmail, String currentPassword) {
+        String clean = rawEmail == null ? "" : rawEmail.trim().toLowerCase();
+        if (!EMAIL_PATTERN.matcher(clean).matches() || clean.length() > 100) {
+            throw new IllegalArgumentException("Please provide a valid email address (e.g. name@domain.com)");
+        }
+        User user = lockUser(currentUsername);
+        if (currentPassword == null || !passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new IllegalArgumentException("Current password is incorrect.");
+        }
+        if (!user.getEmail().equalsIgnoreCase(clean)) {
+            boolean taken = userRepository.findByEmailIgnoreCase(clean).filter(o -> !o.getId().equals(user.getId())).isPresent()
+                    // Legacy usernames may be emails; sign-in must stay unambiguous.
+                    || userRepository.findByUsernameIgnoreCase(clean).filter(o -> !o.getId().equals(user.getId())).isPresent();
+            if (taken) throw new IllegalArgumentException(EMAIL_TAKEN);
+            user.setEmail(clean);
+            userRepository.saveAndFlush(user);
+        }
+        return mapToUserResponse(user);
+    }
+
+    /**
+     * Share or hide the watchlist and watched history with accepted friends (#33).
+     */
+    @Transactional
+    public UserResponse updateSharing(String username, UpdateSharingRequest request) {
+        User user = lockUser(username);
+        if (request.sharesWatchlist() != null) user.setSharesWatchlist(request.sharesWatchlist());
+        if (request.sharesWatched() != null) user.setSharesWatched(request.sharesWatched());
+        userRepository.save(user);
+        return mapToUserResponse(user);
+    }
+
+    private User lockUser(String username) {
+        Long id = findUser(username).getId();
+        return userRepository.lockById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
+    /**
      * Update user's display name, checking uniqueness first.
      */
     @Transactional
@@ -256,8 +341,8 @@ public class UserService {
         }
 
         String cleanNewName = newDisplayName.trim();
-        if (cleanNewName.length() < 2 || cleanNewName.length() > 50) {
-            throw new IllegalArgumentException("Display name must be between 2 and 50 characters");
+        if (cleanNewName.length() > 50) {
+            throw new IllegalArgumentException("Display name must be between 1 and 50 characters");
         }
 
         User user = findUser(username);
@@ -294,9 +379,7 @@ public class UserService {
 
     private User findUser(String username) {
         String clean = username != null ? username.trim() : "";
-        return userRepository.findByUsername(clean)
-                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
-                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+        return UserLookup.byAccountName(userRepository, clean)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + clean));
     }
 
@@ -308,6 +391,8 @@ public class UserService {
                 .displayName(user.getDisplayName())
                 .role(user.getRole())
                 .createdAt(user.getCreatedAt())
+                .sharesWatchlist(user.isSharesWatchlist())
+                .sharesWatched(user.isSharesWatched())
                 .build();
     }
 }

@@ -18,8 +18,15 @@ public class FriendProfileResponse {
     private Long id;
     private String username;
     private String displayName;
-    private long watchedCount;
-    private long watchlistCount;
-    private Double avgRating;
+    /**
+     * Level, rank badge and avatar (#32 LV04): no counts, since a watched count reveals the XP bar.
+     * The sharing flags tell the friend view which lists to show as tabs (#33); see
+     * docs/features/031-account-progression-profile for why these extra fields are exposed.
+     */
+    private int level;
+    private RankResponse rank;
+    private AvatarResponse avatar;
+    private boolean sharesWatchlist;
+    private boolean sharesWatched;
     private LocalDateTime createdAt;
 }

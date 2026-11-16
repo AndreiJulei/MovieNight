@@ -56,9 +56,7 @@ class FriendshipControllerTest {
                 .id(2L)
                 .username("sarah@example.com")
                 .displayName("SarahConnor")
-                .watchedCount(12)
-                .watchlistCount(5)
-                .avgRating(8.5)
+                .level(2)
                 .createdAt(LocalDateTime.now())
                 .build();
     }
@@ -71,8 +69,8 @@ class FriendshipControllerTest {
                         .principal(mockPrincipal))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].displayName").value("SarahConnor"))
-                .andExpect(jsonPath("$[0].watchedCount").value(12))
-                .andExpect(jsonPath("$[0].avgRating").value(8.5));
+                .andExpect(jsonPath("$[0].level").value(2))
+                .andExpect(jsonPath("$[0].watchedCount").doesNotExist());
     }
 
     @Test

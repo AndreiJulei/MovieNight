@@ -1,10 +1,12 @@
 package com.movienight.backend.controller;
 
 import com.movienight.backend.dto.AddFriendRequest;
+import com.movienight.backend.dto.CustomListSummaryResponse;
 import com.movienight.backend.dto.FriendProfileResponse;
 import com.movienight.backend.dto.FriendInvitationResponse;
 import com.movienight.backend.dto.FriendLibraryEntryResponse;
 import com.movienight.backend.model.MovieStatus;
+import com.movienight.backend.service.CustomListService;
 import com.movienight.backend.service.FriendshipService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,18 @@ import java.util.Map;
 public class FriendshipController {
 
     private final FriendshipService friendshipService;
+    private final CustomListService customListService;
+
+    /**
+     * Custom lists a friend shares with accepted friends (#33).
+     */
+    @GetMapping("/{friendId}/lists")
+    public ResponseEntity<List<CustomListSummaryResponse>> getFriendLists(
+            @PathVariable Long friendId,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(customListService.getListsSharedWithFriend(authentication.getName(), friendId));
+    }
 
     /**
      * Get all friends of the authenticated user with their movie stats.

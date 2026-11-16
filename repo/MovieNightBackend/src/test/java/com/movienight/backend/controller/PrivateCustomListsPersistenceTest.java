@@ -49,13 +49,14 @@ class PrivateCustomListsPersistenceTest {
     }
 
     @Test
-    void legacyPublicFlagNeverGrantsAccessOrExposesListsInPublicIndex() throws Exception {
-        long id = lists.save(CustomList.builder().user(owner).title("Legacy private content").isPublic(true).build()).getId();
+    void aFriendSharedListIsNeverExposedToNonFriendsOrThePublicIndex() throws Exception {
+        // #33: a shared list is visible to accepted friends, never to anyone else.
+        long id = lists.save(CustomList.builder().user(owner).title("Friends only").shared(true).build()).getId();
         mvc.perform(get("/api/lists/public")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
         mvc.perform(get("/api/lists/" + id).header("Authorization", token(newUser())))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/lists/" + id)).andExpect(status().isForbidden());
-        read(id).andExpect(status().isOk()).andExpect(jsonPath("$.isPublic").value(false));
+        read(id).andExpect(status().isOk()).andExpect(jsonPath("$.shared").value(true));
     }
 
     @Test
@@ -68,10 +69,10 @@ class PrivateCustomListsPersistenceTest {
             create(body).andExpect(status().isBadRequest());
             write("PUT", "/api/lists/" + id, body).andExpect(status().isBadRequest());
         }
-        create("{\"title\":\"Public attempt\",\"isPublic\":true}").andExpect(status().isBadRequest());
-        write("PUT", "/api/lists/" + id, "{\"isPublic\":true}").andExpect(status().isBadRequest());
+        // New lists start private; sharing is a separate owner decision (#33).
+        create("{\"title\":\"Public attempt\",\"shared\":true}").andExpect(status().isBadRequest());
         read(id).andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Rewatches"))
-                .andExpect(jsonPath("$.isPublic").value(false));
+                .andExpect(jsonPath("$.shared").value(false));
         mvc.perform(get("/api/lists").header("Authorization", authorization))
                 .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id").value(id));

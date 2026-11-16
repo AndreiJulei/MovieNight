@@ -12,6 +12,7 @@ import { ExplorePosterOverlay } from "./ExplorePosterOverlay"
 import { useRouter } from "../router"
 import { useStore } from "../store/MovieStore"
 import { usePosterTransition } from "./PosterTransitionContext"
+import { openTitleWithTransition, POSTER_ID_ATTRIBUTE, titlePrefetchHandlers } from "./posterTransition"
 import ShelfEmptyCard from "./ShelfEmptyCard"
 import { SHELF_TRACK_CLASS } from "./layout"
 
@@ -273,8 +274,9 @@ function ShelfPoster({
     const targetUrl = `/movies/${movie.id}${
       movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""
     }`
-    navigate(targetUrl)
+    openTitleWithTransition({ source: posterRef.current, movieId: movie.id, url: targetUrl, navigate })
   }
+  const prefetch = titlePrefetchHandlers(movie.id, store.currentUser?.id)
 
   const targetUrl = `/movies/${movie.id}${
     movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""
@@ -286,6 +288,8 @@ function ShelfPoster({
       ref={posterRef}
       href={targetUrl}
       onClick={handleClick}
+      {...prefetch}
+      {...{ [POSTER_ID_ATTRIBUTE]: movie.id }}
       title={movie.title}
       aria-label={`${rank ? `${rank}. ` : ""}${movie.title}${
         inLibrary ? " (in your library)" : ""

@@ -23,16 +23,8 @@ public class CreateCustomListRequest {
     private String description;
 
     @Builder.Default
-    @AssertFalse(message = "Custom lists are private; public sharing is unavailable")
-    private Boolean isPublic = false;
-
-    public boolean isPublic() {
-        return Boolean.TRUE.equals(this.isPublic);
-    }
-
-    public void setIsPublic(Boolean isPublic) {
-        this.isPublic = isPublic;
-    }
+    @AssertFalse(message = "New lists start private; share them with friends after creating them")
+    private Boolean shared = false;
 
     private List<Long> initialMovieIds;
 }

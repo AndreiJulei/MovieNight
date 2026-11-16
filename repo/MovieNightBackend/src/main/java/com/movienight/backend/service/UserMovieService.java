@@ -7,6 +7,7 @@ import com.movienight.backend.model.User;
 import com.movienight.backend.model.UserMovieEntry;
 import com.movienight.backend.repository.MovieRepository;
 import com.movienight.backend.repository.UserMovieEntryRepository;
+import com.movienight.backend.repository.UserLookup;
 import com.movienight.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -254,7 +255,7 @@ public class UserMovieService {
 
         List<UserMovieEntry> friendEntries = userMovieEntryRepository.findByMovieIdAndUserIdIn(movieId, friendUserIds);
         return friendEntries.stream()
-                .filter(entry -> entry.getStatus() == MovieStatus.WATCHED || entry.getStatus() == MovieStatus.WATCHLIST)
+                .filter(entry -> entry.getUser().sharesStatus(entry.getStatus()))
                 .map(entry -> FriendRatingResponse.builder()
                         .userId(entry.getUser().getId())
                         .username(entry.getUser().getUsername())
@@ -270,9 +271,7 @@ public class UserMovieService {
 
     private User findUserByUsername(String username) {
         String clean = username != null ? username.trim() : "";
-        return userRepository.findByUsername(clean)
-                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
-                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+        return UserLookup.byAccountName(userRepository, clean)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + clean));
     }
 

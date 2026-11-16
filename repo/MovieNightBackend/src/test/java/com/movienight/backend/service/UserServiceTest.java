@@ -57,7 +57,7 @@ class UserServiceTest {
         CheckNameResponse response = userService.isDisplayNameAvailable("  JohnWick  ");
 
         assertTrue(response.isAvailable());
-        assertEquals("JohnWick", response.getDisplayName());
+        assertEquals("JohnWick", response.getName());
     }
 
     @Test
@@ -84,7 +84,7 @@ class UserServiceTest {
                 .displayName("  JohnWick  ")
                 .build();
 
-        when(userRepository.existsByUsername("john@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameIgnoreCase("john@example.com")).thenReturn(false);
         when(userRepository.existsByDisplayNameIgnoreCase("JohnWick")).thenReturn(false);
         when(passwordEncoder.encode("secret123")).thenReturn("hashed_password_123");
         when(userRepository.save(any(User.class))).thenReturn(sampleUser);
@@ -106,7 +106,7 @@ class UserServiceTest {
                 .displayName("JohnWick")
                 .build();
 
-        when(userRepository.existsByUsername("john@example.com")).thenReturn(true);
+        when(userRepository.existsByUsernameIgnoreCase("john@example.com")).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class, () -> userService.signup(request));
         verify(userRepository, never()).save(any());

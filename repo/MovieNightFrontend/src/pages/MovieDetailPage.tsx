@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useRouter, useQuery, safeInternalUrl } from "../router";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
+import { playFlipEntrance } from "../components/posterTransition";
 import { moviesApi, isAbortError } from "../api/movies";
 import { toSimilarTitle } from "../api/similarMovies";
 import type { Movie, MediaType } from "../store/data";
@@ -46,7 +47,7 @@ export default function MovieDetailPage() {
   const { path, navigate, previousUrl, back } = useRouter();
   const query = useQuery();
   const typeParam = query.get("type");
-  const { clearTransition } = usePosterTransition();
+  const { transitionData, clearTransition } = usePosterTransition();
   const params = matchPath("/movies/:id", path);
   const user = store.currentUser!;
 
@@ -170,6 +171,7 @@ export default function MovieDetailPage() {
             ? await moviesApi.getByTmdbId(identity.providerId, identity.category!, {
                 signal: controller.signal,
                 userScope: user?.id,
+                fresh: true,
               })
             : await moviesApi.getById(identity.catalogId!, {
                 signal: controller.signal,
@@ -338,6 +340,15 @@ export default function MovieDetailPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isTrailerPlaying]);
 
+  // #29: FLIP entrance from the clicked poster where View Transitions are unavailable.
+  const hasMovie = Boolean(movie);
+  useLayoutEffect(() => {
+    if (!hasMovie || !transitionData || transitionData.movieId !== requestedId) return;
+    const target = document.querySelector<HTMLElement>(".poster-hero-target");
+    if (target) playFlipEntrance(target, transitionData.startRect);
+    clearTransition();
+  }, [hasMovie, requestedId, transitionData, clearTransition]);
+
   if (!movie) {
     return (
       <AppShell fullBleed>
@@ -375,6 +386,17 @@ export default function MovieDetailPage() {
   const runtimeFormatted = formatRuntime(movie.runtimeMinutes);
   const castList = movie.cast && movie.cast.length > 0 ? movie.cast : parseCastMembers("", []);
 
+  // #29 TX03: critic scores arrive after the page; hold their place instead of delaying it.
+  const awaitingScores = !providerRatingNotice(movie) &&
+    (isLoadingDetails || shouldSyncProviderRatings(movie, ratingSyncAttempt));
+  const scoreSkeleton = (label: string) => (
+    <span
+      role="status"
+      aria-label={`Loading ${label} score`}
+      className="inline-block h-[22px] w-16 animate-pulse rounded-md border border-white/10 bg-white/[0.08]"
+    />
+  );
+
   const heroDetails = (
     <>
       {/* Title Typography */}
@@ -411,6 +433,7 @@ export default function MovieDetailPage() {
             {movie.imdb.toFixed(1)}
           </span>
         )}
+        {movie.imdb == null && awaitingScores && scoreSkeleton("IMDb")}
 
         {/* TMDb Rating Badge */}
         {movie.tmdbRating != null && (
@@ -426,6 +449,7 @@ export default function MovieDetailPage() {
             {movie.rt}%
           </span>
         )}
+        {movie.rt == null && awaitingScores && scoreSkeleton("Rotten Tomatoes")}
 
         {providerRatingNotice(movie) && (
           <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-text-muted">
@@ -565,10 +589,24 @@ export default function MovieDetailPage() {
             {/* Bottom aligned logo and details; fade out while the trailer plays */}
             <div
               aria-hidden={isTrailerPlaying}
-              data-testid="hero-details"
-              className={`max-w-3xl text-left transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+              className={`flex items-end gap-6 lg:gap-8 transition-opacity duration-500 ${isTrailerPlaying ? "opacity-0 pointer-events-none" : "opacity-100"}`}
             >
-              {heroDetails}
+              {/* #29: the poster a card morphs into (and back out of) */}
+              <div
+                data-testid="hero-poster"
+                className="poster-hero-target relative aspect-[2/3] w-[150px] shrink-0 overflow-hidden rounded-lg border border-white/10 bg-surface shadow-2xl lg:w-[220px]"
+              >
+                {movie.posterUrl ? (
+                  <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center px-3 text-center text-sm font-semibold text-text-muted">
+                    {movie.title}
+                  </div>
+                )}
+              </div>
+              <div data-testid="hero-details" className="min-w-0 max-w-3xl text-left">
+                {heroDetails}
+              </div>
             </div>
           </div>
         </section>

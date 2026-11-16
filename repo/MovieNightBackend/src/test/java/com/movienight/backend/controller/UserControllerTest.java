@@ -47,7 +47,7 @@ class UserControllerTest {
     void checkName_returnsOkAndAvailability() throws Exception {
         when(userService.isDisplayNameAvailable("Neo")).thenReturn(
                 CheckNameResponse.builder()
-                        .displayName("Neo")
+                        .name("Neo")
                         .available(true)
                         .message("Display name is available")
                         .build()
@@ -56,7 +56,7 @@ class UserControllerTest {
         mockMvc.perform(get("/api/auth/check-name")
                         .param("displayName", "Neo"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.displayName").value("Neo"))
+                .andExpect(jsonPath("$.name").value("Neo"))
                 .andExpect(jsonPath("$.available").value(true));
     }
 

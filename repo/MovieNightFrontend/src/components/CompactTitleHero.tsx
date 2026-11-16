@@ -55,7 +55,7 @@ export default function CompactTitleHero({
           ) : (
             <div
               data-testid="compact-title-poster"
-              className="relative mx-auto aspect-[2/3] w-[55%] max-w-[300px] overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl"
+              className="poster-hero-target relative mx-auto aspect-[2/3] w-[55%] max-w-[300px] overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl"
             >
               {artwork ? (
                 <img src={artwork} alt={`${title} poster`} className="h-full w-full object-cover" />

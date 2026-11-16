@@ -11,6 +11,7 @@ import {
   searchResultsUrl,
   toSearchMovie,
 } from "./searchResultsLogic";
+import { openTitleWithTransition, POSTER_ID_ATTRIBUTE, titlePrefetchHandlers } from "./posterTransition";
 
 interface NavSearchProps {
   className?: string;
@@ -124,7 +125,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
   const displayedResults = backendResults.slice(0, DROPDOWN_RESULT_LIMIT);
 
   const handleSelect = useCallback(
-    (movie: Movie) => {
+    (movie: Movie, source: HTMLElement | null = null) => {
       store.upsertMovie(movie);
       try {
         sessionStorage.setItem("last_selected_movie", JSON.stringify(movie));
@@ -136,7 +137,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
       setSelectedIndex(-1);
       inputRef.current?.blur();
       onNavigate?.();
-      navigate(movieUrl(movie));
+      openTitleWithTransition({ source, movieId: movie.id, url: movieUrl(movie), navigate });
     },
     [navigate, onNavigate, store],
   );
@@ -171,7 +172,10 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
     } else if (e.key === "Enter") {
       // An arrow-key selection opens that title; otherwise Enter was handled above.
       e.preventDefault();
-      handleSelect(displayedResults[selectedIndex]);
+      handleSelect(
+        displayedResults[selectedIndex],
+        document.querySelector<HTMLElement>(`#nav-search-result-${selectedIndex} [${POSTER_ID_ATTRIBUTE}]`),
+      );
     } else if (e.key === "Escape") {
       setIsOpen(false);
       inputRef.current?.blur();
@@ -265,6 +269,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
 
               {displayedResults.map((movie, idx) => {
                 const isSelected = idx === selectedIndex;
+                const prefetch = titlePrefetchHandlers(movie.id, store.currentUser?.id);
                 return (
                   <a
                     key={movie.id}
@@ -272,14 +277,16 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
                     href={movieUrl(movie)}
                     role="option"
                     aria-selected={isSelected}
+                    {...prefetch}
                     onMouseEnter={() => {
                       arrowSelectionRef.current = false;
                       setSelectedIndex(idx);
+                      prefetch.onMouseEnter();
                     }}
                     onClick={(event) => {
                       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
                       event.preventDefault();
-                      handleSelect(movie);
+                      handleSelect(movie, event.currentTarget.querySelector<HTMLElement>(`[${POSTER_ID_ATTRIBUTE}]`));
                     }}
                     aria-label={`${movie.title}${movie.year != null ? ` (${movie.year})` : ""}, ${mediaTypeLabel(movie.mediaType)}`}
                     className={`flex items-center gap-3 rounded-lg p-2 cursor-pointer transition-colors ${
@@ -288,6 +295,7 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
                   >
                     {/* Poster Thumbnail (#30 SR04: 56×84) */}
                     <div
+                      {...{ [POSTER_ID_ATTRIBUTE]: movie.id }}
                       className="h-[84px] w-14 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-surface"
                     >
                       {movie.posterUrl ? (

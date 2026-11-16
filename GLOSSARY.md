@@ -72,6 +72,17 @@ The named stage of a user's watched-history count (e.g. Veteran at 100), shown
 on the profile as a badge to the user and their friends.
 _Avoid_: Title (a title is a movie or TV series); achievement.
 
+**XP**:
+Progress toward the next level: the watched titles counted since the current
+level began (0–9). Only the owner sees it, as the XP bar on their profile.
+_Avoid_: Level; points earned by anything other than watched history.
+
+**Avatar**:
+The picture that represents a user on their profile and in navigation. It is
+the initial of their display name until they choose an image unlocked at their
+level; an image that is no longer unlocked shows the initial again.
+_Avoid_: Profile photo (users do not upload images).
+
 **Shared list**:
 A watchlist, watched history or custom list that its owner makes visible to
 accepted friends. Watchlist and watched history are shared by default.

@@ -16,7 +16,6 @@ public interface CustomListRepository extends JpaRepository<CustomList, Long> {
 
     List<CustomList> findByUserIdOrderByCreatedAtDesc(Long userId);
 
-    List<CustomList> findByIsPublicTrueOrderByCreatedAtDesc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CustomList> findByIdAndUserId(Long id, Long userId);

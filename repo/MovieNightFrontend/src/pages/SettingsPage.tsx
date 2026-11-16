@@ -1,8 +1,9 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useRouter } from "../router";
+import { Link, useRouter } from "../router";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "../components/Toast";
 import AppShell from "../components/AppShell";
+import AccountSettings from "../components/AccountSettings";
 import useCompactLayout from "../hooks/useCompactLayout";
 import EvilEye from "../components/EvilEye";
 import {
@@ -10,6 +11,7 @@ import {
   saveCompanionChoice,
   type CompanionCharacter,
 } from "../components/companionPreference";
+import { saveAnimationsChoice, useAnimationsEnabled } from "../components/motionPreference";
 import {
   webhooksApi,
   type ApiWebhookSubscriptionResponse,
@@ -75,52 +77,11 @@ export default function SettingsPage() {
   const compact = useCompactLayout();
   const [selectedChar, setSelectedChar] = useState<CompanionCharacter>(() => readCompanionChoice());
 
-  // Profile Form State
-  const [displayName, setDisplayName] = useState(user?.displayName || "");
-  const [profileMsg, setProfileMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  // Security Form State
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [securityMsg, setSecurityMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
   const handleSelectChar = (id: CompanionCharacter) => {
     setSelectedChar(id);
     saveCompanionChoice(id);
     const charName = CHARACTERS.find((c) => c.id === id)?.name ?? id;
     toast({ message: `Companion changed to ${charName}`, type: "info" });
-  };
-
-  const handleProfileSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setProfileMsg(null);
-    const res = await store.changeDisplayName(displayName);
-    if (res.ok) {
-      setProfileMsg({ type: "success", text: "Display name updated successfully!" });
-      toast({ message: "Profile display name updated", type: "success" });
-    } else {
-      setProfileMsg({ type: "error", text: res.error || "Failed to update name." });
-    }
-  };
-
-  const handlePasswordSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSecurityMsg(null);
-    if (newPassword !== confirmPassword) {
-      setSecurityMsg({ type: "error", text: "New passwords do not match." });
-      return;
-    }
-    const res = await store.changePassword(oldPassword, newPassword);
-    if (res.ok) {
-      setSecurityMsg({ type: "success", text: "Password changed successfully!" });
-      toast({ message: "Password changed successfully", type: "success" });
-      setOldPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } else {
-      setSecurityMsg({ type: "error", text: res.error || "Failed to update password." });
-    }
   };
 
   // Webhooks State
@@ -287,146 +248,31 @@ export default function SettingsPage() {
     <AppShell>
       <div className="mx-auto max-w-[680px]">
         <div className="mb-8">
+          <Link to="/profile" className="prose-link mb-3 inline-block text-sm text-text-muted">← Profile</Link>
           <h1 className="text-2xl font-bold tracking-tight text-text-primary">
             Settings
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Configure your movie night preferences, profile, interactive companion, and background theme.
+            Manage your account and preferences. Your profile shows your rank and the lists you share.
           </p>
         </div>
 
-        {/* 1. Profile Information Section */}
-        <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-text-primary">Profile</h2>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Update your public screen name and profile details.
-          </p>
+        {/* #31: Account (avatar, display name, username, email, password) */}
+        <AccountSettings />
 
-          <form onSubmit={handleProfileSubmit} className="mt-5 space-y-4">
-            <div>
-              <label htmlFor="settings-username" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Username
-              </label>
-              <input id="settings-username"
-                type="text"
-                disabled
-                value={user?.username || ""}
-                className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/40 px-3.5 py-2 text-sm text-zinc-500 cursor-not-allowed"
-              />
-              <span className="mt-1 block text-[11px] text-zinc-600">Username cannot be changed.</span>
-            </div>
-
-            <div>
-              <label htmlFor="settings-display-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Display Name
-              </label>
-              <input id="settings-display-name"
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your Display Name"
-                className="mt-1.5 w-full rounded-lg border border-white/15 bg-black/30 px-3.5 py-2 text-sm text-white placeholder-zinc-600 transition-colors focus:border-accent focus:outline-none"
-              />
-            </div>
-
-            {profileMsg && (
-              <p
-                className={`text-xs font-medium ${
-                  profileMsg.type === "success" ? "text-green-400" : "text-danger"
-                }`}
-              >
-                {profileMsg.text}
-              </p>
-            )}
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-accent/90 active:scale-95"
-              >
-                Save Profile
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* 2. Security & Password Section */}
-        <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-text-primary">Security</h2>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Change your account password.
-          </p>
-
-          <form onSubmit={handlePasswordSubmit} className="mt-5 space-y-4">
-            <div>
-              <label htmlFor="settings-current-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Current Password
-              </label>
-              <input id="settings-current-password"
-                type="password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                placeholder="Current Password"
-                className="mt-1.5 w-full rounded-lg border border-white/15 bg-black/30 px-3.5 py-2 text-sm text-white placeholder-zinc-600 transition-colors focus:border-accent focus:outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="settings-new-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  New Password
-                </label>
-                <input id="settings-new-password"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="New Password"
-                  className="mt-1.5 w-full rounded-lg border border-white/15 bg-black/30 px-3.5 py-2 text-sm text-white placeholder-zinc-600 transition-colors focus:border-accent focus:outline-none"
-                />
-              </div>
-              <div>
-                <label htmlFor="settings-confirm-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Confirm Password
-                </label>
-                <input id="settings-confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm New Password"
-                  className="mt-1.5 w-full rounded-lg border border-white/15 bg-black/30 px-3.5 py-2 text-sm text-white placeholder-zinc-600 transition-colors focus:border-accent focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {securityMsg && (
-              <p
-                className={`text-xs font-medium ${
-                  securityMsg.type === "success" ? "text-green-400" : "text-danger"
-                }`}
-              >
-                {securityMsg.text}
-              </p>
-            )}
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-accent/90 active:scale-95"
-              >
-                Change Password
-              </button>
-            </div>
-          </form>
-        </section>
+        {/* #31: Preferences */}
+        <h2 className="mb-4 mt-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Preferences</h2>
+        {/* #29: Animations (per device; follows reduced motion until chosen) */}
+        <AnimationsSection />
 
         {/* 3. Pixel Companion Character Picker Section (desktop only) */}
         {!compact && (
         <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-text-primary">
+              <h3 className="text-base font-semibold text-text-primary">
                 Pixel Companion
-              </h2>
+              </h3>
               <p className="text-xs text-text-muted">
                 Select who guards your movie vault in the corner of your screen.
               </p>
@@ -958,7 +804,7 @@ export default function SettingsPage() {
 
         {/* 5. Account / Session Section */}
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-          <h2 className="text-base font-semibold text-text-primary">Account</h2>
+          <h2 className="text-base font-semibold text-text-primary">Session</h2>
           <p className="mt-0.5 text-xs text-text-muted">
             Manage your session and login state.
           </p>
@@ -986,5 +832,42 @@ export default function SettingsPage() {
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function AnimationsSection() {
+  const enabled = useAnimationsEnabled();
+  return (
+    <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-6">
+        <div>
+          <h3 id="animations-setting-label" className="text-base font-semibold text-text-primary">
+            Animations
+          </h3>
+          <p id="animations-setting-description" className="text-xs text-text-muted">
+            Posters grow into the title page and back. Saved on this device; off by default when your
+            system asks for reduced motion.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-labelledby="animations-setting-label"
+          aria-describedby="animations-setting-description"
+          onClick={() => saveAnimationsChoice(!enabled)}
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+            enabled ? "border-accent bg-accent" : "border-white/20 bg-white/10"
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+              enabled ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+    </section>
   );
 }

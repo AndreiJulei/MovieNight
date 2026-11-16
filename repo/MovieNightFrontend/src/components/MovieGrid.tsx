@@ -7,6 +7,7 @@ import PixelPoster from "./PixelPoster";
 import { ratingEvidence, formatExploreMetadata } from "./ratingEvidence";
 import { ExplorePosterOverlay } from "./ExplorePosterOverlay";
 import { POSTER_GRID_CLASS } from "./layout";
+import { openTitleWithTransition, POSTER_ID_ATTRIBUTE, titlePrefetchHandlers } from "./posterTransition";
 
 export function Poster({ movie }: { movie: Movie }) {
   if (movie.posterUrl) {
@@ -79,8 +80,9 @@ export function MovieCard({
       });
     }
     const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
-    navigate(targetUrl);
+    openTitleWithTransition({ source: posterRef.current, movieId: movie.id, url: targetUrl, navigate });
   };
+  const prefetch = titlePrefetchHandlers(movie.id, store.currentUser?.id);
 
   const targetUrl = `/movies/${movie.id}${movie.mediaType ? `?type=${encodeURIComponent(movie.mediaType)}` : ""}`;
   const hasExploreMetadata = explorePresentation && Boolean(formatExploreMetadata(movie));
@@ -89,6 +91,7 @@ export function MovieCard({
     <a
       href={targetUrl}
       onClick={handleClick}
+      {...prefetch}
       title={movie.year == null ? movie.title : `${movie.title} (${movie.year})`}
       className="group block cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 rounded-lg"
       aria-label={movie.title}
@@ -96,6 +99,7 @@ export function MovieCard({
     >
       <div
         ref={posterRef}
+        {...{ [POSTER_ID_ATTRIBUTE]: movie.id }}
         className={`relative overflow-hidden ${
           compact ? "rounded-[5px]" : "rounded-lg"
         } border border-white/[0.07] bg-surface shadow-sm transition-all duration-200 ease-out group-hover:scale-[1.03] group-hover:shadow-lg group-hover:border-white/20 group-focus-visible:scale-[1.03] group-focus-visible:shadow-lg`}

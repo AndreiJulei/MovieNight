@@ -100,8 +100,13 @@ public class SuggestionService {
         List<Long> friendIds = friendshipRepository.findAcceptedFriendIdsForUser(userId);
         List<SuggestionMovieItem> rated = new ArrayList<>();
         List<SuggestionMovieItem> watchlist = new ArrayList<>();
-        if (!friendIds.isEmpty()) {
-            for (FriendsConsensusProjection p : userMovieEntryRepository.findFriendsConsensusWatched(friendIds, userId)) {
+        // Friends contribute only the lists they share (#33): hidden Watched removes their ratings,
+        // hidden Watchlist removes their plans.
+        List<User> friends = friendIds.isEmpty() ? List.of() : userRepository.findAllById(friendIds);
+        List<Long> watchedSharers = friends.stream().filter(f -> f.sharesStatus(MovieStatus.WATCHED)).map(User::getId).toList();
+        List<Long> watchlistSharers = friends.stream().filter(f -> f.sharesStatus(MovieStatus.WATCHLIST)).map(User::getId).toList();
+        if (!watchedSharers.isEmpty()) {
+            for (FriendsConsensusProjection p : userMovieEntryRepository.findFriendsConsensusWatched(watchedSharers, userId)) {
                 rated.add(SuggestionMovieItem.builder()
                         .tmdbId(p.getTmdbId()).title(p.getTitle()).posterUrl(p.getPosterUrl())
                         .releaseYear(p.getReleaseYear()).imdbRating(p.getImdbRating())
@@ -110,8 +115,10 @@ public class SuggestionService {
                         .reason(String.format(Locale.ROOT, "Average %.1f/10 × %d friend%s", p.getAvgRating(), p.getFriendsCount(), p.getFriendsCount() == 1 ? "" : "s"))
                         .build());
             }
+        }
+        if (!watchlistSharers.isEmpty()) {
             Set<Long> ratedIds = rated.stream().map(SuggestionMovieItem::getTmdbId).collect(Collectors.toSet());
-            for (FriendsWatchlistProjection w : userMovieEntryRepository.findFriendsWatchlistMovies(friendIds, userId)) {
+            for (FriendsWatchlistProjection w : userMovieEntryRepository.findFriendsWatchlistMovies(watchlistSharers, userId)) {
                 if (!ratedIds.contains(w.getTmdbId())) {
                     watchlist.add(SuggestionMovieItem.builder()
                             .tmdbId(w.getTmdbId()).title(w.getTitle()).posterUrl(w.getPosterUrl())
@@ -325,9 +332,7 @@ public class SuggestionService {
 
     private User findUser(String username) {
         String clean = username != null ? username.trim() : "";
-        return userRepository.findByUsername(clean)
-                .or(() -> userRepository.findByUsernameIgnoreCase(clean))
-                .or(() -> userRepository.findByEmailIgnoreCase(clean))
+        return UserLookup.byAccountName(userRepository, clean)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + clean));
     }
 }

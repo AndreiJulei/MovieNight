@@ -19,11 +19,15 @@ public class UserController {
 
     /**
      * Check if a display name or username is unique.
-     * GET /api/auth/check-name?displayName=neo
+     * GET /api/auth/check-name?displayName=neo or ?username=neo
      */
     @GetMapping("/check-name")
-    public ResponseEntity<CheckNameResponse> checkName(@RequestParam("displayName") String displayName) {
-        CheckNameResponse response = userService.isDisplayNameAvailable(displayName);
+    public ResponseEntity<CheckNameResponse> checkName(
+            @RequestParam(value = "displayName", required = false) String displayName,
+            @RequestParam(value = "username", required = false) String username) {
+        CheckNameResponse response = username != null
+                ? userService.isUsernameAvailable(username)
+                : userService.isDisplayNameAvailable(displayName);
         return ResponseEntity.ok(response);
     }
 

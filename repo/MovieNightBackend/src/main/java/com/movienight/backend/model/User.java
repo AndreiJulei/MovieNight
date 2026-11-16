@@ -55,6 +55,25 @@ public class User {
     @Column(length = 1000)
     private String personalRecommendationLimitations;
 
+    /** Chosen avatar from the avatar manifest (#32); null means the default initial avatar. */
+    @Column(name = "avatar_key", length = 50)
+    private String avatarKey;
+
+    /** Whether accepted friends may see this user's watchlist (#33). */
+    @Builder.Default
+    @Column(name = "shares_watchlist", nullable = false)
+    private boolean sharesWatchlist = true;
+
+    /** Whether accepted friends may see this user's watched history and ratings (#33). */
+    @Builder.Default
+    @Column(name = "shares_watched", nullable = false)
+    private boolean sharesWatched = true;
+
+    /** Whether accepted friends may see library entries with this status (#33). */
+    public boolean sharesStatus(MovieStatus status) {
+        return (status == MovieStatus.WATCHED && sharesWatched) || (status == MovieStatus.WATCHLIST && sharesWatchlist);
+    }
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
