@@ -51,9 +51,9 @@ class ProgressionPersistenceTest {
                 .andExpect(jsonPath("$.watchedCount").value(10))
                 .andExpect(jsonPath("$.level").value(2))
                 .andExpect(jsonPath("$.xpIntoLevel").value(0))
-                .andExpect(jsonPath("$.xpPerLevel").value(10))
-                .andExpect(jsonPath("$.rank.label").value("Matinee Regular"))
-                .andExpect(jsonPath("$.nextRank.label").value("Night Owl"))
+                .andExpect(jsonPath("$.xpPerLevel").value(15))
+                .andExpect(jsonPath("$.rank.label").value("The Hobbit"))
+                .andExpect(jsonPath("$.nextRank.label").value("The Maverick"))
                 .andExpect(jsonPath("$.toNextRank").value(15));
 
         send(owner, "PUT", "/api/movies/library/" + last, "{\"status\":\"WATCHLIST\"}").andExpect(status().isOk());
@@ -68,20 +68,21 @@ class ProgressionPersistenceTest {
     void LV03_lockedAvatarCannotBeSelectedAndALevelDropFallsBackToTheDefault() throws Exception {
         send(owner, "GET", "/api/users/me/progress", "").andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatar").doesNotExist())
-                .andExpect(jsonPath("$.avatars[?(@.id == 'popcorn')].unlocked").value(org.hamcrest.Matchers.contains(false)));
-        send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"popcorn\"}").andExpect(status().isBadRequest());
+                .andExpect(jsonPath("$.avatars[?(@.id == 'oppenheimer-thinking')].unlocked").value(org.hamcrest.Matchers.contains(false)));
+        send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"oppenheimer-thinking\"}").andExpect(status().isBadRequest());
         send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"no-such-avatar\"}").andExpect(status().isBadRequest());
         send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"clapper\"}").andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatar.id").value("clapper"));
 
+        // The Professional (50 watched, level 4) unlocks the Oppenheimer avatars.
         long last = 0;
-        for (int i = 0; i < 10; i++) last = save(owner, "WATCHED");
-        send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"popcorn\"}").andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatar.id").value("popcorn"));
-        send(owner, "GET", "/api/users/me/progress", "").andExpect(jsonPath("$.avatar.id").value("popcorn"));
+        for (int i = 0; i < 50; i++) last = save(owner, "WATCHED");
+        send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":\"oppenheimer-thinking\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar.id").value("oppenheimer-thinking"));
+        send(owner, "GET", "/api/users/me/progress", "").andExpect(jsonPath("$.avatar.id").value("oppenheimer-thinking"));
 
         send(owner, "DELETE", "/api/movies/library/" + last, "").andExpect(status().is2xxSuccessful());
-        send(owner, "GET", "/api/users/me/progress", "").andExpect(jsonPath("$.level").value(1))
+        send(owner, "GET", "/api/users/me/progress", "").andExpect(jsonPath("$.level").value(3))
                 .andExpect(jsonPath("$.avatar").doesNotExist());
 
         send(owner, "PUT", "/api/users/me/avatar", "{\"avatar\":null}").andExpect(status().isOk())
@@ -99,7 +100,7 @@ class ProgressionPersistenceTest {
             String root = path.endsWith("/profile") ? "$" : "$[0]";
             send(friend, "GET", path, "").andExpect(status().isOk())
                     .andExpect(jsonPath(root + ".level").value(2))
-                    .andExpect(jsonPath(root + ".rank.label").value("Matinee Regular"))
+                    .andExpect(jsonPath(root + ".rank.label").value("The Hobbit"))
                     .andExpect(jsonPath(root + ".rank.emblem").value("ticket"))
                     .andExpect(jsonPath(root + ".avatar.id").value("popcorn"))
                     .andExpect(jsonPath(root + ".xpIntoLevel").doesNotExist())

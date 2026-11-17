@@ -32,9 +32,14 @@ test("the selected tab falls back to the first shared tab when it disappears", (
 })
 
 test("rank progress copy names the next rank, and the top rank says so", () => {
-  assert.equal(logic.rankProgressLabel(1, "Night Owl"), "1 more to Night Owl")
-  assert.equal(logic.rankProgressLabel(15, "Night Owl"), "15 more to Night Owl")
+  assert.equal(logic.rankProgressLabel(1, "The Maverick"), "1 more to The Maverick")
+  assert.equal(logic.rankProgressLabel(15, "The Maverick"), "15 more to The Maverick")
   assert.equal(logic.rankProgressLabel(0, null), "Top rank reached")
+})
+
+test("level progress counts toward the next milestone, and the top level says so", () => {
+  assert.equal(logic.levelProgressLabel(2, 4, 15), "4/15 to level 3")
+  assert.equal(logic.levelProgressLabel(7, 0, 0), "Top level reached")
 })
 
 test("XP bar percentage is bounded and level-relative", () => {

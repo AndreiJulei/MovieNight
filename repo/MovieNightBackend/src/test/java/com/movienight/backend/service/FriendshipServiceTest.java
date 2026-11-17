@@ -74,7 +74,7 @@ class FriendshipServiceTest {
         when(userRepository.findByUsername("john@example.com")).thenReturn(Optional.of(currentUser));
         when(friendshipRepository.findAcceptedByUserId(1L)).thenReturn(List.of(sampleFriendship));
         when(progressionService.badgeOf(friendUser)).thenReturn(new ProgressionService.Badge(
-                2, RankResponse.of(Progression.Rank.MATINEE_REGULAR), null));
+                2, RankResponse.of(Progression.Rank.THE_HOBBIT), null));
 
         List<FriendProfileResponse> friends = friendshipService.getFriends("john@example.com");
 
@@ -82,7 +82,7 @@ class FriendshipServiceTest {
         assertEquals("SarahConnor", friends.get(0).getDisplayName());
         // #32 LV04: the friend view carries the badge (level, rank, avatar) and no counts.
         assertEquals(2, friends.get(0).getLevel());
-        assertEquals("Matinee Regular", friends.get(0).getRank().label());
+        assertEquals("The Hobbit", friends.get(0).getRank().label());
     }
 
     @Test

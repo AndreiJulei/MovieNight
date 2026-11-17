@@ -410,11 +410,11 @@ function ProfileLink({ compact = false, onClick }: { compact?: boolean; onClick?
       onClick={onClick}
       title="Your profile"
       aria-label="Your profile"
-      className={`flex items-center justify-center rounded-full transition-all ${compact ? "h-11 w-11" : "h-9 w-9"} ${
+      className={`flex items-center justify-center rounded-full transition-all h-11 w-11 ${
         active ? "ring-2 ring-accent ring-offset-2 ring-offset-[#05070d]" : "opacity-90 hover:opacity-100"
       }`}
     >
-      <UserAvatar avatar={avatar} displayName={currentUser?.displayName} username={currentUser?.username} size="sm" className={compact ? "" : "!h-8 !w-8 !text-sm"} />
+      <UserAvatar avatar={avatar} displayName={currentUser?.displayName} username={currentUser?.username} size="sm" className={compact ? "!h-9 !w-9 !text-sm" : "!h-10 !w-10 !text-base"} />
     </Link>
   );
 }
