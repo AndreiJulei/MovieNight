@@ -113,6 +113,7 @@ export default function SuggestionCategoryPage() {
           showAddToWatchlist
           onAddToWatchlist={saveWatchlist}
           userHasMovie={userHasMovie}
+          onDismiss={suggestions.dismiss}
         />
       ) : (
         <div className="py-8">

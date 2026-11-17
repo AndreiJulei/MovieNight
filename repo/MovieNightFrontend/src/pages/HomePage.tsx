@@ -19,6 +19,7 @@ import {
   type HomeShelfType,
 } from "../components/homeShelfLogic"
 import type { Movie } from "../store/data"
+import type { DismissRecommendation } from "../hooks/recommendationDismissals"
 
 interface ShelfConfig {
   id: HomeShelfType
@@ -31,6 +32,8 @@ interface ShelfConfig {
   viewAllTo: string
   movies: Movie[]
   emptyType: "personal" | "friends" | "generic"
+  /** Personal Recommendations only: "Not interested" on each card (#40). */
+  onDismiss?: DismissRecommendation
 }
 
 function HomeShelfSection({ config }: { config: ShelfConfig }) {
@@ -62,6 +65,7 @@ function HomeShelfSection({ config }: { config: ShelfConfig }) {
         movies={config.movies.slice(0, 20)}
         referrer="/"
         emptyType={config.emptyType}
+        onDismiss={config.onDismiss}
       />
     </ShelfSection>
   )
@@ -116,6 +120,7 @@ export default function HomePage() {
       viewAllTo: "/suggestions/for-you",
       movies: personalizedMovies,
       emptyType: "personal",
+      onDismiss: personalSuggestions.dismiss,
     },
     friends: {
       id: "friends",

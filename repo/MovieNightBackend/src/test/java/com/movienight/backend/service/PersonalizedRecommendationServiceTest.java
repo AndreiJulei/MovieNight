@@ -55,6 +55,9 @@ class PersonalizedRecommendationServiceTest {
     @Mock
     private RecommendationRatingEnricher recommendationRatingEnricher;
 
+    @Mock
+    private RecommendationDismissals dismissals;
+
     @InjectMocks
     private PersonalizedRecommendationService personalizedRecommendationService;
 

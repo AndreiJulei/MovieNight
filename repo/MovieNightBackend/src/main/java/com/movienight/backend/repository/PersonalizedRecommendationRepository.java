@@ -14,4 +14,6 @@ public interface PersonalizedRecommendationRepository extends JpaRepository<Pers
     List<PersonalizedRecommendation> findByUserIdAndMediaTypeOrderByRankOrderAsc(Long userId, String mediaType);
 
     void deleteByUserId(Long userId);
+
+    boolean existsByUserIdAndMediaTypeAndTmdbId(Long userId, String mediaType, Long tmdbId);
 }

@@ -27,6 +27,7 @@ public class SuggestionController {
     private final com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
     private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
     private final com.movienight.backend.service.RecommendationMaintenanceService recommendationMaintenanceService;
+    private final com.movienight.backend.service.RecommendationDismissals recommendationDismissals;
 
     /**
      * Get all suggestion category rows for the authenticated user.
@@ -123,6 +124,23 @@ public class SuggestionController {
     }
 
     /**
+     * "Not interested" (#40): permanently removes a title from the caller's personal recommendations.
+     * Idempotent. The next stored recommendation takes its place on the following read.
+     */
+    @PostMapping("/personal/dismissals/{tmdbId:[0-9]+}")
+    public ResponseEntity<Void> dismissPersonalRecommendation(@PathVariable long tmdbId, Authentication authentication) {
+        recommendationDismissals.dismiss(currentUser(authentication), tmdbId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Undo of a dismissal: the title returns to its stored position. Idempotent. */
+    @DeleteMapping("/personal/dismissals/{tmdbId:[0-9]+}")
+    public ResponseEntity<Void> undoPersonalRecommendationDismissal(@PathVariable long tmdbId, Authentication authentication) {
+        personalizedRecommendationService.undoDismissal(currentUser(authentication), tmdbId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * On-demand trigger to recompute personalized recommendations immediately (e.g. during onboarding).
      */
     @PostMapping("/personalized/refresh")
@@ -130,15 +148,18 @@ public class SuggestionController {
         if (recommendationMaintenanceService != null) {
             recommendationMaintenanceService.checkRecommendationAccess();
         }
-        String authName = authentication.getName();
-        User user = userRepository.findByUsername(authName)
-                .or(() -> userRepository.findByUsernameIgnoreCase(authName))
-                .or(() -> userRepository.findByEmailIgnoreCase(authName))
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + authName));
-
+        User user = currentUser(authentication);
         user.setNeedsRecommendationRefresh(true);
         userRepository.saveAndFlush(user);
         personalizedRecommendationService.recomputeRecommendationsForUser(user);
         return ResponseEntity.ok(Map.of("message", "Personalized recommendations recalculated successfully"));
+    }
+
+    private User currentUser(Authentication authentication) {
+        String authName = authentication.getName();
+        return userRepository.findByUsername(authName)
+                .or(() -> userRepository.findByUsernameIgnoreCase(authName))
+                .or(() -> userRepository.findByEmailIgnoreCase(authName))
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + authName));
     }
 }

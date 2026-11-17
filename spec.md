@@ -147,6 +147,10 @@ the release goal includes deployment. Anime films remain deferred.
   (#38). The floor and weighting still apply. A failed credits lookup skips only
   that liked film or director and is reported as a limitation; the other
   directors and sources still publish.
+- The user can dismiss a personal recommendation ("Not interested"). It is
+  excluded permanently, from every read and recomputation, until they undo it;
+  the next stored recommendation takes its place. Undo is offered for about 5 s
+  (#40).
 - Recomputation may enrich at most 30 uncached top candidates per run through
   OMDb, within 300 requests per day, preserving the remaining daily quota for
   title pages (#24).

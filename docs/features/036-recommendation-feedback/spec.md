@@ -1,7 +1,7 @@
 # Recommendation feedback (PD-19 – PD-22)
 
-Status: #37 committed (`074fdee`). #38 locally validated 2026-11-18, pending
-review checkpoint approval. #39–#40 not started.
+Status: #37 committed (`074fdee`), #38 committed (`f15512e`). #40 locally
+validated 2026-11-18, pending review checkpoint approval. #39 not started.
 Roadmap: [#36](https://github.com/AndreiJulei/MovieNight/issues/36). GitHub issues
 (the authority for acceptance and status):
 
@@ -10,7 +10,9 @@ Roadmap: [#36](https://github.com/AndreiJulei/MovieNight/issues/36). GitHub issu
 - [#39 PD-21 Acclaimed titles in your top genres](https://github.com/AndreiJulei/MovieNight/issues/39)
 - [#40 PD-22 Remove a title ("Not interested") with undo](https://github.com/AndreiJulei/MovieNight/issues/40)
 
-Base/branch: `aea762e` on `feat/recs-phone-layouts-title-page`.
+Base/branch: `aea762e` on `feat/recs-phone-layouts-title-page`. #38 was built on
+`feat/recs-director-source`; for #40 that branch's commit was fast-forwarded onto
+`feat/recs-phone-layouts-title-page` (2026-11-18), so #40 builds on `f15512e`.
 `spec.md` carries the product rule (Personal recommendation quality).
 
 ## Outcome
@@ -85,12 +87,84 @@ genres become sources (#38, #39), and the user can dismiss titles (#40).
 - **Issue text.** #38 still says a failure skips the whole source; update it to
   the per-request scope above.
 
+### #40 (2026-11-18)
+
+- **Implementation from the stash.** `RecommendationDismissal`,
+  `RecommendationDismissalRepository` and `V10__recommendation_dismissals.sql` are
+  the draft's, unchanged. V10 was checked free on `main`, `origin/main` and both
+  recommendation branches, with no open PR adding a migration. The draft's
+  acclaimed source, interleaving and TMDB client changes stay in `stash@{0}` for
+  #39; the stash was read with `git show`, not popped.
+- **The exclusion #39 reuses.** `RecommendationDismissals.dismissedMovieIds(user)`
+  is the single exclusion. The read excludes dismissed rows and the recomputation
+  skips them before OMDb enrichment and ranking. #39's acclaimed source calls the
+  same method. Dismissed titles do not add `LIBRARY_EXCLUDED`: they are not in the
+  library.
+- **Idempotent dismissal (RM04).** The draft checked for an existing row and then
+  inserted it, so two concurrent requests both passed the check and the second
+  returned 500 from the unique constraint. The insert now runs in its own
+  transaction and a constraint violation counts as "already dismissed" (the
+  `OmdbRequestBudget` pattern). Undo is a delete and is idempotent too.
+- **Owner only.** The user comes from the token, never from the path, so a caller
+  can dismiss or undo only their own titles. Personal recommendations are
+  movie-only; `media_type` is always `MOVIE` (the issue names the column). Any
+  positive id is accepted, recommended or not: dismissing an unrecommended title
+  only keeps it out of later recommendations.
+- **Undo after a recomputation (RM03, review round 1).** A recomputation skips
+  dismissed titles, so one that runs between a dismissal and its Undo drops the
+  stored row. An Undo that removes a dismissal whose title is no longer stored
+  marks the user for recomputation, so the title returns on the next read. Its
+  position then comes from the new ranking, so other titles may shift: "previous
+  position" holds only while the stored rows are unchanged. The decision lives in
+  `PersonalizedRecommendationService.undoDismissal`; `RecommendationDismissals`
+  only stores and removes dismissals.
+- **Replacement (RM02).** No recompute: 30 rows stay stored and the read excludes
+  dismissed ones. The Home row shows the first 20, so it keeps 20 while at least
+  20 stored titles remain. View all shows every stored title, so it shrinks by one.
+- **Double tap in the UI (RM04).** The next card slides under the pointer, so a
+  second tap would dismiss it. A per-card check does not help, because that card
+  has a different id. A second tap on the same slot (list and index) within
+  600 ms of a dismissal is ignored (`acceptDismissalTap`, through
+  `dismissFromList`); a quick dismissal of another card goes through.
+- **Control placement.** Row cards overlap their right-hand neighbour by 34 px, so
+  a top-right ✕ sat under the next card (a double click opened that card). The ✕
+  is at the top left of row and grid cards. Personal recommendations exclude
+  library titles, so it never covers the "In library" tag. The 44 px button holds
+  a 28 px disc. It is always visible on touch screens; with a hover-capable
+  pointer it appears on card hover or focus.
+- **Markup.** A button cannot sit inside a link, so a dismissable row card is a
+  wrapper `div.shelf-card` around the link and the ✕. The shelf CSS also matches
+  `.shelf-card:has(:focus-visible)` for the lift and overlay. Rows without
+  `onDismiss` render exactly as before.
+- **Undo toast and keyboard (RM05).** The existing `Toast` gained two options. A
+  keyboard dismissal (`detail === 0`) moves focus to Undo, and the toast stays
+  open while it holds focus (it would otherwise close in 5 s). This deliberately
+  departs from the issue's "Undo for ~5 s": a keyboard user's Undo toast stays
+  until they act, press Escape or move focus away (WCAG 2.2.1, timing
+  adjustable). When it closes with
+  focus inside (Undo, Escape or ✕), focus returns to the list: to the restored
+  card's ✕ after Undo, otherwise to the ✕ of the card now in that place. Mouse and
+  touch dismissals leave focus alone. Undo's touch target is 44 px through an
+  `::after` box, so the toast looks the same. The provider re-created
+  `onDismiss` on every render, which restarted each toast's timer whenever another
+  toast appeared; the timer now uses a ref.
+- **Undo after the request.** Undo waits for the dismissal request, so a fast
+  Undo cannot reach the server first and leave the title dismissed. A failed
+  dismissal closes the Undo toast (`toast()` returns a close handle) and brings
+  the card back with an error toast; a failed undo removes the card again with an
+  error toast.
+- **Shared state in the tab.** `recommendationDismissals.ts` keeps the dismissed
+  ids per user for every mounted list, so the Home row and View all agree while a
+  request is in flight.
+
 ## Out of scope
 
 - #37: nothing beyond the committed change.
 - #38: the acclaimed source (#39) and dismissals (#40). Their draft (the
   `discoverAcclaimedMovies` call, interleaving, `RecommendationDismissal`, V10
   migration and endpoints) stays in `stash@{0}`, not in this change set.
+- #40: the acclaimed source (#39). A page listing dismissed titles, or undoing a
+  dismissal after the toast has gone, is not part of #40.
 
 ## Validation
 
@@ -182,3 +256,83 @@ Review round 2 (`code-review`, fixes 2026-11-18):
 Limitations: synthetic tests only. The live TMDB credits endpoints are covered by
 a local stub, not a real request. Up to 40 credits requests plus 3 filmography
 requests per recomputation, with no caching.
+
+### #40 (2026-11-18, `f15512e` + uncommitted changes)
+
+| Acceptance ID | Result | Check / evidence |
+| --- | --- | --- |
+| RM01 | Passed | `PersonalRecommendationsPersistenceTest.rm01_dismissedTitleStaysGoneAfterReloadAndRecompute` (real H2 persistence through the API): gone after a read and after a forced recompute. Browser: gone after reloading the Home row and View all |
+| RM02 | Passed | `rm02_nextStoredTitleTakesTheFreedPlaceWithoutARecompute`: 30 stored, one dismissed, the stored 21st becomes 20th and a candidate added afterwards does not appear (no recompute). Browser: the Home row keeps 20 cards with Pick 21 sliding in. Mutation: removing the read exclusion fails the test |
+| RM03 | Passed | `rm03_undoRestoresTheTitleToItsPosition` (also after a recompute; a repeated undo is harmless) and `rm03_undoAfterARecomputeBringsTheTitleBackOnTheNextRead` (a recompute between dismissal and Undo). Browser: Undo restores the card at its index on the row and in View all, by mouse, touch and keyboard; the DELETE is sent after the POST |
+| RM04 | Passed | `rm04_doubleTapCreatesOneDismissal`: two sequential and four concurrent requests all return 204 with one stored row. Mutation: rethrowing the constraint violation fails it in 3 of 3 runs. Browser: a double click sends one request and removes one title |
+| RM05 | Passed (fixtures) | `tests/browser/recommendation-dismissal.cjs` at 1440 px and 390 px (touch): 44 px targets for ✕ and Undo, visible without hover on the phone, hover/focus reveal on the desktop, the toast inside the phone viewport, Tab order card → ✕, Enter/Space dismiss, focus to Undo, toast held past 5 s while focused, focus return after Undo and Escape. Not run on a physical phone or with a screen reader |
+
+Owner-only access: `onlyTheOwnerCanDismissOrUndoTheirTitles` (unauthenticated
+403; another account's undo leaves the owner's dismissal). `invalidTitleIdsAreRejected`
+(id 0 → 400).
+
+Commands:
+- `repo/MovieNightBackend`: `./mvnw test -Dtest='PersonalRecommendationsPersistenceTest,PersonalizedRecommendationServiceTest,SuggestionControllerTest'`
+  and `./mvnw test` (317 tests, 0 failures, 2 skipped live provider smoke tests).
+- `repo/MovieNightFrontend`: `npx tsc --noEmit -p .`, `npm test` (7/7), `npm run build`.
+- Browser (Vite dev server on 8443, `MOVIENIGHT_PLAYWRIGHT_MODULE` set):
+  `node tests/browser/recommendation-dismissal.cjs` (all 5 scenarios passed).
+  Regression: `rows-and-grids.cjs`, `row-workflow-empty-states.cjs` and
+  `explore-highlights.cjs` passed. `issue-2-compact-explore.cjs` times out at
+  sign-up ("Create Account"); it fails the same way on a clean `f15512e`, so it
+  predates #40.
+
+Limitations:
+- The V10 migration was not run against Postgres; tests use H2 with the schema
+  generated from the entity. The entity matches the migration column for column.
+- A full page load in the ~300 ms between Undo and its request finishing cancels
+  the undo (in-app navigation does not). A list fetched while a dismissal is
+  pending, then undone, lacks the title until its next load.
+- After an Undo that follows a recomputation, the next read recomputes
+  synchronously (the provider requests of a normal refresh).
+- Dismissing the last title on View all unmounts the grid, so focus falls back to
+  the page.
+- A non-numeric id in the path returns 500. `GlobalExceptionHandler` maps any
+  unmatched route to 500; this predates #40 and is not changed here.
+
+Review round 1 (`code-review`, uncommitted changes against `f15512e`):
+- **Spec:** Undo after an intervening recomputation did not restore the title →
+  fixed (decision above, new test). Accepted as recorded decisions: View all
+  shrinks by one per dismissal (only the Home row keeps its length); the
+  per-tab double-tap block; any positive id may be dismissed; the `Toast`
+  changes apply to every toast. The `Toast` timer fix is an unrelated bug fix,
+  included because the Undo toast depends on it: the provider re-created
+  `onDismiss` on every render, restarting open toasts' timers.
+- **Standards:** the frontend named dismissals "hidden", a term the new glossary
+  entry avoids → renamed (`dismissedRecommendations`,
+  `setRecommendationDismissed`, `useDismissedRecommendations`,
+  `acceptDismissalTap`). `ShelfPoster` repeated the whole link for the
+  dismissable card → one link, wrapped only when dismissable, with a shared
+  `CARD_CLASS`. The two dismissal API calls share `sendDismissal`.
+  `DOUBLE_TAP_MS` is no longer exported. The RM04 test imports its concurrency
+  and assertion types.
+- **Kept:** `media_type` in the table (the issue specifies it); `"MOVIE"` as a
+  string (the existing repositories' convention).
+
+Review round 2 (`code-review`, uncommitted changes against `f15512e`, 2026-11-18):
+- **Spec:** the double-tap block applied across every card and list, so a quick
+  dismissal of a different card was silently ignored → now scoped to the same
+  slot of the same list (browser check added). A failed dismissal left a dead
+  Undo toast open → it closes (browser check added). The Undo toast held open
+  while focused is kept and recorded as a deliberate deviation. Undo after a
+  recomputation may shift positions → recorded above.
+- **Standards:** `RecommendationDismissals.undo` set the user's refresh flag
+  (Feature Envy) → moved to `PersonalizedRecommendationService.undoDismissal`;
+  `undo` now only deletes and reports whether it did. `findTmdbIds` →
+  `findTmdbIdsByUserIdAndMediaType`. `MovieGrid` and `PosterShelf` built the same
+  dismiss callback → shared `dismissFromList`. Comments say "excludes", not
+  "hides". The module-wide `lastDismissAt` is gone.
+- **Checks after round 2:** `./mvnw test` (317 tests, 0 failures, 2 skipped);
+  `npx tsc --noEmit -p .`, `npm test`, `npm run build`;
+  `node tests/browser/recommendation-dismissal.cjs` (all 5 scenarios passed).
+  Mutation: restoring the block across every card fails the new "another card"
+  check.
+- **Kept:** `"MOVIE"` as a string; the copied `loadChromium` helper (the existing
+  browser scripts' pattern); `(userId, tmdbId)` arguments; the branch name. The
+  `Toast` changes stay in this change set and are listed separately at the review
+  checkpoint.

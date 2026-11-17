@@ -25,6 +25,7 @@ public class PersonalizedRecommendationService {
     private final CachedMovieListRepository cachedMovieListRepository;
     private final RecommendationMaintenanceService recommendationMaintenanceService;
     private final RecommendationRatingEnricher ratingEnricher;
+    private final RecommendationDismissals dismissals;
 
     /** A candidate that cleared the quality floor, scored as relevance × quality factor. */
     private record QualifiedCandidate(long tmdbId, double score, Double audience, Integer audienceVotes) {}
@@ -48,6 +49,18 @@ public class PersonalizedRecommendationService {
             .map(e -> e.getMovie().getTmdbId()).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
+    /**
+     * Undo of "Not interested" (#40). The title returns to its stored place. If a recomputation dropped it
+     * meanwhile, the user is marked for one, so it returns on the next read (RM03).
+     */
+    @Transactional
+    public void undoDismissal(User user, long tmdbId) {
+        if (!dismissals.undo(user, tmdbId)) return;
+        if (personalizedRecommendationRepository.existsByUserIdAndMediaTypeAndTmdbId(user.getId(), "MOVIE", tmdbId)) return;
+        user.setNeedsRecommendationRefresh(true);
+        userRepository.save(user);
+    }
+
     @Transactional
     public SuggestionCategoryResponse movieCategory(User user) {
         if (recommendationMaintenanceService != null) {
@@ -59,7 +72,9 @@ public class PersonalizedRecommendationService {
                 || previous.stream().anyMatch(row -> row.getReason() == null)) {
             recomputeRecommendationsForUser(user);
         }
+        // Dismissed titles are left out, so the next stored recommendation takes the freed place (#40 RM02).
         Set<Long> excluded = libraryIds(entries(user));
+        excluded.addAll(dismissals.dismissedMovieIds(user));
         List<SuggestionMovieItem> movies = personalizedRecommendationRepository
             .findByUserIdAndMediaTypeOrderByRankOrderAsc(user.getId(), "MOVIE").stream()
             .filter(r -> !excluded.contains(r.getTmdbId()))
@@ -155,6 +170,7 @@ public class PersonalizedRecommendationService {
             .filter(e -> e.getValue() > 0 && Double.isFinite(e.getValue()))
             .sorted(Map.Entry.<Long, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey())).toList();
         Set<Long> excluded = libraryIds(entries);
+        Set<Long> dismissed = dismissals.dismissedMovieIds(user);
         Map<Long, String> watchedTitles = entries.stream()
                 .filter(LikedFilmPolicy::watchedMovie)
                 .collect(Collectors.toMap(e -> e.getMovie().getTmdbId(), e -> e.getMovie().getTitle(), (a, b) -> a));
@@ -163,7 +179,7 @@ public class PersonalizedRecommendationService {
         // Bounded OMDb enrichment of the most relevant candidates not already known to miss the floor (PD-08).
         // It runs before the catalog is read, so this ranking sees the scores it stored.
         ratingEnricher.enrich(ranked.stream().map(Map.Entry::getKey)
-                .filter(id -> !excluded.contains(id) && !knownBelowFloor(cache.get(id), summaries.get(id))).toList());
+                .filter(id -> !excluded.contains(id) && !dismissed.contains(id) && !knownBelowFloor(cache.get(id), summaries.get(id))).toList());
         // Every source is explicitly movie-only before resolving metadata.
         Map<Long, Movie> catalog = movieRepository.findAll().stream().filter(LikedFilmPolicy::isMovie)
             .filter(m -> m.getTmdbId() != null && validTitle(m.getTitle()))
@@ -174,6 +190,7 @@ public class PersonalizedRecommendationService {
         for (Map.Entry<Long, Double> candidate : ranked) {
             long id = candidate.getKey();
             if (excluded.contains(id)) { limitations.add("LIBRARY_EXCLUDED"); continue; }
+            if (dismissed.contains(id)) continue;
             outsideLibrary = true;
             Movie movie = catalog.get(id);
             CachedMovieList cached = cache.get(id);

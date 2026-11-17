@@ -43,6 +43,12 @@ or with no personal rating (counted as 7.0). Personal recommendation sources
 use it as the signal of taste (#38). Defined in `LikedFilmPolicy`.
 _Avoid_: Favourite; highly rated title (a provider's audience rating).
 
+**Dismissed title**:
+A movie the user removed from their personal recommendations ("Not interested").
+Every personal recommendation source excludes it until the user undoes the
+dismissal (#40). Defined in `RecommendationDismissals`.
+_Avoid_: Hidden title, blocked title; a library exclusion (watchlist or watched).
+
 **Audience rating**:
 An aggregate of viewers' opinions reported by a named external provider on its
 stated scale, distinct from a person's MovieNight personal rating.

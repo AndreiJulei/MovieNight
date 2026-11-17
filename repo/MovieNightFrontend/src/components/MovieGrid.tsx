@@ -8,6 +8,8 @@ import { ratingEvidence, formatExploreMetadata } from "./ratingEvidence";
 import { ExplorePosterOverlay } from "./ExplorePosterOverlay";
 import { POSTER_GRID_CLASS } from "./layout";
 import { openTitleWithTransition, POSTER_ID_ATTRIBUTE, titlePrefetchHandlers } from "./posterTransition";
+import NotInterestedButton, { dismissFromList } from "./NotInterestedButton";
+import type { DismissRecommendation } from "../hooks/recommendationDismissals";
 
 export function Poster({ movie }: { movie: Movie }) {
   if (movie.posterUrl) {
@@ -147,6 +149,7 @@ export default function MovieGrid({
   compact = false,
   explorePresentation = false,
   captionFor,
+  onDismiss,
 }: {
   movies: Movie[];
   empty?: string;
@@ -157,8 +160,11 @@ export default function MovieGrid({
   compact?: boolean;
   explorePresentation?: boolean;
   captionFor?: (movie: Movie) => string;
+  /** Personal recommendations (#40): each card gets a "Not interested" control. */
+  onDismiss?: DismissRecommendation;
 }) {
   const store = useStore();
+  const gridRef = useRef<HTMLDivElement>(null);
   if (movies.length === 0) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center px-6 text-center">
@@ -177,9 +183,9 @@ export default function MovieGrid({
     : POSTER_GRID_CLASS;
 
   return (
-    <div data-poster-grid className={gridClasses}>
-      {movies.map((m) => (
-        <div key={m.id} className="relative">
+    <div ref={gridRef} data-poster-grid className={gridClasses} tabIndex={onDismiss ? -1 : undefined}>
+      {movies.map((m, index) => (
+        <div key={m.id} className="group/card relative">
           <MovieCard
             movie={m}
             referrerOverride={referrerOverride}
@@ -202,6 +208,13 @@ export default function MovieGrid({
             >
               {store.isWatchlistSaving(m.id) ? "…" : "+"}
             </button>
+          )}
+          {onDismiss && (
+            <NotInterestedButton
+              title={m.title}
+              className="-left-1.5 -top-1.5"
+              onActivate={(keyboard) => dismissFromList(onDismiss, m, gridRef, index, keyboard)}
+            />
           )}
         </div>
       ))}

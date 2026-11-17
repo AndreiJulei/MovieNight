@@ -206,6 +206,14 @@ function confirmedWatchedEntry(entry: ApiUserMovieEntryResponse, rating: number 
   return entry;
 }
 
+/** POST dismisses, DELETE undoes (#40); both answer 204 with no body. */
+async function sendDismissal(method: "POST" | "DELETE", tmdbId: number, failure: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/suggestions/personal/dismissals/${encodeURIComponent(tmdbId)}`, {
+    method, headers: getAuthHeaders(), signal: AbortSignal.timeout(15000),
+  }).catch(() => null);
+  if (!res?.ok) throw new Error(failure);
+}
+
 export const moviesApi = {
   /**
    * Live movie search (searches local database first, then TMDB).
@@ -541,6 +549,16 @@ export const moviesApi = {
     } catch {
       throw new Error("Could not refresh personal movies. Retry to try again.");
     }
+  },
+
+  /** "Not interested" (#40): permanently removes a movie from personal recommendations. Idempotent. */
+  dismissPersonalRecommendation(tmdbId: number): Promise<void> {
+    return sendDismissal("POST", tmdbId, "Could not remove the title. Try again.");
+  },
+
+  /** Undo of {@link moviesApi.dismissPersonalRecommendation}. Idempotent. */
+  undoPersonalRecommendationDismissal(tmdbId: number): Promise<void> {
+    return sendDismissal("DELETE", tmdbId, "Could not restore the title. Try again.");
   },
 
   /**

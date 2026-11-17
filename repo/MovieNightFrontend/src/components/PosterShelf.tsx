@@ -14,6 +14,8 @@ import { useStore } from "../store/MovieStore"
 import { usePosterTransition } from "./PosterTransitionContext"
 import { openTitleWithTransition, POSTER_ID_ATTRIBUTE, titlePrefetchHandlers } from "./posterTransition"
 import ShelfEmptyCard from "./ShelfEmptyCard"
+import NotInterestedButton, { dismissFromList } from "./NotInterestedButton"
+import type { DismissRecommendation } from "../hooks/recommendationDismissals"
 import { SHELF_TRACK_CLASS } from "./layout"
 
 interface PosterShelfProps {
@@ -29,6 +31,8 @@ interface PosterShelfProps {
   ranked?: boolean
   /** Marks titles already in the user's library with a small "In library" tag. */
   isInLibrary?: (movie: Movie) => boolean
+  /** Personal recommendations (#40): each card gets a "Not interested" control. */
+  onDismiss?: DismissRecommendation
 }
 
 export default function PosterShelf({
@@ -39,6 +43,7 @@ export default function PosterShelf({
   emptyCta,
   ranked = false,
   isInLibrary,
+  onDismiss,
 }: PosterShelfProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
@@ -105,7 +110,8 @@ export default function PosterShelf({
           margin-left: -34px;
         }
         .shelf-card:hover,
-        .shelf-card:focus-visible {
+        .shelf-card:focus-visible,
+        .shelf-card:has(:focus-visible) {
           transform: scale(1.05);
           z-index: 50;
           box-shadow: 0 8px 18px rgba(0, 0, 0, 0.9);
@@ -126,13 +132,16 @@ export default function PosterShelf({
           .shelf-rank { font-size: 152px; -webkit-text-stroke-width: 3px; }
         }
         .shelf-card:hover .shelf-poster-overlay,
-        .shelf-card:focus-visible .shelf-poster-overlay {
+        .shelf-card:focus-visible .shelf-poster-overlay,
+        .shelf-card:has(> a:focus-visible) .shelf-poster-overlay {
           opacity: 1 !important;
         }
         .shelf-card:hover + .shelf-card,
         .shelf-card:focus-visible + .shelf-card,
+        .shelf-card:has(:focus-visible) + .shelf-card,
         .shelf-card:has(+ .shelf-card:hover),
-        .shelf-card:has(+ .shelf-card:focus-visible) {
+        .shelf-card:has(+ .shelf-card:focus-visible),
+        .shelf-card:has(+ .shelf-card :focus-visible) {
           transform: scale(1.025);
           z-index: 40;
           box-shadow: 0 6px 14px rgba(0, 0, 0, 0.8);
@@ -140,8 +149,10 @@ export default function PosterShelf({
         }
         .shelf-card:hover + .shelf-card + .shelf-card,
         .shelf-card:focus-visible + .shelf-card + .shelf-card,
+        .shelf-card:has(:focus-visible) + .shelf-card + .shelf-card,
         .shelf-card:has(+ .shelf-card + .shelf-card:hover),
-        .shelf-card:has(+ .shelf-card + .shelf-card:focus-visible) {
+        .shelf-card:has(+ .shelf-card + .shelf-card:focus-visible),
+        .shelf-card:has(+ .shelf-card + .shelf-card :focus-visible) {
           transform: scale(1.01);
           z-index: 30;
           box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
@@ -167,6 +178,8 @@ export default function PosterShelf({
       <div
         ref={scrollRef}
         onScroll={updateArrows}
+        // Focus target when the last dismissable card leaves the row.
+        tabIndex={onDismiss ? -1 : undefined}
         className={`shelf-track flex items-center overflow-x-auto ${SHELF_TRACK_CLASS} ${
           ranked ? "gap-3 sm:gap-5" : ""
         }`}
@@ -199,6 +212,7 @@ export default function PosterShelf({
               movie={movie}
               referrer={referrer}
               inLibrary={isInLibrary?.(movie) ?? false}
+              onDismiss={onDismiss && ((keyboard) => dismissFromList(onDismiss, movie, scrollRef, index, keyboard))}
             />
           ),
         )}
@@ -222,16 +236,22 @@ export default function PosterShelf({
   )
 }
 
+/** The card box, on the link itself or, for a dismissable card, on the wrapper around it. */
+const CARD_CLASS =
+  "shelf-card group/poster relative shrink-0 h-[270px] w-[180px] sm:h-[312px] sm:w-[208px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md select-none"
+
 function ShelfPoster({
   movie,
   referrer,
   rank,
   inLibrary = false,
+  onDismiss,
 }: {
   movie: Movie
   referrer?: string
   rank?: number
   inLibrary?: boolean
+  onDismiss?: (keyboard: boolean) => void
 }) {
   const ratingId = useId()
   const posterRef = useRef<HTMLAnchorElement>(null)
@@ -283,21 +303,8 @@ function ShelfPoster({
   }`
   const metadata = formatExploreMetadata(movie)
 
-  return (
-    <a
-      ref={posterRef}
-      href={targetUrl}
-      onClick={handleClick}
-      {...prefetch}
-      {...{ [POSTER_ID_ATTRIBUTE]: movie.id }}
-      title={movie.title}
-      aria-label={`${rank ? `${rank}. ` : ""}${movie.title}${
-        inLibrary ? " (in your library)" : ""
-      }`}
-      aria-describedby={metadata ? ratingId : undefined}
-      data-shelf-item
-      className="shelf-card group/poster relative shrink-0 h-[270px] w-[180px] sm:h-[312px] sm:w-[208px] overflow-hidden rounded-xl border border-white/[0.12] bg-surface shadow-md cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 select-none"
-    >
+  const contents = (
+    <>
       {/* Poster image */}
       {movie.posterUrl ? (
         <img
@@ -330,6 +337,36 @@ function ShelfPoster({
         ratingId={ratingId}
         className="shelf-poster-overlay"
       />
+    </>
+  )
+
+  const link = (
+    <a
+      ref={posterRef}
+      href={targetUrl}
+      onClick={handleClick}
+      {...prefetch}
+      {...{ [POSTER_ID_ATTRIBUTE]: movie.id }}
+      title={movie.title}
+      aria-label={`${rank ? `${rank}. ` : ""}${movie.title}${
+        inLibrary ? " (in your library)" : ""
+      }`}
+      aria-describedby={metadata ? ratingId : undefined}
+      data-shelf-item
+      className={onDismiss ? "block h-full w-full cursor-pointer outline-none" : `${CARD_CLASS} cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2`}
+    >
+      {contents}
     </a>
+  )
+  if (!onDismiss) return link
+
+  // A button cannot sit inside a link: the card becomes a wrapper holding both (#40).
+  return (
+    <div className={`${CARD_CLASS} group/card has-[>a:focus-visible]:outline-2 has-[>a:focus-visible]:outline-accent has-[>a:focus-visible]:outline-offset-2`}>
+      {link}
+      {/* Top left: the next card overlaps this card's right edge (-34 px), so a right-hand control
+          would sit under it. Personal recommendations exclude library titles, so no "In library" tag. */}
+      <NotInterestedButton title={movie.title} onActivate={onDismiss} className="left-0 top-0" />
+    </div>
   )
 }
