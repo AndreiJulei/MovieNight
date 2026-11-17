@@ -137,9 +137,11 @@ the release goal includes deployment. Anime films remain deferred.
 ### Personal recommendation quality (2026-11-13)
 
 - Candidates need a TMDB audience rating of at least 6.5 from at least 300 votes.
-- Ranking is relevance weighted by quality. IMDb ≥ 7.0 and Rotten Tomatoes critic
-  approval ≥ 70% each add a bounded boost; IMDb < 6.5 or approval < 60% each apply
-  a smaller bounded penalty. Missing IMDb/RT data is neutral.
+- Ranking is relevance weighted by quality. IMDb and Rotten Tomatoes critic
+  approval each scale the score continuously and within fixed bounds, so a
+  clearly acclaimed title ranks well above a merely good one. Missing IMDb/RT
+  data is neutral. The formulas and bounds live in #37, which supersedes the
+  fixed #24 steps.
 - Recomputation may enrich at most 30 uncached top candidates per run through
   OMDb, within 300 requests per day, preserving the remaining daily quota for
   title pages (#24).
