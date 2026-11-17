@@ -52,6 +52,12 @@ export function rankProgressLabel(toNextRank: number, nextRankLabel: string | nu
   return `${toNextRank} more to ${nextRankLabel}`
 }
 
+/** Each rank milestone is a level; the top rank has no further level to work toward. */
+export function levelProgressLabel(level: number, xpIntoLevel: number, xpPerLevel: number): string {
+  if (!(xpPerLevel > 0)) return "Top level reached"
+  return `${xpIntoLevel}/${xpPerLevel} to level ${level + 1}`
+}
+
 export function xpPercent(xpIntoLevel: number, xpPerLevel: number): number {
   if (!(xpPerLevel > 0)) return 0
   return Math.max(0, Math.min(100, Math.round((xpIntoLevel / xpPerLevel) * 100)))

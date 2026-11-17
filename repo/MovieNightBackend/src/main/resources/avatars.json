@@ -1,8 +1,44 @@
 [
   {"id": "clapper", "file": "clapper.svg", "unlockLevel": 1},
-  {"id": "popcorn", "file": "popcorn.svg", "unlockLevel": 2},
-  {"id": "film-camera", "file": "film-camera.svg", "unlockLevel": 3},
-  {"id": "3d-glasses", "file": "3d-glasses.svg", "unlockLevel": 5},
-  {"id": "megaphone", "file": "megaphone.svg", "unlockLevel": 8},
-  {"id": "golden-star", "file": "golden-star.svg", "unlockLevel": 12}
+  {"id": "popcorn", "file": "popcorn.svg", "unlockLevel": 1},
+  {"id": "film-camera", "file": "film-camera.svg", "unlockLevel": 1},
+  {"id": "3d-glasses", "file": "3d-glasses.svg", "unlockLevel": 1},
+  {"id": "megaphone", "file": "megaphone.svg", "unlockLevel": 1},
+  {"id": "golden-star", "file": "golden-star.svg", "unlockLevel": 1},
+
+  {"id": "frodo-shire", "file": "frodo-shire.webp", "unlockLevel": 2},
+  {"id": "frodo-ring", "file": "frodo-ring.webp", "unlockLevel": 2},
+  {"id": "gandalf-grey", "file": "gandalf-grey.webp", "unlockLevel": 2},
+  {"id": "gandalf-white", "file": "gandalf-white.webp", "unlockLevel": 2},
+  {"id": "gollum", "file": "gollum.webp", "unlockLevel": 2},
+
+  {"id": "maverick", "file": "maverick.webp", "unlockLevel": 3},
+  {"id": "john-mcclane", "file": "john-mcclane.webp", "unlockLevel": 3},
+  {"id": "batman", "file": "batman.webp", "unlockLevel": 3},
+  {"id": "tyler-durden", "file": "tyler-durden.webp", "unlockLevel": 3},
+  {"id": "the-narrator", "file": "the-narrator.webp", "unlockLevel": 3},
+
+  {"id": "leon", "file": "leon.webp", "unlockLevel": 4},
+  {"id": "oppenheimer-thinking", "file": "oppenheimer-thinking.webp", "unlockLevel": 4},
+  {"id": "oppenheimer-hat", "file": "oppenheimer-hat.webp", "unlockLevel": 4},
+  {"id": "cooper", "file": "cooper.webp", "unlockLevel": 4},
+  {"id": "travis-bickle", "file": "travis-bickle.webp", "unlockLevel": 4},
+
+  {"id": "anakin-jedi", "file": "anakin-jedi.webp", "unlockLevel": 5},
+  {"id": "anakin-rage", "file": "anakin-rage.webp", "unlockLevel": 5},
+  {"id": "darth-vader", "file": "darth-vader.webp", "unlockLevel": 5},
+  {"id": "neo", "file": "neo.webp", "unlockLevel": 5},
+  {"id": "paul-atreides", "file": "paul-atreides.webp", "unlockLevel": 5},
+
+  {"id": "terminator-t800", "file": "terminator-t800.webp", "unlockLevel": 6},
+  {"id": "terminator-endoskeleton", "file": "terminator-endoskeleton.webp", "unlockLevel": 6},
+  {"id": "xenomorph", "file": "xenomorph.webp", "unlockLevel": 6},
+  {"id": "daniel-plainview", "file": "daniel-plainview.webp", "unlockLevel": 6},
+  {"id": "patrick-bateman", "file": "patrick-bateman.webp", "unlockLevel": 6},
+
+  {"id": "vito-corleone", "file": "vito-corleone.webp", "unlockLevel": 7},
+  {"id": "michael-corleone", "file": "michael-corleone.webp", "unlockLevel": 7},
+  {"id": "joker", "file": "joker.webp", "unlockLevel": 7},
+  {"id": "hannibal-lecter", "file": "hannibal-lecter.webp", "unlockLevel": 7},
+  {"id": "anton-chigurh", "file": "anton-chigurh.webp", "unlockLevel": 7}
 ]

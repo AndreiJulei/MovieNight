@@ -148,11 +148,13 @@ the release goal includes deployment. Anime films remain deferred.
 
 - Progress is derived from the number of distinct titles in the user's watched
   history (movies, TV and anime TV count once each); un-marking a title lowers it.
-- A level is gained every 10 watched titles. Avatars unlock by current level.
 - The user's rank is a named stage of the watched count: Popcorn Rookie (0),
-  Matinee Regular (10), Night Owl (25), Cinephile (50), Veteran (100), Critic
-  (200), Auteur (350), Silver Screen Legend (500). The rank is shown as a badge;
+  The Hobbit (10), The Maverick (25), The Professional (50), The Chosen One
+  (100), The Terminator (200), The Godfather (500). The rank is shown as a badge;
   there are no separate achievement badges.
+- Each rank milestone is a level (Popcorn Rookie is level 1, The Godfather level
+  7). Avatars unlock by level: the starter icons at level 1, film-character
+  avatars at the milestone they belong to (2026-11-17).
 - Owners see their avatar, rank, progress toward the next rank and level progress
   bar. Accepted friends see the avatar, rank badge, username and shared lists,
   but not the progress bar or settings (#32, #33).

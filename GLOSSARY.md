@@ -69,18 +69,19 @@ connection. Sign-out deletes it; changes are never made or queued from it.
 _Avoid_: Offline mode when referring to the saved data; cache.
 
 **Level**:
-A user's progression step, gained for every 10 titles in their watched history.
-Levels unlock avatars.
+A user's progression step: each rank milestone in their watched history is one
+level (level 1 at 0 watched, up to level 7 at 500). Levels unlock avatars.
 _Avoid_: XP when referring to the level itself.
 
 **Rank**:
-The named stage of a user's watched-history count (e.g. Veteran at 100), shown
+The named stage of a user's watched-history count (e.g. The Chosen One at 100), shown
 on the profile as a badge to the user and their friends.
 _Avoid_: Title (a title is a movie or TV series); achievement.
 
 **XP**:
 Progress toward the next level: the watched titles counted since the current
-level began (0–9). Only the owner sees it, as the XP bar on their profile.
+milestone, out of the titles between it and the next one. Only the owner sees it,
+as the XP bar on their profile.
 _Avoid_: Level; points earned by anything other than watched history.
 
 **Avatar**:

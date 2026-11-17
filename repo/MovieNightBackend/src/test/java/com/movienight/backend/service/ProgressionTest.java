@@ -6,44 +6,44 @@ import org.junit.jupiter.params.provider.CsvSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/** LV01: level and rank at each threshold, from the #32 ladder. */
+/** LV01: level and rank at each milestone; every rank milestone is a level. */
 class ProgressionTest {
 
     @ParameterizedTest
     @CsvSource({
-            // watched, level, xpIntoLevel, rank,                 nextRank,              toNextRank
-            "0,   1,  0, Popcorn Rookie,       Matinee Regular,      10",
-            "9,   1,  9, Popcorn Rookie,       Matinee Regular,       1",
-            "10,  2,  0, Matinee Regular,      Night Owl,            15",
-            "24,  3,  4, Matinee Regular,      Night Owl,             1",
-            "25,  3,  5, Night Owl,            Cinephile,            25",
-            "49,  5,  9, Night Owl,            Cinephile,             1",
-            "50,  6,  0, Cinephile,            Veteran,              50",
-            "99, 10,  9, Cinephile,            Veteran,               1",
-            "100, 11, 0, Veteran,              Critic,              100",
-            "199, 20, 9, Veteran,              Critic,                1",
-            "200, 21, 0, Critic,               Auteur,              150",
-            "349, 35, 9, Critic,               Auteur,                1",
-            "350, 36, 0, Auteur,               Silver Screen Legend, 150",
-            "499, 50, 9, Auteur,               Silver Screen Legend,  1",
+            // watched, level, xpIntoLevel, xpPerLevel, rank,           nextRank,         toNextRank
+            "0,   1,   0,  10, Popcorn Rookie,   The Hobbit,        10",
+            "9,   1,   9,  10, Popcorn Rookie,   The Hobbit,         1",
+            "10,  2,   0,  15, The Hobbit,       The Maverick,      15",
+            "24,  2,  14,  15, The Hobbit,       The Maverick,       1",
+            "25,  3,   0,  25, The Maverick,     The Professional,  25",
+            "49,  3,  24,  25, The Maverick,     The Professional,   1",
+            "50,  4,   0,  50, The Professional, The Chosen One,    50",
+            "99,  4,  49,  50, The Professional, The Chosen One,     1",
+            "100, 5,   0, 100, The Chosen One,   The Terminator,   100",
+            "199, 5,  99, 100, The Chosen One,   The Terminator,     1",
+            "200, 6,   0, 300, The Terminator,   The Godfather,    300",
+            "499, 6, 299, 300, The Terminator,   The Godfather,      1",
     })
-    void levelAndRankAtThresholds(long watched, int level, int xp, String rank, String next, long toNext) {
+    void levelAndRankAtMilestones(long watched, int level, int xp, int xpPerLevel, String rank, String next, long toNext) {
         Progression p = Progression.of(watched);
         assertEquals(level, p.level());
         assertEquals(xp, p.xpIntoLevel());
-        assertEquals(10, p.xpPerLevel());
+        assertEquals(xpPerLevel, p.xpPerLevel());
         assertEquals(rank, p.rank().label());
         assertEquals(next, p.nextRank().label());
         assertEquals(toNext, p.toNextRank());
     }
 
     @ParameterizedTest
-    @CsvSource({"500, 51", "1234, 124"})
-    void topRankHasNoNextRank(long watched, int level) {
+    @CsvSource({"500", "1234"})
+    void topRankIsTheLastLevel(long watched) {
         Progression p = Progression.of(watched);
-        assertEquals(level, p.level());
-        assertEquals("Silver Screen Legend", p.rank().label());
+        assertEquals(7, p.level());
+        assertEquals("The Godfather", p.rank().label());
         assertNull(p.nextRank());
         assertEquals(0, p.toNextRank());
+        assertEquals(0, p.xpIntoLevel());
+        assertEquals(0, p.xpPerLevel());
     }
 }

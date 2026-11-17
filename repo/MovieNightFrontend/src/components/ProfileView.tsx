@@ -11,6 +11,7 @@ import {
   rankProgressLabel,
   resolveSelectedTab,
   sharedTabs,
+  levelProgressLabel,
   xpPercent,
   type ProfileSharing,
   type ProfileTab,
@@ -106,7 +107,7 @@ export default function ProfileView({
               <div className="mt-3 w-full max-w-xs">
                 <div className="flex items-baseline justify-between text-xs text-text-muted">
                   <span className="font-semibold text-text-primary">Level {progress.level}</span>
-                  <span className="nums">{progress.xpIntoLevel}/{progress.xpPerLevel} to level {progress.level + 1}</span>
+                  <span className="nums">{levelProgressLabel(progress.level, progress.xpIntoLevel, progress.xpPerLevel)}</span>
                 </div>
                 <div
                   role="progressbar"
