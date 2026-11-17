@@ -25,6 +25,8 @@ import {
   type User,
 } from "./data";
 import { isValidPersonalRating } from "../components/ratingSliderLogic";
+import { buildLibrarySnapshot, OFFLINE_WRITE_MESSAGE, serverGaveNoAnswer, sessionKeyFor } from "../offline/librarySnapshot";
+import { offlineLibrary, useOnline } from "../offline/offlineLibrary";
 
 const AUTH_KEY = "movienight.currentUser";
 
@@ -54,6 +56,12 @@ export type AddMovieInput = {
 
 type SaveResult = { ok: boolean; error?: string; status?: Status };
 type FriendshipResult = SaveResult & { warning?: string };
+
+/** #34: offline, a store write refuses at once and never reaches the server. List writes refuse in `runListWrite`. */
+const OFFLINE_REFUSAL = { ok: false, error: OFFLINE_WRITE_MESSAGE } as const;
+function whileOnline<A extends unknown[], R>(offline: { readonly current: boolean }, write: (...args: A) => Promise<R>) {
+  return (...args: A): Promise<R | typeof OFFLINE_REFUSAL> => (offline.current ? Promise.resolve(OFFLINE_REFUSAL) : write(...args));
+}
 
 type StoreValue = {
   currentUser: User | null;
@@ -123,6 +131,11 @@ type StoreValue = {
   changeUsername: (newUsername: string) => Promise<{ ok: boolean; error?: string }>;
   changeEmail: (newEmail: string, currentPassword: string) => Promise<{ ok: boolean; error?: string }>;
   updateSharing: (sharing: { sharesWatchlist?: boolean; sharesWatched?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+
+  /** Read-only offline library (#34): true without a connection or when showing the snapshot. */
+  isOffline: boolean;
+  /** When the offline snapshot was saved; null before the first save. */
+  offlineSnapshotAt: string | null;
 
   // selectors for suggestions
   allEntries: () => Entry[];
@@ -211,6 +224,16 @@ function purgeStoredExploreSessions() {
   }
 }
 
+function storedUserId(): string | undefined {
+  try {
+    const raw = sessionStorage.getItem("movienight_current_user") || localStorage.getItem("movienight_current_user");
+    const id = raw ? JSON.parse(raw)?.id : undefined;
+    return id == null ? undefined : String(id);
+  } catch {
+    return undefined;
+  }
+}
+
 export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -239,10 +262,52 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const [authRetry, setAuthRetry] = useState(0);
   const retryAuth = useCallback(() => { setAuthHydrated(false); setAuthError(null); setAuthRetry((value) => value + 1); }, []);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // #34: offline state. `restoredFromSnapshot` means the session was not verified this visit and
+  // the library comes from the last online snapshot; it is re-verified once the browser is online.
+  const online = useOnline();
+  const [restoredFromSnapshot, setRestoredFromSnapshot] = useState(false);
+  const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<string | null>(null);
+  const isOffline = !online || restoredFromSnapshot;
+  const offlineRef = useRef(isOffline);
+  offlineRef.current = isOffline;
+  const libraryLoadedFor = useRef<string | undefined>(undefined);
+
+  /** OF03: sign-out and every new sign-in delete the snapshot. */
+  const forgetOfflineSnapshot = useCallback(() => {
+    void offlineLibrary.clear();
+    setOfflineSnapshotAt(null);
+    setRestoredFromSnapshot(false);
+    libraryLoadedFor.current = undefined;
+  }, []);
+
   useEffect(() => {
     let active = true;
-    void authApi.currentProfile().then((profile) => {
+    // Opens the read-only snapshot when the session cannot be verified for lack of a connection.
+    const restoreSnapshot = async (): Promise<boolean> => {
+      const token = authApi.getToken();
+      if (!token) return false;
+      const restored = await offlineLibrary.load(storedUserId(), sessionKeyFor(token));
+      if (!active || !restored) return false;
+      setMovies(restored.movies);
+      setEntries(restored.entries);
+      setCustomLists(restored.lists);
+      setListsLoading(false);
+      setListsError(null);
+      setLibraryLoading(false);
+      setLibraryError(null);
+      setFriendsLoading(false);
+      setOfflineSnapshotAt(restored.savedAt);
+      setRestoredFromSnapshot(true);
+      setCurrentUser(restored.user);
+      return true;
+    };
+    const verify = typeof navigator !== "undefined" && navigator.onLine === false
+      ? Promise.reject(new TypeError("The browser is offline."))
+      : authApi.currentProfile();
+    void verify.then((profile) => {
       if (!active) return;
+      setRestoredFromSnapshot(false);
       if (profile) {
         const previousProfile = sessionStorage.getItem("movienight_current_user") || localStorage.getItem("movienight_current_user");
         try {
@@ -257,14 +322,18 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem("movienight_current_user", JSON.stringify(user));
       } else {
         authApi.logout();
+        forgetOfflineSnapshot();
         sessionStorage.removeItem(AUTH_KEY);
         sessionStorage.removeItem("movienight_current_user");
         localStorage.removeItem("movienight_current_user");
         purgeStoredExploreSessions();
       }
-    }).catch(() => {
+    }).catch(async (err: unknown) => {
       if (!active) return;
-      // A profile that could not be verified must not expose cached private data.
+      // #34: with no answer from the server, a signed-in device keeps its own read-only snapshot;
+      // nothing else is exposed. A server error is an answer and shows the retry screen (ADR 0002).
+      if (serverGaveNoAnswer(err) && await restoreSnapshot()) return;
+      if (!active) return;
       setCurrentUser(null);
       setAuthError("Could not verify your session. Check your connection and retry.");
     }).finally(() => { if (active) setAuthHydrated(true); });
@@ -291,7 +360,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
    */
   const refreshLibrary = useCallback(async () => {
     const token = authApi.getToken();
-    if (!currentUser) return;
+    if (!currentUser || offlineRef.current) return;
     if (!token) {
       setLibraryError("Sign in again to load your library.");
       setLibraryLoading(false);
@@ -324,6 +393,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         ...prev.filter((e) => String(e.userId) !== userId),
         ...loaded.map(({ entry }) => entry),
       ]);
+      libraryLoadedFor.current = userId;
     } catch (err) {
       if (activeUser.current === userId && sequence === refreshSequence.current) {
         setLibraryError(err instanceof Error ? err.message : "Could not load your library. Please try again.");
@@ -356,6 +426,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       if (activeUser.current !== u.id) {
         purgeStoredExploreSessions();
       }
+      forgetOfflineSnapshot();
       authGeneration.current += 1;
       refreshSequence.current += 1;
       activeUser.current = u.id;
@@ -371,7 +442,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("movienight_current_user", JSON.stringify(u));
       return { ok: true };
     },
-    [resetLists],
+    [resetLists, forgetOfflineSnapshot],
   );
 
   const signup = useCallback<StoreValue["signup"]>(
@@ -398,6 +469,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
         if (activeUser.current !== u.id) {
           purgeStoredExploreSessions();
         }
+        forgetOfflineSnapshot();
         authGeneration.current += 1;
         refreshSequence.current += 1;
         activeUser.current = u.id;
@@ -413,11 +485,12 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       }
       return { ok: true };
     },
-    [resetLists],
+    [resetLists, forgetOfflineSnapshot],
   );
 
   const logout = useCallback(() => {
     authApi.logout();
+    forgetOfflineSnapshot();
     authGeneration.current += 1;
     activeUser.current = undefined;
     libraryRevision.current += 1;
@@ -434,7 +507,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem("movienight_current_user");
     localStorage.removeItem("movienight_current_user");
     purgeStoredExploreSessions();
-  }, [resetLists]);
+  }, [resetLists, forgetOfflineSnapshot]);
 
   const checkName = useCallback<StoreValue["checkName"]>(
     async (name) => {
@@ -539,7 +612,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // All watched/rating writes apply only the server-confirmed entry.
-  const saveWatched = useCallback((target: Movie, rating: number | null,
+  const saveWatched = useCallback(whileOnline(offlineRef, (target: Movie, rating: number | null,
     notes?: string, catalogMovieId?: number): Promise<SaveResult> => {
     if (!currentUser || !authApi.getToken()) {
       return Promise.resolve({ ok: false, error: "Sign in to save watched history." });
@@ -587,7 +660,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     })();
     watchedRequests.current.set(key, { signature, promise });
     return promise;
-  }, [currentUser]);
+  }), [currentUser]);
 
   const addMovie = useCallback<StoreValue["addMovie"]>((input) => {
     const movie: Movie = {
@@ -615,7 +688,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, [currentUser, entries, movies, saveWatched]);
 
   const entryMutations = useRef(new Set<string>());
-  const updateDescription = useCallback<StoreValue["updateDescription"]>(async (entryId, description) => {
+  const updateDescription = useCallback<StoreValue["updateDescription"]>(whileOnline(offlineRef, async (entryId, description) => {
     const entry = entries.find(e => e.id === entryId && e.userId === currentUser?.id);
     if (!entry?.catalogMovieId) return { ok: false, error: "Reload the entry before saving notes." };
     if (entryMutations.current.has(entryId)) return { ok: false, error: "An entry save is pending. Retry afterward." };
@@ -629,9 +702,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not save notes. Retry." }; }
     finally { entryMutations.current.delete(entryId); }
-  }, [entries, currentUser]);
+  }), [entries, currentUser]);
 
-  const removeEntry = useCallback<StoreValue["removeEntry"]>(async entryId => {
+  const removeEntry = useCallback<StoreValue["removeEntry"]>(whileOnline(offlineRef, async entryId => {
     const entry = entries.find(e => e.id === entryId && e.userId === currentUser?.id);
     if (!entry?.catalogMovieId) return { ok: false, error: "Reload the entry before removing it." };
     if (entryMutations.current.has(entryId)) return { ok: false, error: "An entry save is pending. Retry afterward." };
@@ -645,9 +718,9 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not remove title. Retry." }; }
     finally { entryMutations.current.delete(entryId); }
-  }, [entries, currentUser]);
+  }), [entries, currentUser]);
 
-  const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(
+  const addToWatchlist = useCallback<StoreValue["addToWatchlist"]>(whileOnline(offlineRef,
     (movieId, movieObj, notes) => {
       if (!currentUser || !authApi.getToken()) {
         return Promise.resolve({ ok: false, error: "Sign in to save to your watchlist." });
@@ -705,7 +778,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       })();
       watchlistRequests.current.set(key, request);
       return request;
-    },
+    }),
     [currentUser, movies],
   );
 
@@ -728,7 +801,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshFriends = useCallback(async () => {
     const userId = currentUser?.id;
-    if (!userId) { setFriendsLoading(false); return false; }
+    if (!userId || offlineRef.current) { setFriendsLoading(false); return false; }
     const generation = authGeneration.current;
     const sequence = ++friendReadSequence.current;
     const active = () => activeUser.current === userId && authGeneration.current === generation && friendReadSequence.current === sequence;
@@ -767,7 +840,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     return () => { friendReadSequence.current += 1; };
   }, [refreshFriends]);
 
-  const writeFriendship = useCallback(async (write: () => Promise<unknown>): Promise<FriendshipResult> => {
+  const writeFriendship = useCallback(whileOnline(offlineRef, async (write: () => Promise<unknown>): Promise<FriendshipResult> => {
     const userId = currentUser?.id;
     if (!userId) return { ok: false, error: "Sign in to manage friends." };
     if (friendWritePending.current) return { ok: false, error: "Wait for the current change to finish." };
@@ -792,7 +865,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       if (active()) { friendWritePending.current = false; setFriendsSaving(false); }
     }
-  }, [currentUser, refreshFriends]);
+  }), [currentUser, refreshFriends]);
 
   const addFriend = useCallback<StoreValue["addFriend"]>((identifier) =>
     writeFriendship(() => friendsApi.addFriend(identifier)), [writeFriendship]);
@@ -801,7 +874,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   const removeFriend = useCallback<StoreValue["removeFriend"]>((id) =>
     writeFriendship(() => friendsApi.removeFriend(id)), [writeFriendship]);
 
-  const changePassword = useCallback<StoreValue["changePassword"]>(
+  const changePassword = useCallback<StoreValue["changePassword"]>(whileOnline(offlineRef,
     async (oldPw, newPw) => {
       if (!currentUser) return { ok: false, error: "Not logged in." };
       if (!oldPw) return { ok: false, error: "Current password is required." };
@@ -815,11 +888,11 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       }
 
       return { ok: true };
-    },
+    }),
     [currentUser],
   );
 
-  const changeDisplayName = useCallback<StoreValue["changeDisplayName"]>(
+  const changeDisplayName = useCallback<StoreValue["changeDisplayName"]>(whileOnline(offlineRef,
     async (newName) => {
       if (!currentUser) return { ok: false, error: "Not logged in." };
       const dn = newName.trim();
@@ -834,7 +907,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
       setCurrentUser(updated);
       return { ok: true };
-    },
+    }),
     [currentUser],
   );
 
@@ -856,30 +929,30 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const changeUsername = useCallback<StoreValue["changeUsername"]>(async (newUsername) => {
+  const changeUsername = useCallback<StoreValue["changeUsername"]>(whileOnline(offlineRef, async (newUsername) => {
     if (!currentUser) return { ok: false, error: "Not logged in." };
     const res = await authApi.changeUsername(newUsername.trim());
     if (!res.ok) return { ok: false, error: res.error };
     applyConfirmedUser(res.value);
     return { ok: true };
-  }, [currentUser, applyConfirmedUser]);
+  }), [currentUser, applyConfirmedUser]);
 
-  const changeEmail = useCallback<StoreValue["changeEmail"]>(async (newEmail, currentPassword) => {
+  const changeEmail = useCallback<StoreValue["changeEmail"]>(whileOnline(offlineRef, async (newEmail, currentPassword) => {
     if (!currentUser) return { ok: false, error: "Not logged in." };
     if (!currentPassword) return { ok: false, error: "Enter your current password to change your email." };
     const res = await authApi.changeEmail(newEmail.trim(), currentPassword);
     if (!res.ok) return { ok: false, error: res.error };
     applyConfirmedUser(res.value);
     return { ok: true };
-  }, [currentUser, applyConfirmedUser]);
+  }), [currentUser, applyConfirmedUser]);
 
-  const updateSharing = useCallback<StoreValue["updateSharing"]>(async (sharing) => {
+  const updateSharing = useCallback<StoreValue["updateSharing"]>(whileOnline(offlineRef, async (sharing) => {
     if (!currentUser) return { ok: false, error: "Not logged in." };
     const res = await authApi.updateSharing(sharing);
     if (!res.ok) return { ok: false, error: res.error };
     applyConfirmedUser(res.value);
     return { ok: true };
-  }, [currentUser, applyConfirmedUser]);
+  }), [currentUser, applyConfirmedUser]);
 
   const allEntries = useCallback(() => entries, [entries]);
 
@@ -909,7 +982,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshLists = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUser || offlineRef.current) return;
     const userId = currentUser.id;
     const generation = authGeneration.current;
     const sequence = ++listReadSequence.current;
@@ -947,6 +1020,7 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
   }, [currentUser, refreshLists]);
 
   const runListWrite = useCallback(async (operation: (assertActive: () => void) => Promise<ApiCustomListResponse | void>, deletedId?: string) => {
+    if (offlineRef.current) throw new Error(OFFLINE_WRITE_MESSAGE);
     if (!currentUser) throw new Error("Sign in to change your lists.");
     if (listWritePending.current) throw new Error("A list change is still saving. Please wait.");
     const userId = currentUser.id;
@@ -1021,6 +1095,50 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
     [customLists]
   );
 
+  // #34: after each successful library load (and each confirmed change), save the offline
+  // snapshot. Lists must have loaded too, so a list failure never empties the saved lists.
+  const libraryReady = Boolean(currentUser) && !isOffline && !libraryLoading && !libraryError
+    && !listsLoading && !listsError && libraryLoadedFor.current === currentUser?.id;
+  useEffect(() => {
+    if (!libraryReady || !currentUser) return;
+    const generation = offlineLibrary.generation();
+    const timer = window.setTimeout(() => {
+      // Another tab may have signed out meanwhile; never save without a sign-in.
+      const token = authApi.getToken();
+      if (!token) return;
+      const savedAt = new Date().toISOString();
+      void offlineLibrary.save(buildLibrarySnapshot({
+        user: currentUser, movies, entries, lists: customLists, savedAt, sessionKey: sessionKeyFor(token),
+      }), { generation });
+      setOfflineSnapshotAt(savedAt);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [libraryReady, currentUser, movies, entries, customLists]);
+
+  // Going offline: the next snapshot waits for a fresh online load.
+  // Back online with a verified session: reload what offline mode skipped.
+  const wasOffline = useRef(isOffline);
+  useEffect(() => {
+    const changed = wasOffline.current !== isOffline;
+    wasOffline.current = isOffline;
+    if (!changed) return;
+    if (isOffline) { libraryLoadedFor.current = undefined; return; }
+    if (currentUser) { void refreshLibrary(); void refreshLists(); void refreshFriends(); }
+  }, [isOffline, currentUser, refreshLibrary, refreshLists, refreshFriends]);
+
+  // A snapshot session re-verifies as soon as the browser is online, then every 30s: the server
+  // may have been unreachable rather than the network. Any answer, an error included, re-runs the
+  // full session check, which leaves snapshot mode (ADR 0002).
+  useEffect(() => {
+    if (!restoredFromSnapshot || !online) return;
+    let cancelled = false;
+    const answered = () => { if (!cancelled) retryAuth(); };
+    const check = () => authApi.currentProfile().then(answered, (err: unknown) => { if (!serverGaveNoAnswer(err)) answered(); });
+    void check();
+    const timer = window.setInterval(check, 30_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [restoredFromSnapshot, online, retryAuth]);
+
   const value = useMemo<StoreValue>(
     () => ({
       currentUser,
@@ -1070,6 +1188,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       changeUsername,
       changeEmail,
       updateSharing,
+      isOffline,
+      offlineSnapshotAt,
       allEntries,
       refreshLibrary,
       upsertMovie,
@@ -1122,6 +1242,8 @@ export function MovieStoreProvider({ children }: { children: ReactNode }) {
       changeUsername,
       changeEmail,
       updateSharing,
+      isOffline,
+      offlineSnapshotAt,
       allEntries,
       refreshLibrary,
       upsertMovie,

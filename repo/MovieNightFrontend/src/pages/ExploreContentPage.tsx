@@ -2,6 +2,7 @@ import useWatchlistSave from "../hooks/useWatchlistSave"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, matchPath, useRouter, useQuery } from "../router"
 import AppShell from "../components/AppShell"
+import BackLink from "../components/BackLink"
 import PosterShelf from "../components/PosterShelf"
 import MovieGrid from "../components/MovieGrid"
 import ShelfReloadButton from "../components/ShelfReloadButton"
@@ -140,12 +141,7 @@ function ExploreCategoryGridView({
       )}
 
       <div className="mb-4">
-        <Link
-          to={`/explore/${type}`}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
-        >
-          ← Back to {configTitle}
-        </Link>
+        <BackLink fallback={`/explore/${type}`} label={`Back to ${configTitle}`} />
       </div>
 
       <div className="mb-6">

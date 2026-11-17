@@ -1,7 +1,8 @@
 import useWatchlistSave from "../hooks/useWatchlistSave"
 import { useEffect, useMemo, useState } from "react"
-import { Link, matchPath, useRouter } from "../router"
+import { matchPath, useRouter } from "../router"
 import AppShell from "../components/AppShell"
+import BackLink from "../components/BackLink"
 import MovieGrid from "../components/MovieGrid"
 import usePersonalRecommendations, {
   mapPersonalMovie,
@@ -77,12 +78,7 @@ export default function SuggestionCategoryPage() {
   return (
     <AppShell width="wide">
       <div className="mb-4">
-        <Link
-          to="/suggestions"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
-        >
-          ← Back to Personal Recommendations
-        </Link>
+        <BackLink fallback="/suggestions" label="Back to Personal Recommendations" />
       </div>
 
       <div className="mb-4">

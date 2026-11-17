@@ -245,14 +245,14 @@ const ROW_PAGES = [
 ]
 const POSTER_ROW_PAGES = ROW_PAGES.filter((p) => p.posters)
 
-/** Content is centred and capped at 1680px; the gutter is the minimum side margin. */
-const MAX_CONTENT = 1680
+/** Content is centred and capped at 1560px; the gutter is the minimum side margin. */
+const MAX_CONTENT = 1560
 const sideMargin = (viewport, gutter) => Math.max(gutter, (viewport - MAX_CONTENT) / 2)
 
 async function checkRows(browser) {
   const widths = [
-    { width: 1920, maxGap: 48, gutter: 32, headingFont: [22, 24] },
-    { width: 1440, maxGap: 48, gutter: 32, headingFont: [22, 24] },
+    { width: 1920, maxGap: 48, gutter: 48, headingFont: [22, 24] },
+    { width: 1440, maxGap: 48, gutter: 48, headingFont: [22, 24] },
     { width: 390, maxGap: 32, gutter: 16, headingFont: [17, 19] },
   ]
   const baselineCardWidth = 180

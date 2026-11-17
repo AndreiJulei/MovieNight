@@ -1,6 +1,7 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 
@@ -26,6 +27,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      movieNightPwa(),
     ],
     resolve: {
       alias: {
@@ -67,6 +69,52 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+/**
+ * #34: installable app with an offline app shell. The service worker precaches the built
+ * shell (not the large login videos), answers app navigations with index.html, and keeps up
+ * to ~500 poster images cache-first. API responses are never cached here: the offline library
+ * comes from the IndexedDB snapshot.
+ */
+function movieNightPwa() {
+  return VitePWA({
+    registerType: 'autoUpdate',
+    injectRegister: 'script-defer',
+    manifest: {
+      name: 'Movie Night',
+      short_name: 'Movie Night',
+      description: 'Your watchlist, watched history and lists.',
+      start_url: 'movies',
+      scope: './',
+      display: 'standalone',
+      background_color: '#05070d',
+      theme_color: '#05070d',
+      icons: [
+        { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      ],
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,svg,woff2}', 'pwa-*.png'],
+      navigateFallback: 'index.html',
+      navigateFallbackDenylist: [/^\/api\//],
+      cleanupOutdatedCaches: true,
+      runtimeCaching: [
+        {
+          urlPattern: ({ url }) => url.origin === 'https://image.tmdb.org',
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'posters',
+            // TMDB images allow CORS, so cache real 200 responses instead of padded opaque ones.
+            fetchOptions: { mode: 'cors', credentials: 'omit' },
+            cacheableResponse: { statuses: [200] },
+            expiration: { maxEntries: 500, purgeOnQuotaError: true },
+          },
+        },
+      ],
+    },
+  })
+}
 
 type FigmaSiteConfiguration = {
   title?: string

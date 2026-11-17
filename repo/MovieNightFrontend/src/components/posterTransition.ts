@@ -36,7 +36,12 @@ export function supportsViewTransitions(): boolean {
   return typeof viewTransitionDocument()?.startViewTransition === "function";
 }
 
-const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+/**
+ * Short wait usable inside a View Transition update. Frames are paused until
+ * that update resolves, so a requestAnimationFrame wait never fires there and
+ * froze Back until the browser's DOM-update timeout aborted the transition.
+ */
+const shortWait = () => new Promise<void>((resolve) => setTimeout(resolve, 16));
 
 /** Let the destination poster decode so the morph never lands on an empty box (bounded wait). */
 async function settleHeroImage(maxMs: number) {
@@ -145,7 +150,7 @@ setPopTransitionHandler((update, info) => {
         window.scrollTo(0, info.scrollY);
         target = findOriginalCard(opened);
         if (target || performance.now() > deadline) break;
-        await nextFrame();
+        await shortWait();
       }
       target?.style.setProperty("view-transition-name", POSTER_TRANSITION_NAME);
     });

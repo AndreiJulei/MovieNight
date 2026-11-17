@@ -1,9 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Link, matchPath, useRouter } from "../router";
+import { matchPath, useRouter } from "../router";
+import BackLink from "../components/BackLink";
 import { useStore } from "../store/MovieStore";
 import type { Movie } from "../store/data";
 import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
+import OfflineListsHint from "../components/OfflineListsHint";
 import TopBar, {
   type Filters,
   type SortBy,
@@ -24,7 +26,8 @@ export default function CustomListDetailPage() {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const busy = store.listsLoading || store.listsSaving;
+  // #34: offline lists are read-only.
+  const busy = store.listsLoading || store.listsSaving || store.isOffline;
   const handleRename = async (event: FormEvent) => {
     event.preventDefault();
     if (!list || busy || !title.trim()) return;
@@ -104,12 +107,7 @@ export default function CustomListDetailPage() {
             {store.listsLoading ? "Loading your lists…" : store.listsError || "List not found."}
           </p>
           {store.listsError && <button type="button" onClick={() => void store.refreshLists()} className="quiet-action mt-4 text-sm text-text-primary">Reload lists</button>}
-          <Link
-            to="/lists"
-            className="prose-link text-link mt-4 inline-flex items-center gap-1.5 text-xs font-semibold"
-          >
-            ← Back to Lists
-          </Link>
+          <BackLink fallback="/lists" label="Back to Lists" className="mt-4" />
         </div>
       </AppShell>
     );
@@ -118,12 +116,7 @@ export default function CustomListDetailPage() {
   return (
     <AppShell width="wide">
       <div className="mb-4">
-        <Link
-          to="/lists"
-          className="prose-link inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-white"
-        >
-          ← Back to Lists
-        </Link>
+        <BackLink fallback="/lists" label="Back to Lists" />
       </div>
 
       <div className="mb-6 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
@@ -155,7 +148,8 @@ export default function CustomListDetailPage() {
         </form>
       ) : <button type="button" disabled={busy} onClick={() => { setTitle(list.title); setRenaming(true); setError(null); }}
         className="mb-4 rounded-lg border border-white/10 bg-surface-raised px-3 py-2 text-sm text-text-primary">Rename list</button>}
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      <OfflineListsHint />
+      {error &&<p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
       <button type="button" disabled={busy} onClick={() => { setError(null); void store.refreshLists(); }} className="quiet-action mb-4 ml-3 text-sm text-text-primary">Reload lists</button>
 
       {/* Peer filter cluster */}

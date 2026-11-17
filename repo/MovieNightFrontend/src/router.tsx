@@ -40,6 +40,8 @@ type RouterState = {
   fromUrl?: string;
   navigate: (to: string, opts?: NavigateOptions) => void;
   back: () => void;
+  /** The shared Back rule (see `backTarget`); `fallback` opens when history cannot return there. */
+  goBack: (fallback?: string) => void;
 };
 
 const RouterContext = createContext<RouterState | null>(null);
@@ -73,8 +75,8 @@ const historyEntry = (): EntryState | null => {
   return entry && typeof entry.key === "string" ? entry as EntryState : null;
 };
 
-import { safeInternalUrl, matchPath } from "./routerUtils";
-export { safeInternalUrl, matchPath };
+import { safeInternalUrl, matchPath, backTarget } from "./routerUtils";
+export { safeInternalUrl, matchPath, backTarget };
 
 function initialLocation(): LocationState {
   const url = currentUrl();
@@ -126,6 +128,12 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
   }, [previewFallback, location.url]);
 
+  const goBack = useCallback((fallback?: string) => {
+    const target = backTarget(location.entry.previousUrl, fallback);
+    if (target.kind === "history") back();
+    else navigate(target.to);
+  }, [location.entry.previousUrl, back, navigate]);
+
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       const entry = historyEntry() ?? { key: generateEntryKey(), scrollY: 0 };
@@ -175,6 +183,17 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     const scheduleScroll = () => {
       if (!cancelled && frame === undefined) frame = requestAnimationFrame(tryScroll);
     };
+    // Once the user scrolls, clicks or types, their position wins: late content
+    // (images, hero slides) must not yank the page back to the restored spot.
+    const userInputEvents = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    const stopOnUserInput = () => {
+      cancelled = true;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      observer.disconnect();
+      resizeObserver.disconnect();
+      userInputEvents.forEach((type) => window.removeEventListener(type, stopOnUserInput, true));
+    };
+    userInputEvents.forEach((type) => window.addEventListener(type, stopOnUserInput, { capture: true, passive: true }));
     // Async route content and image layout may arrive long after navigation.
     // Wait for those changes without polling or imposing a network deadline.
     const observer = new MutationObserver(scheduleScroll);
@@ -189,6 +208,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       if (frame !== undefined) cancelAnimationFrame(frame);
       observer.disconnect();
       resizeObserver.disconnect();
+      userInputEvents.forEach((type) => window.removeEventListener(type, stopOnUserInput, true));
     };
   }, [location, previewFallback]);
 
@@ -204,8 +224,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       fromUrl: location.fromUrl,
       navigate,
       back,
+      goBack,
     };
-  }, [location, navigate, back]);
+  }, [location, navigate, back, goBack]);
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 

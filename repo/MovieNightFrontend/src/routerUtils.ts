@@ -52,3 +52,22 @@ export function matchPath(
   return params;
 }
 
+
+/**
+ * How an in-app Back control should move (one rule for every Back link).
+ *
+ * When the entry being left was opened from the page Back would return to,
+ * step browser history back, so the scroll position and loaded content come
+ * back and history does not grow. Otherwise (deep link, reload in a new tab,
+ * or arrival from another screen) open `fallback` as a new entry.
+ * `fallback` omitted means "wherever the user came from".
+ */
+export function backTarget(
+  previousUrl: string | null | undefined,
+  fallback?: string,
+): { kind: "history" } | { kind: "navigate"; to: string } {
+  const previous = safeInternalUrl(previousUrl, "http://localhost");
+  const pathOf = (url: string) => new URL(url, "http://localhost").pathname;
+  if (previous && (!fallback || pathOf(previous) === pathOf(fallback))) return { kind: "history" };
+  return { kind: "navigate", to: fallback ?? "/" };
+}

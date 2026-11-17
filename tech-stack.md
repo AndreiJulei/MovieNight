@@ -16,6 +16,7 @@ Consult the manifests when versions change.
 | Backend tools | Maven wrapper, Maven 3.9.16 | Backend wrapper configuration |
 | Discovery | TMDB catalog, optional OMDb enrichment, remote image URLs | Backend provider clients and catalog service |
 | Personal movie recommendations | MovieLens item similarity backbone targeting full `ml-latest` dataset (Q1–Q14 contract); Python 3.12 with pandas, NumPy, SciPy, scikit-learn; generated CSV, SHA-256 manifest, and attribution consumed by Java backend with maintenance controls | `repo/ml/train_similarity.py`, similarity loader; `docs/features/015-movielens-latest-similarity/spec.md` |
+| Offline library | `vite-plugin-pwa` service worker (app shell precache, cache-first TMDB posters capped at 500), IndexedDB offline snapshot; active in production builds and `vite preview` only | `repo/MovieNightFrontend/vite.config.ts`, `src/offline/`; [feature 034](docs/features/034-offline-read-only-library/spec.md) |
 | Work tracking | GitHub Issues and `gh` | `docs/agents/issue-tracker.md` |
 
 ## Verification commands
@@ -43,6 +44,10 @@ The Vite development and preview servers serve the app shell at valid deep URLs;
 the deployment web server must likewise route unknown app paths to `index.html`
 while leaving `/api/*` and missing asset paths as real errors. A successful
 deep-link response must be verified with a direct request before deployment.
+
+Issue #34's [offline check](repo/MovieNightFrontend/tests/browser/offline-library.cjs)
+needs the service worker, so it runs against `npx vite build && npx vite preview`
+(default port 8455 via `PORT`) rather than the dev server.
 
 From `repo/MovieNightBackend/`:
 

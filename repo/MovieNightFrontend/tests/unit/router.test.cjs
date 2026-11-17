@@ -3,11 +3,13 @@ const assert = require('node:assert/strict');
 
 let safeInternalUrl;
 let matchPath;
+let backTarget;
 
 test.before(async () => {
   const mod = await import('../../src/routerUtils.ts');
   safeInternalUrl = mod.safeInternalUrl;
   matchPath = mod.matchPath;
+  backTarget = mod.backTarget;
 });
 
 test('safeInternalUrl: accepts valid in-app paths (BN01, BN03)', () => {
@@ -80,3 +82,17 @@ test('matchPath: decodes percent-encoded parameters and handles malformed encodi
   assert.equal(matchPath('/movies/:id', '/movies/%FF%FE'), null);
 });
 
+
+test('backTarget: returns through history when the user came from the Back page', () => {
+  assert.deepEqual(backTarget('/lists', '/lists'), { kind: 'history' });
+  // Query or encoding differences on the same screen still step back (keeps scroll position).
+  assert.deepEqual(backTarget('/explore/movies?sort=rating', '/explore/movies'), { kind: 'history' });
+  assert.deepEqual(backTarget('/search?q=a%20b'), { kind: 'history' });
+});
+
+test('backTarget: opens the fallback when history cannot return there', () => {
+  assert.deepEqual(backTarget(undefined, '/lists'), { kind: 'navigate', to: '/lists' });
+  assert.deepEqual(backTarget('/movies', '/lists'), { kind: 'navigate', to: '/lists' });
+  assert.deepEqual(backTarget('https://evil.example.com', '/movies'), { kind: 'navigate', to: '/movies' });
+  assert.deepEqual(backTarget(null), { kind: 'navigate', to: '/' });
+});

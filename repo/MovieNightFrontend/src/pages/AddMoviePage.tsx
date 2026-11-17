@@ -7,6 +7,7 @@ import { useStore } from "../store/MovieStore";
 import { freshId, type Movie, type Status } from "../store/data";
 import { moviesApi } from "../api/movies";
 import AppShell from "../components/AppShell";
+import BackLink from "../components/BackLink";
 import PixelPoster from "../components/PixelPoster";
 import SegmentedRadio from "../components/SegmentedRadio";
 import AnimatedSearchInput from "../components/AnimatedSearchInput";
@@ -202,13 +203,7 @@ export default function AddMoviePage() {
 
   return (
     <AppShell>
-      <button
-        type="button"
-        onClick={() => navigate("/movies")}
-        className="flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-white"
-      >
-        <span aria-hidden="true">←</span> Back
-      </button>
+      <BackLink fallback="/movies" label="Back to Library" />
 
       <div className="mx-auto mt-6 max-w-[580px]">
         <h1 className="text-2xl font-bold tracking-tight text-white">Add a movie</h1>

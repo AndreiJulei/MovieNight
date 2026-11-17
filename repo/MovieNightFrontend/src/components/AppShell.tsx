@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import useCompactLayout from "../hooks/useCompactLayout";
 import NavRail from "./NavRail";
+import OfflineBanner from "./OfflineBanner";
 import { WIDE_CONTENT_CLASS } from "./layout";
 
 const MAIN_CLASS = {
@@ -32,6 +33,7 @@ export default function AppShell({
       </div>
 
       <main className={MAIN_CLASS[fullBleed ? "fullBleed" : width]}>
+        <OfflineBanner />
         {children}
       </main>
     </div>

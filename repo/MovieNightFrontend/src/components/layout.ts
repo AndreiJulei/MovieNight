@@ -1,26 +1,26 @@
 /**
  * Shared page-width and poster layout classes (#21 PD-05, #22 PD-06).
  *
- * The wide content area is centred and capped at 1680px of content, with
- * 16px (phone) / 32px gutters as the minimum side margin. That leaves 120px
- * each side at 1920px while keeping 7 grid columns there. Rows rely on the
- * gutters: PosterShelf bleeds its scroll track into them with matching
- * negative margins.
+ * The wide content area is centred and capped at 1560px of content, with
+ * 16px (phone) / 32px (tablet) / 48px (desktop) gutters as the minimum side
+ * margin. That leaves 180px each side at 1920px: narrower than the original
+ * 1400px page, wider than the first 1680px cap, so rows no longer hug the
+ * screen edges.
  */
 
-export const WIDE_GUTTER_CLASS = "px-4 sm:px-8"
+export const WIDE_GUTTER_CLASS = "px-4 sm:px-8 lg:px-12"
 
-/** 1680px content + 2 × 32px gutters. */
-export const WIDE_CONTENT_CLASS = `mx-auto w-full max-w-[1744px] ${WIDE_GUTTER_CLASS}`
+/** 1560px content + 2 × 48px gutters. */
+export const WIDE_CONTENT_CLASS = `mx-auto w-full max-w-[1656px] ${WIDE_GUTTER_CLASS}`
 
 /**
- * Scroll track that reaches the viewport edge while its first item aligns with
- * the gutter. Once the content is capped (viewport ≥ 1744px) the track only
- * bleeds 12px, enough for the 1.05 hover zoom and focus ring, so posters stop
- * near the content edge instead of short of the viewport edge.
+ * Scroll track. On phones and tablets it bleeds into the gutters so a row can
+ * be swiped edge to edge. On desktop it only bleeds 12px, enough for the 1.05
+ * hover zoom and focus ring, so posters stop at the content edge instead of
+ * running to the viewport edge.
  */
 export const SHELF_TRACK_BLEED_CLASS =
-  "-mx-4 px-4 sm:-mx-8 sm:px-8 min-[1744px]:-mx-3 min-[1744px]:px-3"
+  "-mx-4 px-4 sm:-mx-8 sm:px-8 lg:-mx-3 lg:px-3"
 
 /**
  * Vertical room around row items. It is the only headroom kept for the
@@ -39,9 +39,13 @@ export const SHELF_TRACK_CLASS = `${SHELF_TRACK_BLEED_CLASS} ${SHELF_TRACK_PADDI
  */
 export const SHELF_SPACING_CLASS = "flex flex-col gap-3 sm:gap-6"
 
-/** Grid columns: 2 on phones, 3 from 600px, then ~220px minimum cards. */
+/**
+ * Grid columns: 2 on phones, 3 from 600px, then ~220px minimum cards. From
+ * 1536px the minimum drops to 200px so the 1560px content cap still fits 7
+ * columns at 1920 (PG01: 7/5/3/2 at 1920/1440/768/390).
+ */
 export const POSTER_GRID_COLUMNS_CLASS =
-  "grid-cols-2 min-[600px]:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]"
+  "grid-cols-2 min-[600px]:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] 2xl:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]"
 
 export const POSTER_GRID_CLASS = `grid ${POSTER_GRID_COLUMNS_CLASS} gap-3 sm:gap-4`
 

@@ -22,6 +22,9 @@ import CustomListDetailPage from "./pages/CustomListDetailPage";
 import PixelCompanion from "./components/PixelCompanion";
 import ServerWakingNotice from "./components/ServerWakingNotice";
 import { wakeServer } from "./api/serverWake";
+import AppShell from "./components/AppShell";
+import OfflineUnavailable from "./components/OfflineUnavailable";
+import { isOfflineReadOnlyPath } from "./offline/librarySnapshot";
 
 const routeDefinitions: {
   matches: (path: string) => boolean;
@@ -48,7 +51,7 @@ const routeDefinitions: {
 
 function Routes() {
   const { path, search, navigate, action, entryKey, fromUrl } = useRouter();
-  const { currentUser, authHydrated, authError, retryAuth } = useStore();
+  const { currentUser, authHydrated, authError, retryAuth, isOffline } = useStore();
   const route = routeDefinitions.find(candidate => candidate.matches(path));
   const validRoute = Boolean(route);
   const title = route?.title ?? "Page not found";
@@ -77,8 +80,8 @@ function Routes() {
       if (heading?.textContent?.trim()) document.title = `${heading.textContent.trim()} · Movie Night`;
       if (action === "pop") {
         if (!fromUrl?.startsWith("/movies/")) { settled = true; return; }
-        const titleLink = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
-          .find((link) => link.getAttribute("href") === fromUrl);
+        // One selector lookup per mutation batch instead of scanning every link on the page.
+        const titleLink = document.querySelector<HTMLAnchorElement>(`a[href="${CSS.escape(fromUrl)}"]`);
         if (!titleLink) return;
         titleLink.focus({ preventScroll: true });
         settled = true;
@@ -114,6 +117,8 @@ function Routes() {
   const Page = route.component;
   if (path === "/login") return <Page />;
   if (!currentUser) return <p role="status">Opening sign in…</p>;
+  // #34: offline, only the read-only library screens and Settings (to sign out) stay open.
+  if (isOffline && !isOfflineReadOnlyPath(path)) return <AppShell><OfflineUnavailable /></AppShell>;
   return <Page />;
 }
 

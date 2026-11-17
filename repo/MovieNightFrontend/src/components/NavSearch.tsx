@@ -217,7 +217,9 @@ export default function NavSearch({ className = "", onNavigate, onActiveChange }
             setKeyboardFocus(false);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Search movies, TV, anime..."
+          // #34: search needs a connection.
+          disabled={store.isOffline}
+          placeholder={store.isOffline ? "Search needs a connection" : "Search movies, TV, anime..."}
           className="ml-2 h-full min-h-0 min-w-0 flex-1 border-0 bg-transparent text-base font-medium text-white placeholder:text-text-muted outline-none select-text lg:text-[13px]"
           aria-label="Search titles"
           aria-expanded={isOpen}

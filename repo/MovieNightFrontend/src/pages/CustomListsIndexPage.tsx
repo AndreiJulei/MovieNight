@@ -3,14 +3,16 @@ import { Link } from "../router";
 import { useStore } from "../store/MovieStore";
 import { useToast } from "../components/Toast";
 import AppShell from "../components/AppShell";
+import OfflineListsHint from "../components/OfflineListsHint";
 import type { CustomList, Movie } from "../store/data";
 
 export default function CustomListsIndexPage() {
-  const { currentUser, listsFor, movieById, createList, deleteList, listsLoading, listsError, listsSaving, refreshLists } = useStore();
+  const { currentUser, listsFor, movieById, createList, deleteList, listsLoading, listsError, listsSaving, refreshLists, isOffline } = useStore();
   const { toast } = useToast();
 
   const [error, setError] = useState<string | null>(null);
-  const busy = listsSaving || listsLoading;
+  // #34: offline lists are read-only.
+  const busy = listsSaving || listsLoading || isOffline;
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -77,7 +79,7 @@ export default function CustomListsIndexPage() {
               setIsCreating((v) => !v);
               setNewTitle("");
             }}
-            className="flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95"
+            className="flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isCreating ? "Cancel" : "+ New List"}
           </button>
@@ -92,6 +94,7 @@ export default function CustomListsIndexPage() {
           <div className="mx-auto mt-5 h-[1px] w-12 bg-accent/40" />
         </div>
 
+        <OfflineListsHint />
         {listsLoading && <p role="status" className="mb-4 text-sm text-text-muted">Loading your lists…</p>}
         {(error || listsError) && <p role="alert" className="mb-3 text-sm text-red-300">{error || listsError}</p>}
         <button type="button" disabled={busy} onClick={() => { setError(null); void refreshLists(); }}

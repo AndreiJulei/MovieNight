@@ -62,6 +62,12 @@ It is private unless the owner shares it with accepted friends. A title may
 belong to several custom lists without belonging to the owner's library.
 _Avoid_: Watchlist when referring to an arbitrary collection.
 
+**Offline snapshot**:
+A read-only copy of one signed-in user's library and custom lists, saved on their
+device after each successful online load and shown with its time when there is no
+connection. Sign-out deletes it; changes are never made or queued from it.
+_Avoid_: Offline mode when referring to the saved data; cache.
+
 **Level**:
 A user's progression step, gained for every 10 titles in their watched history.
 Levels unlock avatars.

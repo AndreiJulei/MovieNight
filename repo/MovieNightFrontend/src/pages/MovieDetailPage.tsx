@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useRouter, useQuery, safeInternalUrl } from "../router";
+import BackLink from "../components/BackLink";
 import { useStore } from "../store/MovieStore";
 import { usePosterTransition } from "../components/PosterTransitionContext";
 import { playFlipEntrance } from "../components/posterTransition";
@@ -44,7 +45,7 @@ interface FriendReview {
 
 export default function MovieDetailPage() {
   const store = useStore();
-  const { path, navigate, previousUrl, back } = useRouter();
+  const { path, previousUrl } = useRouter();
   const query = useQuery();
   const typeParam = query.get("type");
   const { transitionData, clearTransition } = usePosterTransition();
@@ -318,11 +319,6 @@ export default function MovieDetailPage() {
     return "Back";
   }, [backDest]);
 
-  const handleBack = () => {
-    clearTransition();
-    if (previousUrl === backDest) back();
-    else navigate(backDest);
-  };
 
   // Stop inline trailer and reset rating sync when navigating to another title
   useEffect(() => {
@@ -353,7 +349,7 @@ export default function MovieDetailPage() {
     return (
       <AppShell fullBleed>
         <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-6">
-          <BackLink onClick={handleBack} label={backLabel} />
+          <BackLink fallback={previousUrl ? undefined : backDest} onBeforeBack={clearTransition} label={backLabel} />
           {isLoadingDetails ? (
             <div className="mt-16 flex flex-col items-center justify-center text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -542,7 +538,7 @@ export default function MovieDetailPage() {
           trailerKey={movie.trailerKey}
           isTrailerPlaying={isTrailerPlaying}
           onToggleTrailer={() => setIsTrailerPlaying((v) => !v)}
-          backLink={<BackLink onClick={handleBack} label={backLabel} />}
+          backLink={<BackLink fallback={previousUrl ? undefined : backDest} onBeforeBack={clearTransition} label={backLabel} />}
         >
           {heroDetails}
         </CompactTitleHero>
@@ -583,7 +579,7 @@ export default function MovieDetailPage() {
           <div className={`relative z-20 mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12 pt-16 sm:pt-20 lg:pt-8 pb-6 sm:pb-8 flex flex-col justify-between min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] ${isTrailerPlaying ? "pointer-events-none" : ""}`}>
             {/* Top Bar with Back Link */}
             <div className="pointer-events-auto flex items-center justify-between gap-3">
-              <BackLink onClick={handleBack} label={backLabel} />
+              <BackLink fallback={previousUrl ? undefined : backDest} onBeforeBack={clearTransition} label={backLabel} />
             </div>
 
             {/* Bottom aligned logo and details; fade out while the trailer plays */}
@@ -1159,17 +1155,5 @@ function DescriptionBox({
         </p>
       )}
     </div>
-  );
-}
-
-function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3.5 py-1.5 text-xs font-semibold text-text-muted backdrop-blur-md transition-colors hover:border-white/30 hover:text-white"
-    >
-      <span aria-hidden="true">←</span> {label}
-    </button>
   );
 }

@@ -257,8 +257,17 @@ export default function SettingsPage() {
           </p>
         </div>
 
+        {/* #34: account and integration changes need a connection; device preferences and sign-out do not. */}
+        {store.isOffline && (
+          <p role="status" className="mb-6 text-sm text-text-muted">
+            You're offline. Account and integration changes need a connection. You can still sign out.
+          </p>
+        )}
+
         {/* #31: Account (avatar, display name, username, email, password) */}
-        <AccountSettings />
+        <fieldset disabled={store.isOffline} className="contents">
+          <AccountSettings />
+        </fieldset>
 
         {/* #31: Preferences */}
         <h2 className="mb-4 mt-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Preferences</h2>
@@ -346,6 +355,7 @@ export default function SettingsPage() {
         )}
 
         {/* 4. Webhooks & Integrations Section */}
+        <fieldset disabled={store.isOffline} className="contents">
         <section className="mb-10 rounded-xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -801,6 +811,8 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        </fieldset>
 
         {/* 5. Account / Session Section */}
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
