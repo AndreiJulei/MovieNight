@@ -397,7 +397,7 @@ export const moviesApi = {
       if (!res.ok) throw new Error("Personal movie request failed.");
       const data = await res.json() as ApiSuggestionsResponse;
       const states = ["READY", "NO_HISTORY", "INSUFFICIENT_COVERAGE", "LIBRARY_EXHAUSTED", "MISSING_METADATA"];
-      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED"];
+      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED", "DIRECTOR_SOURCE_UNAVAILABLE"];
       if (!Array.isArray(data?.categories) || data.categories.length !== 1 ||
           data.categories.some((c) => c.id !== "movies" || !states.includes(c.state ?? "") ||
             !Array.isArray(c.limitations) || c.limitations.some((l) => !limitations.includes(l)) ||

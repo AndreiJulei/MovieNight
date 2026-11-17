@@ -38,16 +38,12 @@ public class PersonalizedRecommendationService {
         return false;
     }
 
-    private boolean isMovie(Movie movie) {
-        return movie != null && (movie.getMediaType() == null || "MOVIE".equalsIgnoreCase(movie.getMediaType()));
-    }
-
     private List<UserMovieEntry> entries(User user) {
         return userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
     }
 
     private Set<Long> libraryIds(List<UserMovieEntry> entries) {
-        return entries.stream().filter(e -> isMovie(e.getMovie()))
+        return entries.stream().filter(e -> LikedFilmPolicy.isMovie(e.getMovie()))
             .filter(e -> e.getStatus() == MovieStatus.WATCHED || e.getStatus() == MovieStatus.WATCHLIST)
             .map(e -> e.getMovie().getTmdbId()).filter(Objects::nonNull).collect(Collectors.toSet());
     }
@@ -96,9 +92,8 @@ public class PersonalizedRecommendationService {
             List<UserMovieEntry> entries = entries(user);
         Map<Long, Double> weights = new TreeMap<>();
         for (UserMovieEntry e : entries) {
-            if (e.getStatus() == MovieStatus.WATCHED && isMovie(e.getMovie())
-                    && e.getMovie().getTmdbId() != null && e.getMovie().getTmdbId() > 0) {
-                weights.put(e.getMovie().getTmdbId(), (e.getPersonalRating() == null ? 7.0 : e.getPersonalRating()) - 5.5);
+            if (LikedFilmPolicy.watchedMovie(e)) {
+                weights.put(e.getMovie().getTmdbId(), LikedFilmPolicy.effectiveRating(e) - 5.5);
             }
         }
         Set<String> limitations = new LinkedHashSet<>();
@@ -107,6 +102,7 @@ public class PersonalizedRecommendationService {
         Map<Long, Set<String>> sources = new HashMap<>();
         Set<Long> covered = new HashSet<>();
         Map<Long, TmdbMovieSummary> summaries = new HashMap<>();
+        Map<Long, DirectorRecommendationSource.Candidate> directorCandidates = Map.of();
         if (!weights.isEmpty()) {
             for (MovieSimilarity sim : movieSimilarityRepository.findByTmdbIdIn(weights.keySet()).stream()
                     .sorted(Comparator.comparing(MovieSimilarity::getTmdbId).thenComparing(MovieSimilarity::getNeighborTmdbId)).toList()) {
@@ -144,6 +140,14 @@ public class PersonalizedRecommendationService {
                         summaries.putIfAbsent(rec.getId(), rec);
                     }
                 }
+                DirectorRecommendationSource.Result directorFilms =
+                        new DirectorRecommendationSource(tmdbClient).collect(entries, libraryIds(entries));
+                if (directorFilms.unavailable()) limitations.add(DirectorRecommendationSource.UNAVAILABLE_LIMITATION);
+                directorCandidates = directorFilms.candidates();
+                directorCandidates.forEach((id, candidate) -> {
+                    scores.merge(id, candidate.relevance(), Double::sum);
+                    summaries.putIfAbsent(id, candidate.film());
+                });
             }
             if (!covered.containsAll(weights.keySet())) limitations.add("PARTIAL_COVERAGE");
         }
@@ -152,8 +156,7 @@ public class PersonalizedRecommendationService {
             .sorted(Map.Entry.<Long, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey())).toList();
         Set<Long> excluded = libraryIds(entries);
         Map<Long, String> watchedTitles = entries.stream()
-                .filter(e -> e.getStatus() == MovieStatus.WATCHED && isMovie(e.getMovie())
-                        && e.getMovie().getTmdbId() != null)
+                .filter(LikedFilmPolicy::watchedMovie)
                 .collect(Collectors.toMap(e -> e.getMovie().getTmdbId(), e -> e.getMovie().getTitle(), (a, b) -> a));
         Map<Long, CachedMovieList> cache = cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE").stream()
             .filter(c -> validTitle(c.getTitle())).collect(Collectors.toMap(CachedMovieList::getTmdbId, c -> c, (a,b) -> a));
@@ -162,7 +165,7 @@ public class PersonalizedRecommendationService {
         ratingEnricher.enrich(ranked.stream().map(Map.Entry::getKey)
                 .filter(id -> !excluded.contains(id) && !knownBelowFloor(cache.get(id), summaries.get(id))).toList());
         // Every source is explicitly movie-only before resolving metadata.
-        Map<Long, Movie> catalog = movieRepository.findAll().stream().filter(this::isMovie)
+        Map<Long, Movie> catalog = movieRepository.findAll().stream().filter(LikedFilmPolicy::isMovie)
             .filter(m -> m.getTmdbId() != null && validTitle(m.getTitle()))
             .collect(Collectors.toMap(Movie::getTmdbId, m -> m, (a,b) -> a));
         boolean outsideLibrary = false;
@@ -207,9 +210,7 @@ public class PersonalizedRecommendationService {
                     .sorted(Map.Entry.<Long, Double>comparingByValue().reversed()
                             .thenComparing(Map.Entry.comparingByKey()))
                     .limit(2).map(e -> watchedTitles.get(e.getKey())).toList();
-            String reason = reasonTitles.isEmpty() ? null : "Because you watched "
-                    + String.join(" and ", reasonTitles) + " ("
-                    + String.join(" and ", sources.getOrDefault(id, Set.of())) + ")";
+            String reason = explanation(directorCandidates.get(id), reasonTitles, sources.getOrDefault(id, Set.of()));
             result.add(PersonalizedRecommendation.builder().user(user).tmdbId(id).mediaType("MOVIE").title(title)
                 .posterPath(movie != null ? movie.getPosterUrl() : cached != null ? cached.getPosterPath() : summary.getPosterPath())
                 .voteAverage(candidate.audience()).audienceVoteCount(candidate.audienceVotes())
@@ -233,6 +234,18 @@ public class PersonalizedRecommendationService {
                 recommendationMaintenanceService.endRecomputation();
             }
         }
+    }
+
+    /**
+     * The director explanation wins when the director source reached the title (#38 decision): it names
+     * the stronger, more specific signal. Otherwise the watched titles and sources that contributed most.
+     */
+    private String explanation(DirectorRecommendationSource.Candidate directorCandidate,
+                               List<String> contributingWatchedTitles, Set<String> sourceNames) {
+        if (directorCandidate != null) return directorCandidate.explanation();
+        if (contributingWatchedTitles.isEmpty()) return null;
+        return "Because you watched " + String.join(" and ", contributingWatchedTitles)
+                + " (" + String.join(" and ", sourceNames) + ")";
     }
 
     private boolean validTitle(String title) { return title != null && !title.isBlank(); }

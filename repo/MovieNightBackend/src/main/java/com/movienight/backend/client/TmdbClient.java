@@ -1,7 +1,11 @@
 package com.movienight.backend.client;
 
 import com.movienight.backend.dto.external.TmdbMovieDetailsResponse;
+import com.movienight.backend.dto.external.TmdbPerson;
 import com.movienight.backend.dto.external.TmdbSearchResponse;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -9,8 +13,10 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriBuilder;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * HTTP client for The Movie Database (TMDB) API.
@@ -456,6 +462,63 @@ public class TmdbClient {
     }
 
     private record MovieRecommendationResponse(List<TmdbSearchResponse.TmdbMovieSummary> results) {}
+
+    /** The crew job TMDB uses for a film's director. */
+    private static final String DIRECTOR_JOB = "Director";
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record MovieCreditsResponse(List<TmdbMovieDetailsResponse.CrewMember> crew) {}
+
+    /** A crew credit in a person's filmography: TMDB sends the movie summary fields plus the job. */
+    @Getter
+    @Setter
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class PersonCrewCredit extends TmdbSearchResponse.TmdbMovieSummary {
+        private String job;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record PersonMovieCreditsResponse(List<PersonCrewCredit> crew) {}
+
+    /** Directors of a movie, from its credits, once per person. Named people only. */
+    public List<TmdbPerson> getMovieDirectors(Long movieId) {
+        if (!isConfigured() || movieId == null) return Collections.emptyList();
+        try {
+            MovieCreditsResponse response = restClient.get()
+                    .uri(uriBuilder -> applyAuth(uriBuilder).path("/movie/{id}/credits").build(movieId))
+                    .retrieve().body(MovieCreditsResponse.class);
+            if (response == null || response.crew() == null) {
+                throw new IllegalStateException("Invalid movie credits provider response");
+            }
+            return response.crew().stream()
+                    .filter(c -> c != null && c.getId() != null && DIRECTOR_JOB.equalsIgnoreCase(c.getJob())
+                            && c.getName() != null && !c.getName().isBlank())
+                    .map(c -> new TmdbPerson(c.getId(), c.getName().trim())).distinct().toList();
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException("Movie credits source unavailable. Retry the refresh.", failure);
+        }
+    }
+
+    /** Movies a person directed, from their movie credits, once per movie. */
+    public List<TmdbSearchResponse.TmdbMovieSummary> getDirectedMovies(long personId) {
+        if (!isConfigured()) return Collections.emptyList();
+        try {
+            PersonMovieCreditsResponse response = restClient.get()
+                    .uri(uriBuilder -> applyAuth(uriBuilder).path("/person/{id}/movie_credits")
+                            .queryParam("language", "en-US").build(personId))
+                    .retrieve().body(PersonMovieCreditsResponse.class);
+            if (response == null || response.crew() == null) {
+                throw new IllegalStateException("Invalid person credits provider response");
+            }
+            Set<Long> seen = new HashSet<>();
+            return response.crew().stream()
+                    .filter(c -> c != null && c.getId() != null && c.getId() > 0 && DIRECTOR_JOB.equalsIgnoreCase(c.getJob()))
+                    .filter(c -> seen.add(c.getId()))
+                    .<TmdbSearchResponse.TmdbMovieSummary>map(c -> c).toList();
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException("Person credits source unavailable. Retry the refresh.", failure);
+        }
+    }
 
     /**
      * Fetch recommendations for a specific TV show or anime.

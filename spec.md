@@ -142,6 +142,11 @@ the release goal includes deployment. Anime films remain deferred.
   clearly acclaimed title ranks well above a merely good one. Missing IMDb/RT
   data is neutral. The formulas and bounds live in #37, which supersedes the
   fixed #24 steps.
+- A director (by TMDB person id) with at least two liked films contributes the
+  rest of their filmography as candidates, explained by the director's name
+  (#38). The floor and weighting still apply. A failed credits lookup skips only
+  that liked film or director and is reported as a limitation; the other
+  directors and sources still publish.
 - Recomputation may enrich at most 30 uncached top candidates per run through
   OMDb, within 300 requests per day, preserving the remaining daily quota for
   title pages (#24).

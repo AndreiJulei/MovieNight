@@ -223,6 +223,7 @@ public class TmdbMovieDetailsResponse {
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class CrewMember {
+        private Long id;
         private String name;
         private String job;
     }
