@@ -106,7 +106,8 @@ function movieNightPwa() {
           options: {
             cacheName: 'posters',
             // TMDB images allow CORS, so cache real 200 responses instead of padded opaque ones.
-            fetchOptions: { mode: 'cors', credentials: 'omit' },
+            // cache: 'reload' bypasses HTTP-cache copies stored by plain <img> loads without CORS headers.
+            fetchOptions: { mode: 'cors', credentials: 'omit', cache: 'reload' },
             cacheableResponse: { statuses: [200] },
             expiration: { maxEntries: 500, purgeOnQuotaError: true },
           },
