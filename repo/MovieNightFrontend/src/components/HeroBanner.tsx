@@ -25,8 +25,13 @@ const HERO_HEIGHT_CLASS = {
     "h-[60vh] min-h-[420px] max-h-[560px] sm:h-[55vh] sm:min-h-[440px] sm:max-h-[640px]",
 } as const
 
-/** #28 PT04: phone poster slides, title, metadata, actions and controls fit in 70vh. */
-const PHONE_POSTER_HERO_HEIGHT_CLASS = "h-[70svh] max-h-[640px]"
+/**
+ * Phone poster hero (#28, #41). The poster is sized by height, so the hero is
+ * as tall as a 72vw-wide 2:3 poster (108vw) plus the fixed rows under it
+ * (165px: top padding, title, metadata, actions, slim indicator), capped at
+ * 85vh. On short screens the poster shrinks instead of the text.
+ */
+const PHONE_POSTER_HERO_HEIGHT_CLASS = "h-[min(85svh,calc(108vw_+_165px))]"
 
 /**
  * Bottom room under the slide text. On phones the spotlight keeps its actions
@@ -59,7 +64,7 @@ export default function HeroBanner({
 }) {
   const store = useStore()
   const { toggleWatchlist } = useWatchlistSave()
-  // #28: the phone home hero shows portrait poster slides within 70vh.
+  // #28/#41: the phone home hero shows portrait poster slides within 85vh.
   const posterLayout = usePhoneLayout() && variant === "home"
   const heightClass = posterLayout ? PHONE_POSTER_HERO_HEIGHT_CLASS : HERO_HEIGHT_CLASS[variant]
   const currentUser = store.currentUser
@@ -317,7 +322,7 @@ export default function HeroBanner({
               )}
               <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[#05070d]/30 via-[#05070d]/60 to-[#05070d]" />
 
-              <div className="relative z-20 flex h-full flex-col items-center px-5 pb-[56px] pt-3">
+              <div className="relative z-20 flex h-full flex-col items-center px-5 pb-11 pt-2">
                 <div className="flex min-h-0 w-full flex-1 justify-center">
                   <div
                     data-testid="hero-poster"
@@ -479,9 +484,12 @@ export default function HeroBanner({
       })}
 
       {/* Hero Banner Controls: Indicator Dashes & Manual Pause/Play Toggle (PH04, PH07) */}
+      {/* Phones (#41): a slim 28px row with no panel; the 44px buttons overflow it evenly. */}
       <div
-        className={`absolute z-30 flex items-center gap-1 sm:gap-2 rounded-lg border border-white/10 bg-surface/85 px-2 py-1 backdrop-blur-md sm:px-3 ${
-          posterLayout ? "bottom-1 left-1/2 -translate-x-1/2" : "bottom-4 right-5 sm:bottom-8 sm:right-8 lg:right-12"
+        className={`absolute z-30 flex items-center ${
+          posterLayout
+            ? "bottom-2 left-1/2 h-7 -translate-x-1/2"
+            : "gap-1 sm:gap-2 rounded-lg border border-white/10 bg-surface/85 px-2 py-1 backdrop-blur-md sm:px-3 bottom-4 right-5 sm:bottom-8 sm:right-8 lg:right-12"
         }`}
       >
         {/* Manual Pause / Play Toggle with >= 44x44px touch target and 6px radius */}
