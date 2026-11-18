@@ -72,9 +72,10 @@ export default defineConfig(({ mode }) => {
 
 /**
  * #34: installable app with an offline app shell. The service worker precaches the built
- * shell (not the large login videos), answers app navigations with index.html, and keeps up
- * to ~500 poster images cache-first. API responses are never cached here: the offline library
- * comes from the IndexedDB snapshot.
+ * shell (not the large login videos) and answers app navigations with index.html. Posters are
+ * not cached by the service worker: its CORS refetches collided with no-CORS copies in the HTTP
+ * cache and left posters blank (see docs/features/034 "Poster caching removed"). API responses
+ * are never cached here: the offline library comes from the IndexedDB snapshot.
  */
 function movieNightPwa() {
   return VitePWA({
@@ -99,20 +100,6 @@ function movieNightPwa() {
       navigateFallback: 'index.html',
       navigateFallbackDenylist: [/^\/api\//],
       cleanupOutdatedCaches: true,
-      runtimeCaching: [
-        {
-          urlPattern: ({ url }) => url.origin === 'https://image.tmdb.org',
-          handler: 'CacheFirst',
-          options: {
-            cacheName: 'posters',
-            // TMDB images allow CORS, so cache real 200 responses instead of padded opaque ones.
-            // cache: 'reload' bypasses HTTP-cache copies stored by plain <img> loads without CORS headers.
-            fetchOptions: { mode: 'cors', credentials: 'omit', cache: 'reload' },
-            cacheableResponse: { statuses: [200] },
-            expiration: { maxEntries: 500, purgeOnQuotaError: true },
-          },
-        },
-      ],
     },
   })
 }

@@ -55,18 +55,35 @@ banner. Acceptance criteria OF01–OF03 live in the issue.
   when no sign-in token remains, for example after another tab signed out.
 - **PWA.** `vite-plugin-pwa` 2.0.0 (auto-update) precaches the built shell
   (JS/CSS/HTML/SVG and the icons, not the login videos) and serves `index.html`
-  for app navigations, except `/api/*`. Posters from `image.tmdb.org` use a
-  `posters` cache-first runtime cache capped at 500 entries. TMDB sends
-  `Access-Control-Allow-Origin: *`, so images are fetched in CORS mode and stored
-  as real 200 responses (opaque responses would count about 7MB each against
-  Chrome's quota). New square icons `public/pwa-192.png` and `pwa-512.png` are
+  for app navigations, except `/api/*`. Posters are not cached by the service
+  worker (see "Poster caching removed" below). New square icons `public/pwa-192.png` and `pwa-512.png` are
   the existing app icon padded onto the app background.
+
+## Poster caching removed (2026-11-18)
+
+The original `posters` cache-first runtime rule left posters blank after the
+first visit. TMDB sends `Access-Control-Allow-Origin` only when the request has
+an `Origin`, sends no `Vary: Origin`, and allows caching for about a year. The
+first visit loads posters through plain `<img>` (no CORS) before the service
+worker controls the page, so the HTTP cache keeps copies without the CORS
+header. Later the service worker refetched them in CORS mode, got those copies,
+failed the CORS check and had no fallback. Adding `cache: 'reload'` (`7b0d5dd`)
+did not fix it in the deployed app.
+
+Decision: drop the runtime rule so posters load as ordinary images, and delete
+any leftover `posters` cache at app start (`src/main.tsx`). Cost: posters are no
+longer guaranteed offline; the library text still is. OF01's browser check no
+longer asserts the offline poster. Alternatives not taken: `crossOrigin` on
+every poster `<img>` (easy to miss one), or a custom service-worker handler
+with a no-CORS fallback (more code to own).
 
 ## Out of scope
 
 - Queued or offline writes, and syncing them later.
 - Offline Explore, search, title details, profile and friends.
-- Caching API responses (only the app shell and posters are cached).
+- Caching API responses (only the app shell is cached).
+- Posters offline. They may still appear from the browser's own HTTP cache, but
+  nothing guarantees it.
 - Library snapshots for more than the last signed-in account on a device.
 
 ## Validation (2026-11-16, `8940cb5` + uncommitted changes)

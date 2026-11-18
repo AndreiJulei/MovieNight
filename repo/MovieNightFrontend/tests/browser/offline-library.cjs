@@ -4,7 +4,7 @@
 //   npx vite build && PORT=8455 npx vite preview &
 //   MOVIENIGHT_BROWSER_URL=http://127.0.0.1:8455 MOVIENIGHT_PLAYWRIGHT_MODULE=/path/to/playwright \
 //     node tests/browser/offline-library.cjs
-// Poster images are fetched from the real image.tmdb.org, so the first (online) visit needs internet.
+// Poster images are fetched from the real image.tmdb.org; offline poster caching was removed.
 const { chromium } = require(process.env.MOVIENIGHT_PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
 const baseUrl = process.env.MOVIENIGHT_BROWSER_URL || 'http://127.0.0.1:8455';
@@ -58,16 +58,11 @@ const check = (name) => console.log('PASS', name);
     await page.reload();
     await page.getByText(/^Offline: showing your library as of /).waitFor();
     await page.getByText('Watched Fixture').first().waitFor();
-    const posterLoaded = await page.waitForFunction(() => {
-      const img = document.querySelector('img[alt*="Watched Fixture"]');
-      return img && img.complete && img.naturalWidth > 0;
-    }, null, { timeout: 5000 }).then(() => true, () => false);
-    assert.ok(posterLoaded, 'the poster seen online comes from the runtime cache offline');
     await page.goto(`${baseUrl}/movies?status=watchlist`);
     await page.getByText('Watchlist Fixture').first().waitFor();
     await page.goto(`${baseUrl}/lists/31`);
     await page.getByText('List Fixture').first().waitFor();
-    check('OF01 Watched, Watchlist and a custom list show last-known content offline, with the poster');
+    check('OF01 Watched, Watchlist and a custom list show last-known content offline');
 
     // OF02: edits, Explore and search are blocked with a message.
     assert.equal(await page.getByRole('button', { name: /Rename/i }).isDisabled(), true, 'rename is disabled offline');
