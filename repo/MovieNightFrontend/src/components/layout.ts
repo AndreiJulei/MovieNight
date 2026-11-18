@@ -49,6 +49,24 @@ export const POSTER_GRID_COLUMNS_CLASS =
 
 export const POSTER_GRID_CLASS = `grid ${POSTER_GRID_COLUMNS_CLASS} gap-3 sm:gap-4`
 
+/**
+ * View-switcher Grid (#42 VM01): 3 columns on phones so it differs from
+ * Compact (4); from 1024px the same ~220px cards as the shared grid.
+ */
+export const VIEW_GRID_CLASS =
+  "grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] 2xl:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]"
+
+/** View-switcher Compact on library pages: 4 columns on phones, denser above. */
+export const VIEW_COMPACT_CLASS =
+  "grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10"
+
+/**
+ * View-switcher Compact on Explore pages: 4 columns on phones (#42 VM01),
+ * then ~160px cards from 768px, so it stays denser than Grid.
+ */
+export const VIEW_COMPACT_EXPLORE_CLASS =
+  "grid grid-cols-4 gap-1.5 sm:gap-2 md:grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))]"
+
 /** #28: phone title-page actions share one row of equal icon-over-label buttons (≥44px). */
 export const COMPACT_ACTION_CLASS =
   "flex min-h-[52px] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 text-[11px] font-semibold leading-none"

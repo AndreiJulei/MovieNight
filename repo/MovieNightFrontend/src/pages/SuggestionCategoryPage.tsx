@@ -1,6 +1,7 @@
 import useWatchlistSave from "../hooks/useWatchlistSave"
 import { useEffect, useMemo, useState } from "react"
-import { matchPath, useRouter } from "../router"
+import { matchPath, useQuery, useRouter } from "../router"
+import { readStoredViewMode, resolveViewMode, viewModeSearch } from "../components/viewMode"
 import AppShell from "../components/AppShell"
 import BackLink from "../components/BackLink"
 import MovieGrid from "../components/MovieGrid"
@@ -21,7 +22,8 @@ import ShelfEmptyCard from "../components/ShelfEmptyCard"
 export default function SuggestionCategoryPage() {
   const store = useStore()
   const { saveWatchlist, error: saveError } = useWatchlistSave()
-  const { path } = useRouter()
+  const { path, navigate } = useRouter()
+  const query = useQuery()
   const params = matchPath("/suggestions/:category", path)
   const category = params?.category || "for-you"
 
@@ -32,13 +34,8 @@ export default function SuggestionCategoryPage() {
     [suggestions.category],
   )
 
-  // Initialize view mode from localStorage or grid
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("app_view_mode") as ViewMode || "grid"
-    }
-    return "grid"
-  })
+  // #42: ?view= first, then the remembered view, then Grid.
+  const viewMode: ViewMode = resolveViewMode(query.get("view"), readStoredViewMode())
 
   const [sortBy, setSortBy] = useState<SortBy>("recommendation")
   const [minRating, setMinRating] = useState<MinRating>(0)
@@ -57,8 +54,10 @@ export default function SuggestionCategoryPage() {
   const handleFilterChange = (f: Filters) => {
     setSortBy(f.sortBy)
     setMinRating(f.minRating)
-    setViewMode(f.viewMode)
-    localStorage.setItem("app_view_mode", f.viewMode)
+    if (f.viewMode !== viewMode) {
+      const qs = viewModeSearch(query, f.viewMode)
+      navigate(`${path}${qs ? `?${qs}` : ""}`)
+    }
   }
 
   const sortedMovies = useMemo(
@@ -107,7 +106,7 @@ export default function SuggestionCategoryPage() {
       {sortedMovies.length > 0 ? (
         <MovieGrid
           movies={sortedMovies}
-          compact={viewMode === "compact"}
+          view={viewMode}
           empty="No titles found for this recommendation category."
           referrerOverride={referrerPath}
           showAddToWatchlist

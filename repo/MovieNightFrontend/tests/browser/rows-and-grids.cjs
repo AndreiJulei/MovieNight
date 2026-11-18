@@ -384,7 +384,7 @@ async function checkGrids(browser) {
     [1920, 7],
     [1440, 5],
     [768, 3],
-    [390, 2],
+    [390, 3], // #42 VM01: view-switcher Grid is 3 columns on phones
   ]
   for (const [width, cols] of targets) {
     for (const [name, url] of [
@@ -399,7 +399,7 @@ async function checkGrids(browser) {
       await page.close()
     }
   }
-  console.log("✔ PG01: grid columns 7/5/3/2 at 1920/1440/768/390 (Watched, View all)")
+  console.log("✔ PG01: grid columns 7/5/3/3 at 1920/1440/768/390 (Watched, View all)")
 
   // PG02: Watched cards — poster, title, personal rating only.
   {
