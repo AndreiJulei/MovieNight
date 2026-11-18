@@ -12,6 +12,23 @@ export function formatRuntime(minutes: number | null | undefined): string | null
 }
 
 /**
+ * Phone title-page meta line (#44): `year · certification · runtime`, skipping unknown parts.
+ */
+export function formatTitleMetaLine({
+  year,
+  certification,
+  runtimeMinutes,
+}: {
+  year?: number | null
+  certification?: string | null
+  runtimeMinutes?: number | null
+}): string {
+  return [year ? String(year) : null, certification?.trim() || null, formatRuntime(runtimeMinutes)]
+    .filter(Boolean)
+    .join(" · ")
+}
+
+/**
  * Extract 1-2 letter initials from actor's or user's name for fallback avatars.
  */
 export function getInitials(name: string | null | undefined): string {

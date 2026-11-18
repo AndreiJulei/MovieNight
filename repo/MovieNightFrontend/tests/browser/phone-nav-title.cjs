@@ -119,7 +119,7 @@ test('bottom-bar', async browser => {
   } finally { await context.close(); }
 });
 
-// #28 PT01–PT03: portrait poster, inline trailer, one-row actions.
+// #28 PT01–PT03 (PT01/PT02 revised by #44): portrait poster, inline trailer box, one-row actions.
 test('title-page', async browser => {
   const context = await browser.newContext(phone());
   try {
@@ -133,29 +133,28 @@ test('title-page', async browser => {
     await page.route('https://www.youtube-nocookie.com/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>player</title>' }));
     const title = await openFirstTitle(page);
 
-    // PT01: a portrait poster, not a backdrop.
+    // PT01 (as revised by #44, which replaced the centred poster): a portrait poster, not a backdrop.
     const hero = page.getByRole('region', { name: `${title} hero banner`, exact: true });
     const poster = hero.getByTestId('compact-title-poster');
     await poster.waitFor();
     const box = await poster.boundingBox();
     assert(box.height > box.width * 1.3, `PT01 poster is portrait (${box.width}x${box.height})`);
-    assert(box.width >= 390 * 0.45 && box.width <= 390 * 0.6, `PT01 poster ~55% width (${box.width})`);
-    assert(Math.abs(box.x + box.width / 2 - 195) <= 2, 'PT01 poster centred');
+    assert(box.width >= 390 * 0.25 && box.width <= 390 * 0.36, `PT01 poster ~30% width (${box.width})`);
 
-    // PT02: ▶ plays inline at full content width; closing restores the poster.
-    await hero.getByRole('button', { name: 'Play trailer', exact: true }).click();
-    const player = hero.locator('iframe');
+    // PT02 (as revised by #44): ▶ plays inline in the 16:9 trailer box; closing restores the backdrop.
+    const trailerBox = hero.getByTestId('trailer-box');
+    await trailerBox.getByRole('button', { name: 'Play trailer', exact: true }).click();
+    const player = trailerBox.locator('iframe');
     await player.waitFor();
     await waitUntil(async () => { const b = await player.boundingBox(); return b && Math.abs(b.width / b.height - 16 / 9) < 0.02; }, 'PT02 trailer settles at 16:9');
     const video = await player.boundingBox();
     assert(Math.abs(video.width / video.height - 16 / 9) < 0.02, `PT02 trailer is 16:9 (${video.width}x${video.height})`);
-    assert(video.width >= 390 - 40 - 1, `PT02 trailer spans the content width (${video.width})`);
-    assert.equal(await poster.count(), 0, 'PT02 poster swapped out');
+    assert(video.width >= 390 - 40 - 3, `PT02 trailer spans the content width (${video.width})`);
     await hero.getByRole('button', { name: 'Close trailer', exact: true }).click();
-    await poster.waitFor();
+    await trailerBox.getByTestId('trailer-backdrop').waitFor();
     assert.equal(await player.count(), 0, 'PT02 trailer removed');
 
-    // PT03: actions in one row from 360 to 430px. The trailer action is the ▶ on the poster.
+    // PT03: actions in one row from 360 to 430px. The trailer action is the ▶ in the trailer box (#44).
     for (const width of [360, 375, 390, 412, 430]) {
       await page.setViewportSize({ width, height: 844 });
       const tops = await page.getByTestId('title-actions').evaluate(row =>

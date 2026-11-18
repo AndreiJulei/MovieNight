@@ -6,6 +6,7 @@ let parseCastMembers;
 let getInitials;
 let initialDetailPageState;
 let detailPageReducer;
+let formatTitleMetaLine;
 
 test.before(async () => {
   const mod = await import("../../src/components/movieDetailLogic.ts");
@@ -14,6 +15,7 @@ test.before(async () => {
   getInitials = mod.getInitials;
   initialDetailPageState = mod.initialDetailPageState;
   detailPageReducer = mod.detailPageReducer;
+  formatTitleMetaLine = mod.formatTitleMetaLine;
 });
 
 test("formatRuntime formats minutes into hours and minutes", () => {
@@ -103,3 +105,11 @@ test("detailPageReducer handles inline rating slider toggle and rating adjustmen
   assert.equal(closed.rating, 9.0);
 });
 
+
+test("formatTitleMetaLine joins year, certification (if known) and runtime (#44)", () => {
+  assert.equal(formatTitleMetaLine({ year: 1996, runtimeMinutes: 93 }), "1996 · 1h 33m");
+  assert.equal(formatTitleMetaLine({ year: 1996, certification: "R", runtimeMinutes: 93 }), "1996 · R · 1h 33m");
+  assert.equal(formatTitleMetaLine({ year: null, certification: "  ", runtimeMinutes: 45 }), "45m");
+  assert.equal(formatTitleMetaLine({ year: 2024, runtimeMinutes: 0 }), "2024");
+  assert.equal(formatTitleMetaLine({}), "");
+});
