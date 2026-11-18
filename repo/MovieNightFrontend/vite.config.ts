@@ -100,6 +100,10 @@ function movieNightPwa() {
       navigateFallback: 'index.html',
       navigateFallbackDenylist: [/^\/api\//],
       cleanupOutdatedCaches: true,
+      // 'script-defer' registration leaves these off, so a new worker waited for every tab to
+      // close and stale builds (e.g. the old poster cache) lingered. Take over on the next visit.
+      skipWaiting: true,
+      clientsClaim: true,
     },
   })
 }
