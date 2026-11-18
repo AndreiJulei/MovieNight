@@ -271,7 +271,7 @@ export default function SettingsPage() {
 
         {/* #31: Preferences */}
         <h2 className="mb-4 mt-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Preferences</h2>
-        {/* #29: Animations (per device; follows reduced motion until chosen) */}
+        {/* #29, #43: Animations (per device; phone/desktop and reduced-motion default until chosen) */}
         <AnimationsSection />
 
         {/* 3. Pixel Companion Character Picker Section (desktop only) */}
@@ -857,8 +857,8 @@ function AnimationsSection() {
             Animations
           </h3>
           <p id="animations-setting-description" className="text-xs text-text-muted">
-            Posters grow into the title page and back. Saved on this device; off by default when your
-            system asks for reduced motion.
+            Posters grow into the title page and back. Applies to this device only. Off by default on
+            phones and when your system asks for reduced motion; on by default on larger screens.
           </p>
         </div>
         <button
