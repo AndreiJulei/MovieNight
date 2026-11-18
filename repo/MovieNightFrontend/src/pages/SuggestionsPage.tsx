@@ -14,7 +14,7 @@ export default function SuggestionsPage() {
     <h1 className="mb-3 text-2xl font-bold tracking-tight text-text-primary">Personal movie recommendations</h1>
     <PersonalRecommendationStatus suggestions={suggestions} />
     {error && <p role="alert" className="mb-4 text-danger">{error}</p>}
-    {movies.length > 0 && <MovieGrid movies={movies} referrerOverride="/suggestions"
+    {movies.length > 0 && <MovieGrid movies={movies} referrerOverride="/suggestions" onDismiss={suggestions.dismiss}
       showAddToWatchlist onAddToWatchlist={saveWatchlist}
       userHasMovie={(id) => !!store.currentUser && store.allEntries().some((entry) =>
         entry.userId === store.currentUser?.id && entry.movieId === id && entry.mediaType === "MOVIE")} />}

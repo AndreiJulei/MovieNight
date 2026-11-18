@@ -6,10 +6,10 @@ import AppShell from "../components/AppShell";
 import MovieGrid from "../components/MovieGrid";
 import { libraryCardCaption } from "../components/libraryCard";
 import TopBar, { type Filters, type SortBy, type MinRating, type DateRange, type ViewMode, type MediaTypeFilter } from "../components/TopBar";
+import { listRowRating, readStoredViewMode, resolveViewMode } from "../components/viewMode";
 
 const VALID_SORTS: SortBy[] = ["addedAt", "title", "year", "rating"];
 const VALID_DATES: DateRange[] = ["all", "month", "year"];
-const VALID_VIEWS: ViewMode[] = ["grid", "compact"];
 const VALID_MEDIA_TYPES: MediaTypeFilter[] = ["ALL", "MOVIE", "TV", "ANIME"];
 
 /** Anime movies show in BOTH Movies and Anime filters */
@@ -32,12 +32,7 @@ export default function MoviesPage() {
   const dateRange: DateRange = VALID_DATES.includes(query.get("dateRange") as DateRange)
     ? (query.get("dateRange") as DateRange)
     : "all";
-  const storedView = typeof window !== "undefined" ? (localStorage.getItem("app_view_mode") as ViewMode) : null;
-  const viewMode: ViewMode = VALID_VIEWS.includes(query.get("view") as ViewMode)
-    ? (query.get("view") as ViewMode)
-    : storedView && VALID_VIEWS.includes(storedView)
-      ? storedView
-      : "grid";
+  const viewMode: ViewMode = resolveViewMode(query.get("view"), readStoredViewMode());
 
   const mediaType: MediaTypeFilter = VALID_MEDIA_TYPES.includes(query.get("type") as MediaTypeFilter)
     ? (query.get("type") as MediaTypeFilter)
@@ -146,7 +141,9 @@ export default function MoviesPage() {
       )}
       {(!libraryLoading && !libraryError || movies.length > 0) && <MovieGrid
         movies={movies}
-        compact={filters.viewMode === "compact"}
+        view={filters.viewMode}
+        // List rows: Watched shows the personal rating, Watchlist the audience rating.
+        listRatingFor={(m) => status === "watched" ? personalRatingByMovieId.get(m.id) ?? null : listRowRating(m)}
         captionFor={(m) => libraryCardCaption(status, { rating: personalRatingByMovieId.get(m.id), year: m.year })}
         empty={
           status === "watchlist"

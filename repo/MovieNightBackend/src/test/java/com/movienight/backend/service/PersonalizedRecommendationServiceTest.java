@@ -1,6 +1,8 @@
 package com.movienight.backend.service;
 
 import com.movienight.backend.client.TmdbClient;
+import com.movienight.backend.dto.external.TmdbPerson;
+import com.movienight.backend.dto.external.TmdbSearchResponse;
 import com.movienight.backend.model.*;
 import com.movienight.backend.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +18,10 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
@@ -49,6 +54,9 @@ class PersonalizedRecommendationServiceTest {
 
     @Mock
     private RecommendationRatingEnricher recommendationRatingEnricher;
+
+    @Mock
+    private RecommendationDismissals dismissals;
 
     @InjectMocks
     private PersonalizedRecommendationService personalizedRecommendationService;
@@ -197,5 +205,173 @@ class PersonalizedRecommendationServiceTest {
         personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
 
         verify(recommendationRatingEnricher).enrich(List.of(6L, 5L));
+    }
+
+    private static final long NOSFERATU = 426063L, THE_WITCH = 310131L, THE_LIGHTHOUSE = 503919L, THE_NORTHMAN = 639933L;
+    private static final long EGGERS = 138781L;
+
+    private UserMovieEntry watched(long tmdbId, String title, String director, Double rating) {
+        return UserMovieEntry.builder().user(testUser).status(MovieStatus.WATCHED).personalRating(rating)
+                .movie(Movie.builder().tmdbId(tmdbId).title(title).director(director).mediaType("MOVIE").build()).build();
+    }
+
+    private static TmdbSearchResponse.TmdbMovieSummary film(long id, String title) {
+        TmdbSearchResponse.TmdbMovieSummary summary = new TmdbSearchResponse.TmdbMovieSummary();
+        summary.setId(id);
+        summary.setTitle(title);
+        summary.setVoteAverage(7.4);
+        summary.setVoteCount(5_000);
+        return summary;
+    }
+
+    /** TMDB knows Robert Eggers as the director of Nosferatu and The Witch, with The Lighthouse and The Northman. */
+    private void eggersOnTmdb() {
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        lenient().when(tmdbClient.getMovieDirectors(anyLong())).thenReturn(List.of(new TmdbPerson(EGGERS, "Robert Eggers")));
+        lenient().when(tmdbClient.getDirectedMovies(EGGERS)).thenReturn(List.of(film(NOSFERATU, "Nosferatu"),
+                film(THE_WITCH, "The Witch"), film(THE_LIGHTHOUSE, "The Lighthouse"), film(THE_NORTHMAN, "The Northman")));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<PersonalizedRecommendation> savedRecommendations() {
+        ArgumentCaptor<List<PersonalizedRecommendation>> saved = ArgumentCaptor.forClass(List.class);
+        verify(personalizedRecommendationRepository).saveAll(saved.capture());
+        return saved.getValue();
+    }
+
+    @Test
+    @DisplayName("DR01: two liked films by a director recommend their other films, explained by the director")
+    void dr01_twoLikedFilmsByADirectorRecommendTheirOtherFilms() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", null)));
+        eggersOnTmdb();
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        assertThat(savedRecommendations()).extracting(PersonalizedRecommendation::getTmdbId, PersonalizedRecommendation::getReason)
+                .containsExactlyInAnyOrder(
+                        tuple(THE_LIGHTHOUSE, "Because you liked 2 films by Robert Eggers"),
+                        tuple(THE_NORTHMAN, "Because you liked 2 films by Robert Eggers"));
+    }
+
+    @Test
+    @DisplayName("DR02: one liked film by a director adds no director candidates")
+    void dr02_oneLikedFilmByADirectorAddsNothing() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 6.9)));
+        eggersOnTmdb();
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        verify(tmdbClient, never()).getDirectedMovies(anyLong());
+        verify(personalizedRecommendationRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("DR03: a credits failure skips the director source and keeps the other recommendations")
+    void dr03_creditsFailureKeepsTheOtherRecommendations() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        when(movieSimilarityRepository.findByTmdbIdIn(anySet())).thenReturn(List.of(
+                MovieSimilarity.builder().tmdbId(NOSFERATU).neighborTmdbId(11L).score(0.8).build()));
+        when(movieRepository.findAll()).thenReturn(List.of(
+                Movie.builder().tmdbId(11L).title("Neighbour").mediaType("MOVIE").tmdbVoteAverage(7.4).tmdbVoteCount(5_000).build()));
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.getMovieDirectors(anyLong())).thenThrow(new IllegalStateException("Movie credits source unavailable"));
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        assertThat(savedRecommendationIds()).containsExactly(11L);
+        assertThat(testUser.getPersonalRecommendationState()).isEqualTo("READY");
+        assertThat(testUser.getPersonalRecommendationLimitations()).contains("DIRECTOR_SOURCE_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("DR01: at equal quality, a director's film outranks the top TMDB recommendation")
+    void dr01_directorFilmOutranksTheTopTmdbRecommendation() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        eggersOnTmdb();
+        lenient().when(tmdbClient.getMovieRecommendations(eq(NOSFERATU), eq(1))).thenReturn(List.of(film(12L, "TMDB pick")));
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        List<Long> ids = savedRecommendationIds();
+        assertThat(ids.indexOf(THE_LIGHTHOUSE)).isLessThan(ids.indexOf(12L));
+        assertThat(ids.indexOf(THE_NORTHMAN)).isLessThan(ids.indexOf(12L));
+    }
+
+    @Test
+    @DisplayName("DR01: the user's own liked films by the director are not reported as excluded candidates")
+    void dr01_ownLikedFilmsAreNotReportedAsExcluded() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        eggersOnTmdb();
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        assertThat(testUser.getPersonalRecommendationLimitations()).doesNotContain("LIBRARY_EXCLUDED");
+    }
+
+    @Test
+    @DisplayName("DR03: a filmography failure keeps the other recommendations and records the limitation")
+    void dr03_filmographyFailureKeepsTheOtherRecommendations() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        when(movieSimilarityRepository.findByTmdbIdIn(anySet())).thenReturn(List.of(
+                MovieSimilarity.builder().tmdbId(NOSFERATU).neighborTmdbId(11L).score(0.8).build()));
+        when(movieRepository.findAll()).thenReturn(List.of(
+                Movie.builder().tmdbId(11L).title("Neighbour").mediaType("MOVIE").tmdbVoteAverage(7.4).tmdbVoteCount(5_000).build()));
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.getMovieDirectors(anyLong())).thenReturn(List.of(new TmdbPerson(EGGERS, "Robert Eggers")));
+        when(tmdbClient.getDirectedMovies(EGGERS)).thenThrow(new IllegalStateException("Person credits source unavailable"));
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        assertThat(savedRecommendationIds()).containsExactly(11L);
+        assertThat(testUser.getPersonalRecommendationLimitations()).contains("DIRECTOR_SOURCE_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("PD-20: a director's film below the quality floor is not recommended")
+    void directorFilmBelowTheQualityFloorIsNotRecommended() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        when(tmdbClient.isConfigured()).thenReturn(true);
+        when(tmdbClient.getMovieDirectors(anyLong())).thenReturn(List.of(new TmdbPerson(EGGERS, "Robert Eggers")));
+        TmdbSearchResponse.TmdbMovieSummary obscureShort = film(77L, "Obscure short");
+        obscureShort.setVoteCount(12);
+        when(tmdbClient.getDirectedMovies(EGGERS)).thenReturn(List.of(film(THE_LIGHTHOUSE, "The Lighthouse"), obscureShort));
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        assertThat(savedRecommendationIds()).containsExactly(THE_LIGHTHOUSE);
+    }
+
+    @Test
+    @DisplayName("PD-20: a title from both the director and TMDB adds both relevances and keeps the director explanation")
+    void directorAndTmdbRelevanceAddUpWithTheDirectorExplanation() {
+        when(userMovieEntryRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(
+                watched(NOSFERATU, "Nosferatu", "Robert Eggers", 8.0),
+                watched(THE_WITCH, "The Witch", "Robert Eggers", 8.0)));
+        eggersOnTmdb();
+        when(tmdbClient.getMovieRecommendations(anyLong(), eq(1))).thenAnswer(call ->
+                call.getArgument(0).equals(NOSFERATU) ? List.of(film(THE_LIGHTHOUSE, "The Lighthouse")) : List.of());
+
+        personalizedRecommendationService.recomputeRecommendationsForUser(testUser);
+
+        List<PersonalizedRecommendation> saved = savedRecommendations();
+        PersonalizedRecommendation lighthouse = saved.stream().filter(r -> r.getTmdbId() == THE_LIGHTHOUSE).findFirst().orElseThrow();
+        PersonalizedRecommendation northman = saved.stream().filter(r -> r.getTmdbId() == THE_NORTHMAN).findFirst().orElseThrow();
+        // Same quality data, so the score ratio is the relevance ratio: (2.0 director + 1.0 TMDB) / 2.0 director.
+        assertThat(lighthouse.getScore() / northman.getScore()).isCloseTo(1.5, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(lighthouse.getReason()).isEqualTo("Because you liked 2 films by Robert Eggers");
     }
 }

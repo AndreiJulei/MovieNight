@@ -16,6 +16,414 @@ function loadChromium() {
 const chromium = loadChromium()
 const app = process.env.MOVIENIGHT_BROWSER_URL || "http://127.0.0.1:8443"
 
+// Signed-in fixture context with every Home feed mocked (no backend needed).
+async function openMockedHome(browser, contextOptions = { viewport: { width: 1280, height: 800 } }) {
+  const context = await browser.newContext(contextOptions)
+
+  await context.addInitScript(() => {
+    localStorage.setItem("movienight_token", "fixture-token-hero")
+    localStorage.setItem(
+      "movienight_current_user",
+      JSON.stringify({
+        id: "1",
+        username: "herotester",
+        displayName: "Hero Tester",
+      }),
+    )
+  })
+
+  const page = await context.newPage()
+  page.on("pageerror", (err) => console.error("PAGE ERROR:", err))
+
+  // Route mocks
+  await page.route(
+    (url) => new URL(url).pathname === "/api/users/me",
+    (route) => {
+      return route.fulfill({
+        json: {
+          id: 1,
+          username: "herotester",
+          displayName: "Hero Tester",
+          role: "USER",
+        },
+      })
+    },
+  )
+
+  await page.route(
+    (url) => new URL(url).pathname.startsWith("/api/movies/library"),
+    (route) => {
+      if (route.request().method() === "POST") {
+        return route.fulfill({
+          status: 201,
+          json: {
+            id: 1,
+            status: "WATCHLIST",
+            movie: {
+              id: 693134,
+              tmdbId: 693134,
+              title: "Dune: Part Two",
+              mediaType: "MOVIE",
+            },
+          },
+        })
+      }
+      if (route.request().method() === "DELETE") {
+        return route.fulfill({ status: 200, json: { ok: true } })
+      }
+      return route.fulfill({ json: [] })
+    },
+  )
+
+  await page.route(
+    (url) => new URL(url).pathname === "/api/suggestions/friends",
+    (route) => {
+      return route.fulfill({
+        json: {
+          categories: [
+            { id: "friends", title: "Rated by friends", movies: [] },
+            {
+              id: "friends-watchlist",
+              title: "On friends watchlists",
+              movies: [],
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  // Feed 1: Movies explore (HB01: Newest Releases with floor 6.5, fallback to Top Rated)
+  await page.route(
+    (url) => new URL(url).pathname === "/api/movies/explore/movies",
+    (route) => {
+      return route.fulfill({
+        json: {
+          categories: [
+            {
+              id: "newest",
+              title: "Newest Releases",
+              movies: [
+                {
+                  tmdbId: 111111,
+                  title: "Below Floor Release",
+                  mediaType: "MOVIE",
+                  releaseYear: 2024,
+                  voteAverage: 5.9,
+                  voteCount: 200,
+                },
+                {
+                  tmdbId: 693134,
+                  title: "Dune: Part Two",
+                  mediaType: "MOVIE",
+                  releaseYear: 2024,
+                  voteAverage: 8.4,
+                  voteCount: 4500,
+                  posterUrl:
+                    "https://image.tmdb.org/t/p/w500/dune_poster.jpg",
+                  backdropUrl:
+                    "https://image.tmdb.org/t/p/w1280/dune_backdrop.jpg",
+                  overview:
+                    "Paul Atreides unites with Chani and the Fremen while seeking revenge.",
+                  genres: "Sci-Fi, Adventure",
+                },
+              ],
+            },
+            {
+              id: "top-rated",
+              title: "Top Rated",
+              movies: [
+                {
+                  tmdbId: 278,
+                  title: "The Shawshank Redemption",
+                  mediaType: "MOVIE",
+                  releaseYear: 1994,
+                  voteAverage: 9.3,
+                },
+              ],
+            },
+            {
+              id: "upcoming",
+              title: "Upcoming Movies",
+              movies: [
+                {
+                  tmdbId: 999999,
+                  title: "Mickey 17",
+                  mediaType: "MOVIE",
+                  releaseYear: 2025,
+                  posterUrl:
+                    "https://image.tmdb.org/t/p/w500/mickey_poster.jpg",
+                },
+              ],
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  // Feed 2: TV explore (HB02: Bayesian Top Rated feed, rejects raw airing and low-vote items)
+  await page.route(
+    (url) => new URL(url).pathname === "/api/movies/explore/tv",
+    (route) => {
+      return route.fulfill({
+        json: {
+          categories: [
+            {
+              id: "airing",
+              title: "Currently Airing",
+              movies: [
+                {
+                  tmdbId: 888888,
+                  title: "Raw Airing Show",
+                  mediaType: "TV",
+                  releaseYear: 2024,
+                  voteAverage: 7.2,
+                  voteCount: 150,
+                },
+              ],
+            },
+            {
+              id: "top-rated",
+              title: "Top Rated",
+              movies: [
+                {
+                  tmdbId: 126308,
+                  title: "Shogun",
+                  mediaType: "TV",
+                  releaseYear: 2024,
+                  voteAverage: 8.8,
+                  voteCount: 1200,
+                  posterUrl:
+                    "https://image.tmdb.org/t/p/w500/shogun_poster.jpg",
+                  backdropUrl:
+                    "https://image.tmdb.org/t/p/w1280/shogun_backdrop.jpg",
+                  overview:
+                    "When a mysterious European ship is found marooned in a nearby fishing village...",
+                  genres: "Drama, War",
+                },
+              ],
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  // Feed 3: Anime explore
+  await page.route(
+    (url) => new URL(url).pathname === "/api/movies/explore/anime",
+    (route) => {
+      return route.fulfill({
+        json: {
+          categories: [
+            {
+              id: "current-season",
+              title: "Current Season Hits",
+              movies: [
+                {
+                  tmdbId: 209867,
+                  title: "Frieren: Beyond Journey’s End",
+                  mediaType: "ANIME",
+                  releaseYear: 2024,
+                  voteAverage: 9.1,
+                  voteCount: 850,
+                  posterUrl:
+                    "https://image.tmdb.org/t/p/w500/frieren_poster.jpg",
+                  backdropUrl:
+                    "https://image.tmdb.org/t/p/w1280/frieren_backdrop.jpg",
+                  genres: "Animation, Fantasy, Adventure",
+                },
+              ],
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  // Feed 4: Personal recommendations
+  await page.route(
+    (url) => new URL(url).pathname === "/api/suggestions/personal",
+    (route) => {
+      return route.fulfill({
+        json: {
+          categories: [
+            {
+              id: "movies",
+              title: "Personalized Recommendations",
+              state: "READY",
+              limitations: [],
+              movies: [
+                {
+                  tmdbId: 335984,
+                  title: "Blade Runner 2049",
+                  mediaType: "MOVIE",
+                  releaseYear: 2017,
+                  score: 9.8,
+                  voteAverage: 8.0,
+                  posterUrl:
+                    "https://image.tmdb.org/t/p/w500/bladerunner_poster.jpg",
+                  backdropUrl:
+                    "https://image.tmdb.org/t/p/w1280/bladerunner_backdrop.jpg",
+                  genres: "Sci-Fi, Mystery",
+                },
+              ],
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  // TMDB details route
+  await page.route(
+    (url) => /\/api\/movies\/tmdb\/\d+$/.test(new URL(url).pathname),
+    (route) => {
+      const id = Number(
+        new URL(route.request().url()).pathname.split("/").at(-1),
+      )
+      const type =
+        new URL(route.request().url()).searchParams.get("mediaType") ||
+        "MOVIE"
+      const genres =
+        id === 693134
+          ? "Sci-Fi, Adventure"
+          : id === 126308
+            ? "Drama, War"
+            : "Animation, Fantasy"
+      return route.fulfill({
+        json: {
+          id,
+          tmdbId: id,
+          title: `Title ${id}`,
+          mediaType: type,
+          releaseYear: 2024,
+          backdropUrl: "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+          genres,
+        },
+      })
+    },
+  )
+  return { context, page }
+}
+
+async function waitUntil(check, message) {
+  const end = Date.now() + 5000
+  while (Date.now() < end) {
+    if (await check()) return
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  assert.fail(typeof message === "function" ? await message() : message)
+}
+
+// The slide-controls wrapper is the Pause/Resume button's parent.
+function controlsWrapper(heroRegion) {
+  return heroRegion.getByRole("button", { name: /^(Pause|Resume) spotlight$/ }).locator("..")
+}
+
+async function panelStyle(locator) {
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const bg = style.backgroundColor
+    const alpha =
+      bg === "transparent" ? 0 : bg.startsWith("rgba") ? Number(bg.split(",")[3].replace(")", "")) : 1
+    return { border: parseFloat(style.borderTopWidth), bgAlpha: alpha }
+  })
+}
+
+// #41 HE01–HE03: the phone hero has a larger poster and a slim slide indicator.
+async function phoneHeroChecks(browser) {
+  const { context, page } = await openMockedHome(browser, {
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    reducedMotion: "reduce",
+  })
+  try {
+    await page.goto(app, { waitUntil: "domcontentloaded" })
+    const heroRegion = page.getByRole("region", { name: /curated spotlight hero banner/i })
+    await heroRegion.waitFor({ timeout: 10000 })
+    await heroRegion.getByRole("button", { name: "Pause spotlight" }).click()
+    const slideCount = await heroRegion.locator('[aria-roledescription="slide"]').count()
+
+    // [width, height, minimum poster share of the width]. 390x664 is an iPhone
+    // with Safari's toolbars showing (the reported screenshot, ~48% before
+    // #41); there the 85vh budget, not the width, limits the poster.
+    for (const [width, height, minShare] of [[360, 800, 0.69], [390, 844, 0.69], [390, 664, 0.65], [430, 932, 0.69]]) {
+      await page.setViewportSize({ width, height })
+      const active = heroRegion.locator('[aria-roledescription="slide"][aria-hidden="false"]')
+      // Emulated resizes settle asynchronously: wait for the hero box to stop changing.
+      let previous = ""
+      await waitUntil(async () => {
+        const box = await heroRegion.boundingBox()
+        const current = JSON.stringify(box)
+        const settled = box.width === width && current === previous
+        previous = current
+        await page.waitForTimeout(150)
+        return settled
+      }, `hero relaid out at ${width}px`)
+      await waitUntil(
+        async () => (await heroRegion.boundingBox()).height <= height * 0.85 + 1,
+        async () => `hero ≤85vh at ${width}x${height} (${(await heroRegion.boundingBox()).height})`,
+      )
+      const hero = await heroRegion.boundingBox()
+      const poster = await active.getByTestId("hero-poster").boundingBox()
+      assert(poster.height > poster.width * 1.3, `portrait poster at ${width}px`)
+      // HE01: the poster takes about 70–75% of the screen width (≥270px at 390px).
+      assert(poster.width >= width * minShare, `HE01 poster ≥${minShare * 100}% width at ${width}x${height} (${poster.width})`)
+      if (width === 390 && height === 844) assert(poster.width >= 270, `HE01 poster ≥270px at 390px (${poster.width})`)
+      assert(Math.abs(poster.x + poster.width / 2 - width / 2) <= 2, `poster centred at ${width}px`)
+      const title = await active.locator("h1").first().boundingBox()
+      assert(title.y >= poster.y + poster.height - 1, `title below the poster at ${width}px`)
+
+      // HE02: a slim indicator row with no panel, directly below the actions.
+      const wrapper = controlsWrapper(heroRegion)
+      const row = await wrapper.boundingBox()
+      assert(row.height <= 28, `HE02 indicator visible height ≤28px at ${width}px (${row.height})`)
+      const style = await panelStyle(wrapper)
+      assert.equal(style.border, 0, `HE02 no panel border at ${width}px`)
+      assert(style.bgAlpha <= 0.05, `HE02 no panel background at ${width}px (${style.bgAlpha})`)
+      const moreInfo = await active.getByRole("link", { name: "More info" }).boundingBox()
+      const actionsBottom = moreInfo.y + moreInfo.height
+      const gap = row.y - actionsBottom
+      assert(gap >= 0 && gap <= 16, `HE02 indicator tight under the actions at ${width}px (gap ${gap})`)
+      const controls = await wrapper.getByRole("button").all()
+      assert.equal(controls.length, 1 + slideCount, "pause + one dot per slide")
+      for (const control of controls) {
+        const box = await control.boundingBox()
+        const name = await control.getAttribute("aria-label")
+        assert(box.width >= 44 && box.height >= 44, `HE02 ${name} tap target ≥44px at ${width}px (${box.width}x${box.height})`)
+        assert(box.y >= actionsBottom - 0.5, `HE02 ${name} tap target clear of the actions at ${width}px (${box.y} < ${actionsBottom})`)
+        assert(box.y + box.height <= hero.y + hero.height + 0.5, `HE02 ${name} tap target inside the hero at ${width}px`)
+        assert(box.x >= 0 && box.x + box.width <= width, `HE02 ${name} on screen at ${width}px`)
+      }
+
+      // HE03: no horizontal overflow.
+      assert(
+        await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
+        `HE03 no horizontal overflow at ${width}px`,
+      )
+    }
+
+    // Behaviour unchanged: dots still switch slides.
+    const dot2 = heroRegion.getByRole("button", { name: /^Go to slide 2:/ })
+    await dot2.click()
+    await waitUntil(async () => (await dot2.getAttribute("aria-current")) === "true", "dot 2 selects slide 2")
+
+    // Tablets keep the backdrop hero and the boxed control panel.
+    await page.setViewportSize({ width: 820, height: 1180 })
+    await waitUntil(async () => (await heroRegion.getByTestId("hero-poster").count()) === 0, "tablet uses the backdrop hero")
+    await waitUntil(
+      async () => (await panelStyle(controlsWrapper(heroRegion))).border === 1,
+      "tablet keeps the bordered control panel",
+    )
+    console.log("✔ HE01–HE03: phone hero poster, slim indicator and no overflow at 360–430px")
+  } finally {
+    await context.close()
+  }
+}
+
 async function main() {
   console.log("Launching browser for Ticket 1 Hero Banner verification...")
   const browser = await chromium.launch({
@@ -26,295 +434,7 @@ async function main() {
   })
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-    })
-
-    await context.addInitScript(() => {
-      localStorage.setItem("movienight_token", "fixture-token-hero")
-      localStorage.setItem(
-        "movienight_current_user",
-        JSON.stringify({
-          id: "1",
-          username: "herotester",
-          displayName: "Hero Tester",
-        }),
-      )
-    })
-
-    const page = await context.newPage()
-    page.on("pageerror", (err) => console.error("PAGE ERROR:", err))
-
-    // Route mocks
-    await page.route(
-      (url) => new URL(url).pathname === "/api/users/me",
-      (route) => {
-        return route.fulfill({
-          json: {
-            id: 1,
-            username: "herotester",
-            displayName: "Hero Tester",
-            role: "USER",
-          },
-        })
-      },
-    )
-
-    await page.route(
-      (url) => new URL(url).pathname.startsWith("/api/movies/library"),
-      (route) => {
-        if (route.request().method() === "POST") {
-          return route.fulfill({
-            status: 201,
-            json: {
-              id: 1,
-              status: "WATCHLIST",
-              movie: {
-                id: 693134,
-                tmdbId: 693134,
-                title: "Dune: Part Two",
-                mediaType: "MOVIE",
-              },
-            },
-          })
-        }
-        if (route.request().method() === "DELETE") {
-          return route.fulfill({ status: 200, json: { ok: true } })
-        }
-        return route.fulfill({ json: [] })
-      },
-    )
-
-    await page.route(
-      (url) => new URL(url).pathname === "/api/suggestions/friends",
-      (route) => {
-        return route.fulfill({
-          json: {
-            categories: [
-              { id: "friends", title: "Rated by friends", movies: [] },
-              {
-                id: "friends-watchlist",
-                title: "On friends watchlists",
-                movies: [],
-              },
-            ],
-          },
-        })
-      },
-    )
-
-    // Feed 1: Movies explore (HB01: Newest Releases with floor 6.5, fallback to Top Rated)
-    await page.route(
-      (url) => new URL(url).pathname === "/api/movies/explore/movies",
-      (route) => {
-        return route.fulfill({
-          json: {
-            categories: [
-              {
-                id: "newest",
-                title: "Newest Releases",
-                movies: [
-                  {
-                    tmdbId: 111111,
-                    title: "Below Floor Release",
-                    mediaType: "MOVIE",
-                    releaseYear: 2024,
-                    voteAverage: 5.9,
-                    voteCount: 200,
-                  },
-                  {
-                    tmdbId: 693134,
-                    title: "Dune: Part Two",
-                    mediaType: "MOVIE",
-                    releaseYear: 2024,
-                    voteAverage: 8.4,
-                    voteCount: 4500,
-                    posterUrl:
-                      "https://image.tmdb.org/t/p/w500/dune_poster.jpg",
-                    backdropUrl:
-                      "https://image.tmdb.org/t/p/w1280/dune_backdrop.jpg",
-                    overview:
-                      "Paul Atreides unites with Chani and the Fremen while seeking revenge.",
-                    genres: "Sci-Fi, Adventure",
-                  },
-                ],
-              },
-              {
-                id: "top-rated",
-                title: "Top Rated",
-                movies: [
-                  {
-                    tmdbId: 278,
-                    title: "The Shawshank Redemption",
-                    mediaType: "MOVIE",
-                    releaseYear: 1994,
-                    voteAverage: 9.3,
-                  },
-                ],
-              },
-              {
-                id: "upcoming",
-                title: "Upcoming Movies",
-                movies: [
-                  {
-                    tmdbId: 999999,
-                    title: "Mickey 17",
-                    mediaType: "MOVIE",
-                    releaseYear: 2025,
-                    posterUrl:
-                      "https://image.tmdb.org/t/p/w500/mickey_poster.jpg",
-                  },
-                ],
-              },
-            ],
-          },
-        })
-      },
-    )
-
-    // Feed 2: TV explore (HB02: Bayesian Top Rated feed, rejects raw airing and low-vote items)
-    await page.route(
-      (url) => new URL(url).pathname === "/api/movies/explore/tv",
-      (route) => {
-        return route.fulfill({
-          json: {
-            categories: [
-              {
-                id: "airing",
-                title: "Currently Airing",
-                movies: [
-                  {
-                    tmdbId: 888888,
-                    title: "Raw Airing Show",
-                    mediaType: "TV",
-                    releaseYear: 2024,
-                    voteAverage: 7.2,
-                    voteCount: 150,
-                  },
-                ],
-              },
-              {
-                id: "top-rated",
-                title: "Top Rated",
-                movies: [
-                  {
-                    tmdbId: 126308,
-                    title: "Shogun",
-                    mediaType: "TV",
-                    releaseYear: 2024,
-                    voteAverage: 8.8,
-                    voteCount: 1200,
-                    posterUrl:
-                      "https://image.tmdb.org/t/p/w500/shogun_poster.jpg",
-                    backdropUrl:
-                      "https://image.tmdb.org/t/p/w1280/shogun_backdrop.jpg",
-                    overview:
-                      "When a mysterious European ship is found marooned in a nearby fishing village...",
-                    genres: "Drama, War",
-                  },
-                ],
-              },
-            ],
-          },
-        })
-      },
-    )
-
-    // Feed 3: Anime explore
-    await page.route(
-      (url) => new URL(url).pathname === "/api/movies/explore/anime",
-      (route) => {
-        return route.fulfill({
-          json: {
-            categories: [
-              {
-                id: "current-season",
-                title: "Current Season Hits",
-                movies: [
-                  {
-                    tmdbId: 209867,
-                    title: "Frieren: Beyond Journey’s End",
-                    mediaType: "ANIME",
-                    releaseYear: 2024,
-                    voteAverage: 9.1,
-                    voteCount: 850,
-                    posterUrl:
-                      "https://image.tmdb.org/t/p/w500/frieren_poster.jpg",
-                    backdropUrl:
-                      "https://image.tmdb.org/t/p/w1280/frieren_backdrop.jpg",
-                    genres: "Animation, Fantasy, Adventure",
-                  },
-                ],
-              },
-            ],
-          },
-        })
-      },
-    )
-
-    // Feed 4: Personal recommendations
-    await page.route(
-      (url) => new URL(url).pathname === "/api/suggestions/personal",
-      (route) => {
-        return route.fulfill({
-          json: {
-            categories: [
-              {
-                id: "movies",
-                title: "Personalized Recommendations",
-                state: "READY",
-                limitations: [],
-                movies: [
-                  {
-                    tmdbId: 335984,
-                    title: "Blade Runner 2049",
-                    mediaType: "MOVIE",
-                    releaseYear: 2017,
-                    score: 9.8,
-                    voteAverage: 8.0,
-                    posterUrl:
-                      "https://image.tmdb.org/t/p/w500/bladerunner_poster.jpg",
-                    backdropUrl:
-                      "https://image.tmdb.org/t/p/w1280/bladerunner_backdrop.jpg",
-                    genres: "Sci-Fi, Mystery",
-                  },
-                ],
-              },
-            ],
-          },
-        })
-      },
-    )
-
-    // TMDB details route
-    await page.route(
-      (url) => /\/api\/movies\/tmdb\/\d+$/.test(new URL(url).pathname),
-      (route) => {
-        const id = Number(
-          new URL(route.request().url()).pathname.split("/").at(-1),
-        )
-        const type =
-          new URL(route.request().url()).searchParams.get("mediaType") ||
-          "MOVIE"
-        const genres =
-          id === 693134
-            ? "Sci-Fi, Adventure"
-            : id === 126308
-              ? "Drama, War"
-              : "Animation, Fantasy"
-        return route.fulfill({
-          json: {
-            id,
-            tmdbId: id,
-            title: `Title ${id}`,
-            mediaType: type,
-            releaseYear: 2024,
-            backdropUrl: "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
-            genres,
-          },
-        })
-      },
-    )
+    const { page } = await openMockedHome(browser)
 
     // Navigate to Home Page
     console.log("Navigating to home page...")
@@ -326,6 +446,22 @@ async function main() {
     })
     await heroRegion.waitFor({ timeout: 10000 })
     console.log("✔ Hero banner region rendered")
+
+    // #41: desktop keeps the boxed control panel at the bottom-right.
+    {
+      const wrapper = controlsWrapper(heroRegion)
+      const style = await panelStyle(wrapper)
+      assert.equal(style.border, 1, "desktop keeps the bordered control panel")
+      assert(style.bgAlpha > 0.5, "desktop control panel keeps its background")
+      const hero = await heroRegion.boundingBox()
+      const box = await wrapper.boundingBox()
+      const right = hero.x + hero.width - (box.x + box.width)
+      const bottom = hero.y + hero.height - (box.y + box.height)
+      assert(Math.abs(right - 48) <= 1, `desktop controls 48px from the right (${right})`)
+      assert(Math.abs(bottom - 32) <= 1, `desktop controls 32px from the bottom (${bottom})`)
+      assert(box.height >= 44, `desktop control panel height unchanged (${box.height})`)
+      console.log("✔ #41: desktop slide controls unchanged")
+    }
 
     // ─────────────────────────────────────────────────────────────
     // HB01 — Newest movie candidate:
@@ -528,6 +664,8 @@ async function main() {
       "HB02: Raw airing series is rejected in favor of Bayesian top-rated",
     )
     console.log("✔ HB02: Bayesian TV confidence candidate verified")
+
+    await phoneHeroChecks(browser)
 
     console.log(
       "✔ All Ticket 1 Hero Banner checks (HB01-HB04) passed successfully!",

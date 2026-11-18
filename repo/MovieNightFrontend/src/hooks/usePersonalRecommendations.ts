@@ -1,8 +1,16 @@
 import { titleId } from "../store/titleIdentity";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { moviesApi, type ApiSuggestionMovieItem, type ApiSuggestionCategory } from "../api/movies";
 import { useStore } from "../store/MovieStore";
 import type { Movie } from "../store/data";
+import { useToast } from "../components/Toast";
+import {
+  dismissedRecommendations, setRecommendationDismissed, useDismissedRecommendations,
+  type DismissRecommendation,
+} from "./recommendationDismissals";
+
+/** How long the Undo toast stays (#40: about 5 s; it also stays while it holds focus). */
+const UNDO_TOAST_MS = 5000;
 
 /** Use only movie response metadata; the local catalog may hold TV at the same ID. */
 export function mapPersonalMovie(item: ApiSuggestionMovieItem): Movie {
@@ -53,7 +61,39 @@ export default function usePersonalRecommendations() {
 
   const current = state?.key === key ? state : null;
   const loading = !!userId && !current;
-  return { category: current?.category ?? null, error: current?.error ?? null, loading,
+  const { toast } = useToast();
+  const dismissed = useDismissedRecommendations(userId);
+  const loaded = current?.category ?? null;
+  // Dismissed titles leave at once; the following stored ones move up (RM02). Undo puts one back in place.
+  const category = useMemo(() => loaded && dismissed.size > 0
+    ? { ...loaded, movies: loaded.movies.filter((movie) => !dismissed.has(movie.tmdbId)) } : loaded, [loaded, dismissed]);
+
+  const dismiss = useCallback<DismissRecommendation>((movie, focus) => {
+    const tmdbId = movie.tmdbId;
+    if (!userId || tmdbId == null || dismissedRecommendations(userId).has(tmdbId)) return;
+    setRecommendationDismissed(userId, tmdbId, true);
+    const saved = moviesApi.dismissPersonalRecommendation(tmdbId);
+    const closeUndoToast = toast({
+      type: "info", message: `${movie.title} removed from your recommendations`, duration: UNDO_TOAST_MS,
+      focusUndo: focus.keyboard, onCloseWithFocus: focus.restoreFocus,
+      onUndo: () => {
+        setRecommendationDismissed(userId, tmdbId, false);
+        // The undo waits for the dismissal, so it cannot reach the server first and be overtaken.
+        saved.then(() => moviesApi.undoPersonalRecommendationDismissal(tmdbId).catch(() => {
+          setRecommendationDismissed(userId, tmdbId, true);
+          toast({ type: "error", message: `Could not bring back ${movie.title}. Try again.` });
+        }), () => { /* the dismissal failed and was already reverted */ });
+      },
+    });
+    saved.catch(() => {
+      // Nothing is left to undo: the Undo toast goes, and the card comes back with an error.
+      closeUndoToast();
+      setRecommendationDismissed(userId, tmdbId, false);
+      toast({ type: "error", message: `Could not remove ${movie.title}. Try again.` });
+    });
+  }, [userId, toast]);
+
+  return { category, error: current?.error ?? null, loading, dismiss,
     reload: () => {
       if (loading || pending.current || !userId) return;
       pending.current = true;

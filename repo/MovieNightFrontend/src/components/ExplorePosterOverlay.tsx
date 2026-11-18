@@ -5,12 +5,15 @@ interface ExplorePosterOverlayProps {
   movie: Movie;
   className?: string;
   ratingId?: string;
+  /** Narrow posters (#42 phone Compact): let the year · score line wrap instead of clipping. */
+  wrapMetadata?: boolean;
 }
 
 export function ExplorePosterOverlay({
   movie,
   className = "",
   ratingId,
+  wrapMetadata = false,
 }: ExplorePosterOverlayProps) {
   const metadata = formatExploreMetadata(movie);
 
@@ -24,7 +27,7 @@ export function ExplorePosterOverlay({
       {metadata && (
         <p
           id={ratingId}
-          className="explore-poster-metadata nums mt-1 text-xs font-medium text-text-muted leading-tight whitespace-nowrap"
+          className={`explore-poster-metadata nums mt-1 text-xs font-medium text-text-muted leading-tight ${wrapMetadata ? "whitespace-normal" : "whitespace-nowrap"}`}
         >
           {metadata}
         </p>

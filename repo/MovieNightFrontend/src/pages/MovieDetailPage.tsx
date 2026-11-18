@@ -27,6 +27,7 @@ import useWatchlistSave from "../hooks/useWatchlistSave";
 import { useToast } from "../components/Toast";
 import {
   formatRuntime,
+  formatTitleMetaLine,
   getInitials,
   parseCastMembers,
   providerRatingNotice,
@@ -393,33 +394,9 @@ export default function MovieDetailPage() {
     />
   );
 
-  const heroDetails = (
+  // Shared by the wide hero's metadata line and the phone top (#44).
+  const ratingBadges = (
     <>
-      {/* Title Typography */}
-      {(() => {
-        const display = resolveDetailTitleDisplay(movie, failedLogos);
-        if (display.mode === "logo") {
-          return (
-            <h1 className="m-0">
-              <img
-                src={display.logoUrl}
-                alt={display.title}
-                onError={() => setFailedLogos((f) => ({ ...f, [movie.id]: true }))}
-                className="max-h-20 sm:max-h-28 max-w-full object-contain object-left drop-shadow-lg"
-              />
-            </h1>
-          );
-        }
-        return (
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
-            {display.title}
-          </h1>
-        );
-      })()}
-
-      <div>
-      {/* Metadata Line: Ratings, Year, Runtime, 4K, Media Type */}
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
         {/* IMDb Rating Badge */}
         {movie.imdb != null && (
           <span className="nums inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-400">
@@ -460,6 +437,53 @@ export default function MovieDetailPage() {
             <span className="text-text-muted text-[11px] font-normal">(Yours)</span>
           </span>
         )}
+    </>
+  );
+
+  const mediaPills = (
+    <>
+        {movie.mediaType === "TV" && (
+          <span className="rounded-md border border-cyan-500/30 bg-cyan-500/15 px-2 py-0.5 text-xs font-semibold text-cyan-400">
+            TV Series{movie.seasonsCount ? <> • <span className="nums">{movie.seasonsCount}</span> Season{movie.seasonsCount > 1 ? "s" : ""}</> : ""}
+          </span>
+        )}
+
+        {movie.mediaType === "ANIME" && (
+          <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-400">
+            Anime{movie.episodesCount ? <> • <span className="nums">{movie.episodesCount}</span> Eps</> : ""}
+          </span>
+        )}
+    </>
+  );
+
+  const heroDetails = (
+    <>
+      {/* Title Typography */}
+      {(() => {
+        const display = resolveDetailTitleDisplay(movie, failedLogos);
+        if (display.mode === "logo") {
+          return (
+            <h1 className="m-0">
+              <img
+                src={display.logoUrl}
+                alt={display.title}
+                onError={() => setFailedLogos((f) => ({ ...f, [movie.id]: true }))}
+                className="max-h-20 sm:max-h-28 max-w-full object-contain object-left drop-shadow-lg"
+              />
+            </h1>
+          );
+        }
+        return (
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
+            {display.title}
+          </h1>
+        );
+      })()}
+
+      <div>
+      {/* Metadata Line: Ratings, Year, Runtime, 4K, Media Type */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        {ratingBadges}
 
         {movie.year && (
           <>
@@ -485,17 +509,7 @@ export default function MovieDetailPage() {
           </>
         )}
 
-        {movie.mediaType === "TV" && (
-          <span className="rounded-md border border-cyan-500/30 bg-cyan-500/15 px-2 py-0.5 text-xs font-semibold text-cyan-400">
-            TV Series{movie.seasonsCount ? <> • <span className="nums">{movie.seasonsCount}</span> Season{movie.seasonsCount > 1 ? "s" : ""}</> : ""}
-          </span>
-        )}
-
-        {movie.mediaType === "ANIME" && (
-          <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-400">
-            Anime{movie.episodesCount ? <> • <span className="nums">{movie.episodesCount}</span> Eps</> : ""}
-          </span>
-        )}
+        {mediaPills}
       </div>
 
       {/* Genres row */}
@@ -533,14 +547,21 @@ export default function MovieDetailPage() {
       {compact ? (
         <CompactTitleHero
           title={movie.title}
+          meta={formatTitleMetaLine({ year: movie.year, runtimeMinutes: movie.runtimeMinutes })}
           posterUrl={movie.posterUrl}
           backdropUrl={movie.backdropUrl}
           trailerKey={movie.trailerKey}
+          genres={movie.genres ?? []}
+          overview={movie.overview}
           isTrailerPlaying={isTrailerPlaying}
           onToggleTrailer={() => setIsTrailerPlaying((v) => !v)}
           backLink={<BackLink fallback={previousUrl ? undefined : backDest} onBeforeBack={clearTransition} label={backLabel} />}
+          posterAction={<PosterWatchlistToggle movie={movie} />}
         >
-          {heroDetails}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+            {ratingBadges}
+            {mediaPills}
+          </div>
         </CompactTitleHero>
       ) : (
         <section
@@ -786,6 +807,31 @@ export default function MovieDetailPage() {
       </div>
 
     </AppShell>
+  );
+}
+
+/** #44: the existing add-to-watchlist toggle on the phone title page's poster corner. */
+function PosterWatchlistToggle({ movie }: { movie: Movie }) {
+  const store = useStore();
+  const { toggleWatchlist } = useWatchlistSave();
+  const entry = store.entryFor(store.currentUser!.id, movie.id);
+  if (entry?.status === "watched") return null;
+  const saving = store.isWatchlistSaving(movie.id);
+  const inWatchlist = entry?.status === "watchlist";
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      aria-busy={saving}
+      aria-pressed={inWatchlist}
+      aria-label={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+      onClick={() => toggleWatchlist(movie.id, movie)}
+      className={`absolute left-0 top-0 flex h-11 w-10 items-center justify-center rounded-br-xl border-b border-r text-base font-bold leading-none backdrop-blur-sm transition-colors disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent ${
+        inWatchlist ? "border-accent bg-accent/80 text-white" : "border-white/15 bg-black/65 text-white"
+      }`}
+    >
+      <span aria-hidden="true">{saving ? "…" : inWatchlist ? "✓" : "+"}</span>
+    </button>
   );
 }
 

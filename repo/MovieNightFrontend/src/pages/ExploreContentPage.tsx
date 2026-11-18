@@ -20,6 +20,7 @@ import TopBar, {
   type MinRating,
 } from "../components/TopBar"
 import { useStore } from "../store/MovieStore"
+import { readStoredViewMode, resolveViewMode, viewModeSearch } from "../components/viewMode"
 import { useExploreMedia, type SuggestionRow } from "../hooks/useSuggestions"
 import { useExploreCategory } from "../hooks/useExploreCategory"
 import type { Movie } from "../store/data"
@@ -37,14 +38,9 @@ function ExploreCategoryGridView({
   const store = useStore()
   const { saveWatchlist, error: saveError } = useWatchlistSave()
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("app_view_mode") as ViewMode || "grid"
-    }
-    return "grid"
-  })
   const { navigate } = useRouter()
   const query = useQuery()
+  const viewMode: ViewMode = resolveViewMode(query.get("view"), readStoredViewMode())
   const requestedSort = query.get("sort")
   const sortBy: SortBy =
     requestedSort === "addedAt" ||
@@ -65,15 +61,14 @@ function ExploreCategoryGridView({
   }
 
   const handleFilterChange = (f: Filters) => {
-    setViewMode(f.viewMode)
-    localStorage.setItem("app_view_mode", f.viewMode)
-    if (f.sortBy !== sortBy || f.minRating !== minRating) {
+    if (f.sortBy !== sortBy || f.minRating !== minRating || f.viewMode !== viewMode) {
       const next = new URLSearchParams(query)
       if (f.sortBy === "recommendation") next.delete("sort")
       else next.set("sort", f.sortBy)
       if (f.minRating === 0) next.delete("minRating")
       else next.set("minRating", String(f.minRating))
-      navigate(`/explore/${type}/${rowId}${next.size ? `?${next}` : ""}`)
+      const qs = viewModeSearch(next, f.viewMode)
+      navigate(`/explore/${type}/${rowId}${qs ? `?${qs}` : ""}`)
     }
   }
 
@@ -192,7 +187,7 @@ function ExploreCategoryGridView({
                   )}
                   <MovieGrid
                     movies={segment.movies}
-                    compact={viewMode === "compact"}
+                    view={viewMode}
                     explorePresentation
                     empty="No titles found in this segment."
                     referrerOverride={`/explore/${type}/${rowId}`}
@@ -206,7 +201,7 @@ function ExploreCategoryGridView({
           ) : (
             <MovieGrid
               movies={category.movies}
-              compact={viewMode === "compact"}
+              view={viewMode}
               explorePresentation
               empty={
                 category.terminalReason === "ALL_CANDIDATES_EXCLUDED_BY_LIBRARY"

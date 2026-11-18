@@ -206,6 +206,14 @@ function confirmedWatchedEntry(entry: ApiUserMovieEntryResponse, rating: number 
   return entry;
 }
 
+/** POST dismisses, DELETE undoes (#40); both answer 204 with no body. */
+async function sendDismissal(method: "POST" | "DELETE", tmdbId: number, failure: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/suggestions/personal/dismissals/${encodeURIComponent(tmdbId)}`, {
+    method, headers: getAuthHeaders(), signal: AbortSignal.timeout(15000),
+  }).catch(() => null);
+  if (!res?.ok) throw new Error(failure);
+}
+
 export const moviesApi = {
   /**
    * Live movie search (searches local database first, then TMDB).
@@ -397,7 +405,7 @@ export const moviesApi = {
       if (!res.ok) throw new Error("Personal movie request failed.");
       const data = await res.json() as ApiSuggestionsResponse;
       const states = ["READY", "NO_HISTORY", "INSUFFICIENT_COVERAGE", "LIBRARY_EXHAUSTED", "MISSING_METADATA"];
-      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED"];
+      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED", "DIRECTOR_SOURCE_UNAVAILABLE"];
       if (!Array.isArray(data?.categories) || data.categories.length !== 1 ||
           data.categories.some((c) => c.id !== "movies" || !states.includes(c.state ?? "") ||
             !Array.isArray(c.limitations) || c.limitations.some((l) => !limitations.includes(l)) ||
@@ -541,6 +549,16 @@ export const moviesApi = {
     } catch {
       throw new Error("Could not refresh personal movies. Retry to try again.");
     }
+  },
+
+  /** "Not interested" (#40): permanently removes a movie from personal recommendations. Idempotent. */
+  dismissPersonalRecommendation(tmdbId: number): Promise<void> {
+    return sendDismissal("POST", tmdbId, "Could not remove the title. Try again.");
+  },
+
+  /** Undo of {@link moviesApi.dismissPersonalRecommendation}. Idempotent. */
+  undoPersonalRecommendationDismissal(tmdbId: number): Promise<void> {
+    return sendDismissal("DELETE", tmdbId, "Could not restore the title. Try again.");
   },
 
   /**

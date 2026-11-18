@@ -137,9 +137,20 @@ the release goal includes deployment. Anime films remain deferred.
 ### Personal recommendation quality (2026-11-13)
 
 - Candidates need a TMDB audience rating of at least 6.5 from at least 300 votes.
-- Ranking is relevance weighted by quality. IMDb ≥ 7.0 and Rotten Tomatoes critic
-  approval ≥ 70% each add a bounded boost; IMDb < 6.5 or approval < 60% each apply
-  a smaller bounded penalty. Missing IMDb/RT data is neutral.
+- Ranking is relevance weighted by quality. IMDb and Rotten Tomatoes critic
+  approval each scale the score continuously and within fixed bounds, so a
+  clearly acclaimed title ranks well above a merely good one. Missing IMDb/RT
+  data is neutral. The formulas and bounds live in #37, which supersedes the
+  fixed #24 steps.
+- A director (by TMDB person id) with at least two liked films contributes the
+  rest of their filmography as candidates, explained by the director's name
+  (#38). The floor and weighting still apply. A failed credits lookup skips only
+  that liked film or director and is reported as a limitation; the other
+  directors and sources still publish.
+- The user can dismiss a personal recommendation ("Not interested"). It is
+  excluded permanently, from every read and recomputation, until they undo it;
+  the next stored recommendation takes its place. Undo is offered for about 5 s
+  (#40).
 - Recomputation may enrich at most 30 uncached top candidates per run through
   OMDb, within 300 requests per day, preserving the remaining daily quota for
   title pages (#24).

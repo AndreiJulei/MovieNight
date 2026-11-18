@@ -8,7 +8,8 @@ import type { MediaType } from "../store/data";
 export type SortBy = "recommendation" | "addedAt" | "title" | "year" | "rating";
 export type MinRating = 0 | 6;
 export type DateRange = "all" | "month" | "year";
-export type ViewMode = "grid" | "compact";
+import { rememberViewMode, VIEW_MODE_LABELS, type ViewMode } from "./viewMode";
+export type { ViewMode } from "./viewMode";
 
 export type Filters = {
   sortBy: SortBy;
@@ -32,10 +33,7 @@ const DATE_LABELS: Record<DateRange, string> = {
   month: "This month",
   year: "This year",
 };
-const VIEW_LABELS: Record<ViewMode, string> = {
-  grid: "Grid",
-  compact: "Compact",
-};
+const VIEW_LABELS = VIEW_MODE_LABELS;
 
 export const MEDIA_TYPE_LABELS: Record<MediaTypeFilter, string> = {
   ALL: "All",
@@ -107,7 +105,7 @@ export default function TopBar({
               value={VIEW_LABELS[filters.viewMode]}
               options={Object.entries(VIEW_LABELS).map(([v, l]) => ({ value: v, label: l }))}
               onSelect={(v) => {
-                localStorage.setItem("app_view_mode", v);
+                rememberViewMode(v as ViewMode);
                 onChange({ ...filters, viewMode: v as ViewMode });
               }}
             />
@@ -285,7 +283,7 @@ function FilterSheet({
           value={filters.viewMode}
           options={VIEW_LABELS}
           onSelect={(v) => {
-            localStorage.setItem("app_view_mode", v);
+            rememberViewMode(v as ViewMode);
             onChange({ ...filters, viewMode: v as ViewMode });
           }}
         />

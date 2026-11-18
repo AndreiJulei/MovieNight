@@ -15,7 +15,11 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -34,6 +38,7 @@ class PersonalRecommendationsPersistenceTest {
     @Autowired MovieRepository catalog;
     @Autowired JwtTokenProvider tokens;
     @Autowired PersonalizedRecommendationRepository recommendations;
+    @Autowired RecommendationDismissalRepository dismissalRows;
     @Autowired com.movienight.backend.service.SuggestionScheduler scheduler;
     @MockitoBean TmdbClient tmdb;
     @MockitoBean com.movienight.backend.client.AniListClient aniList; // disabled by default: no live AniList calls
@@ -251,6 +256,116 @@ class PersonalRecommendationsPersistenceTest {
             .andExpect(jsonPath("$.categories[0].movies[0].imdbRating").value(7.9));
     }
 
+    @Test void rm01_dismissedTitleStaysGoneAfterReloadAndRecompute() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        neighbor(seed, candidate, 2); metadata(candidate, "MOVIE", "Not for me");
+        neighbor(seed, candidate + 1, 1); metadata(candidate + 1, "MOVIE", "Next one");
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+
+        dismiss(candidate).andExpect(status().isNoContent());
+
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(1)))
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate + 1));
+        refresh().andExpect(status().isOk());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(1)))
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate + 1));
+    }
+
+    @Test void rm02_nextStoredTitleTakesTheFreedPlaceWithoutARecompute() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        // 35 candidates in a fixed order: seed+1 ranks first, seed+35 last; 30 are stored.
+        for (int i = 1; i <= 35; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(30)))
+            .andExpect(jsonPath("$.categories[0].movies[20].tmdbId").value(seed + 21));
+        // Changing the candidates afterwards shows whether the read recomputed.
+        neighbor(seed, seed + 99, 50); metadata(seed + 99, "MOVIE", "Would only appear after a recompute");
+
+        dismiss(seed + 3).andExpect(status().isNoContent());
+
+        // The Home row shows the first 20: still 20, with the stored 21st sliding in.
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(29)))
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(seed + 1))
+            .andExpect(jsonPath("$.categories[0].movies[2].tmdbId").value(seed + 4))
+            .andExpect(jsonPath("$.categories[0].movies[19].tmdbId").value(seed + 21))
+            .andExpect(jsonPath("$.categories[0].movies[*].tmdbId", not(hasItem((int) (seed + 99)))));
+    }
+
+    @Test void rm03_undoRestoresTheTitleToItsPosition() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        for (int i = 1; i <= 3; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[1].tmdbId").value(seed + 2));
+        dismiss(seed + 2).andExpect(status().isNoContent());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(2)));
+
+        undo(seed + 2).andExpect(status().isNoContent());
+        undo(seed + 2).andExpect(status().isNoContent());
+
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(3)))
+            .andExpect(jsonPath("$.categories[0].movies[1].tmdbId").value(seed + 2));
+        refresh().andExpect(status().isOk());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[1].tmdbId").value(seed + 2));
+    }
+
+    @Test void rm03_undoAfterARecomputeBringsTheTitleBackOnTheNextRead() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        for (int i = 1; i <= 3; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(3)));
+        dismiss(seed + 2).andExpect(status().isNoContent());
+        // A recomputation between the dismissal and its undo drops the title from the stored rows.
+        refresh().andExpect(status().isOk());
+
+        undo(seed + 2).andExpect(status().isNoContent());
+
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(3)))
+            .andExpect(jsonPath("$.categories[0].movies[1].tmdbId").value(seed + 2));
+    }
+
+    @Test void rm04_doubleTapCreatesOneDismissal() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        neighbor(seed, candidate, 1); metadata(candidate, "MOVIE", "Candidate");
+        dismiss(candidate).andExpect(status().isNoContent());
+        dismiss(candidate).andExpect(status().isNoContent());
+        // Concurrent taps race past the existence check; the unique constraint keeps one row, both succeed.
+        var pool = Executors.newFixedThreadPool(4);
+        try {
+            var start = new CountDownLatch(1);
+            List<Future<Integer>> taps = new ArrayList<>();
+            for (int i = 0; i < 4; i++) taps.add(pool.submit(() -> {
+                start.await();
+                return dismiss(candidate + 1).andReturn().getResponse().getStatus();
+            }));
+            start.countDown();
+            for (var tap : taps) assertEquals(204, tap.get());
+        } finally { pool.shutdownNow(); }
+        assertEquals(1,
+            dismissalRows.findTmdbIdsByUserIdAndMediaType(owner.getId(), "MOVIE").stream().filter(id -> id == candidate).count());
+        assertEquals(1,
+            dismissalRows.findTmdbIdsByUserIdAndMediaType(owner.getId(), "MOVIE").stream().filter(id -> id == candidate + 1).count());
+        // One undo is enough to bring the title back.
+        undo(candidate).andExpect(status().isNoContent());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+    }
+
+    @Test void onlyTheOwnerCanDismissOrUndoTheirTitles() throws Exception {
+        mvc.perform(post("/api/suggestions/personal/dismissals/" + candidate)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/suggestions/personal/dismissals/" + candidate)).andExpect(status().isForbidden());
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        neighbor(seed, candidate, 1); metadata(candidate, "MOVIE", "Candidate");
+        User first = owner;
+        dismiss(candidate).andExpect(status().isNoContent());
+        // Another account: its own dismissal and undo never touch the first owner's.
+        owner = users.save(User.builder().username("other-" + UUID.randomUUID()).password("test").build());
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate));
+        undo(candidate).andExpect(status().isNoContent());
+        owner = first;
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(0)));
+    }
+
+    @Test void invalidTitleIdsAreRejected() throws Exception {
+        dismiss(0).andExpect(status().isBadRequest());
+    }
+
     void neighbor(long source, long target, double score) {
         similarities.save(MovieSimilarity.builder().tmdbId(source).neighborTmdbId(target).score(score).build());
     }
@@ -267,6 +382,12 @@ class PersonalRecommendationsPersistenceTest {
     }
     String token() { return "Bearer " + tokens.generateToken(owner.getUsername(), owner.getId(), owner.getRole()); }
     ResultActions read(String path) throws Exception { return mvc.perform(get(path).header("Authorization", token())); }
+    ResultActions dismiss(long tmdbId) throws Exception {
+        return mvc.perform(post("/api/suggestions/personal/dismissals/" + tmdbId).header("Authorization", token()));
+    }
+    ResultActions undo(long tmdbId) throws Exception {
+        return mvc.perform(delete("/api/suggestions/personal/dismissals/" + tmdbId).header("Authorization", token()));
+    }
     ResultActions refresh() throws Exception {
         return mvc.perform(post("/api/suggestions/personalized/refresh").header("Authorization", token()));
     }

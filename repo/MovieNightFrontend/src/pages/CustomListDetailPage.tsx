@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { matchPath, useRouter } from "../router";
+import { matchPath, useQuery, useRouter } from "../router";
+import { readStoredViewMode, resolveViewMode, viewModeSearch } from "../components/viewMode";
 import BackLink from "../components/BackLink";
 import { useStore } from "../store/MovieStore";
 import type { Movie } from "../store/data";
@@ -16,7 +17,8 @@ import TopBar, {
 const ANIME_MOVIE_IDS = new Set(["anime-demon-slayer-movie"]);
 
 export default function CustomListDetailPage() {
-  const { path } = useRouter();
+  const { path, navigate } = useRouter();
+  const query = useQuery();
   const store = useStore();
   const params = matchPath("/lists/:id", path);
   const listId = params?.id;
@@ -38,12 +40,8 @@ export default function CustomListDetailPage() {
     } catch (error) { setError(error instanceof Error ? error.message : "Could not rename this list. Please try again."); }
   };
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("app_view_mode") as ViewMode) || "grid";
-    }
-    return "grid";
-  });
+  // #42: ?view= first, then the remembered view, then Grid.
+  const viewMode: ViewMode = resolveViewMode(query.get("view"), readStoredViewMode());
   const [sortBy, setSortBy] = useState<SortBy>("addedAt");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>("ALL");
 
@@ -56,8 +54,10 @@ export default function CustomListDetailPage() {
 
   const handleFilterChange = (f: Filters) => {
     setSortBy(f.sortBy);
-    setViewMode(f.viewMode);
-    localStorage.setItem("app_view_mode", f.viewMode);
+    if (f.viewMode !== viewMode) {
+      const qs = viewModeSearch(query, f.viewMode);
+      navigate(`${path}${qs ? `?${qs}` : ""}`);
+    }
   };
 
   // Resolve movies belonging to this custom list
@@ -167,7 +167,7 @@ export default function CustomListDetailPage() {
       {/* Reused MovieGrid */}
       <MovieGrid
         movies={sortedMovies}
-        compact={viewMode === "compact"}
+        view={viewMode}
         empty="Nothing in this list yet. Add movies from their detail page."
         referrerOverride={`/lists/${list.id}`}
       />
