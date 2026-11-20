@@ -4,7 +4,6 @@ import com.movienight.backend.client.OmdbClient;
 import com.movienight.backend.client.TmdbClient;
 import com.movienight.backend.dto.MovieResponse;
 import com.movienight.backend.dto.SearchPageResponse;
-import com.movienight.backend.dto.external.OmdbResponse;
 import com.movienight.backend.dto.external.TmdbMovieDetailsResponse;
 import com.movienight.backend.dto.external.TmdbSearchResponse;
 import com.movienight.backend.model.Movie;
@@ -16,16 +15,24 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
  * Service that orchestrates the 3-Tier Movie Lookup:
  * Tier 1: Local Database Cache (MovieRepository)
  * Tier 2: The Movie Database (TMDB API - Posters, Cast, Trailers)
- * Tier 3: Open Movie Database (OMDb API - Rotten Tomatoes & IMDb critic scores, non-blocking)
+ * Tier 3: Open Movie Database (OMDb API - Rotten Tomatoes & IMDb critic scores). A title page waits up to
+ * {@link #titlePageOmdbWait} for them, then loads without them while the lookup finishes in the background.
  */
 @Service
 @Slf4j
@@ -37,6 +44,25 @@ public class MovieCatalogLookupService {
     private final CachedMovieListRepository cachedMovieListRepository;
     private final CatalogPersistenceService catalogPersistenceService;
     private final Executor catalogEnrichmentExecutor;
+    private final OmdbRequestBudget omdbRequestBudget;
+
+    /** How long a title page waits for OMDb before it loads without scores (SC04). */
+    Duration titlePageOmdbWait = Duration.ofSeconds(2);
+    /** OMDb checks a title page started, by catalog id, so pages opened meanwhile wait on the same request. */
+    private final ConcurrentHashMap<Long, CompletableFuture<Optional<OmdbRatings>>> omdbChecksInFlight = new ConcurrentHashMap<>();
+
+    /** How a details request treats missing OMDb scores. */
+    private enum CriticScores {
+        /** Title page: wait up to {@link #titlePageOmdbWait} for them. */
+        WAIT,
+        /** Entry-page hero slides: start the lookup and return at once; the scores show on a later read. */
+        IN_BACKGROUND,
+        /** Recommendation enrichment, which spends its own OMDb budget. */
+        SKIP
+    }
+
+    /** What one OMDb answer gave: either value may be missing. */
+    private record OmdbRatings(Double imdb, Integer rottenTomatoes) {}
 
     public MovieCatalogLookupService(
             MovieRepository movieRepository,
@@ -44,7 +70,8 @@ public class MovieCatalogLookupService {
             OmdbClient omdbClient,
             CachedMovieListRepository cachedMovieListRepository,
             CatalogPersistenceService catalogPersistenceService,
-            @Qualifier("catalogEnrichmentExecutor") Executor catalogEnrichmentExecutor
+            @Qualifier("catalogEnrichmentExecutor") Executor catalogEnrichmentExecutor,
+            OmdbRequestBudget omdbRequestBudget
     ) {
         this.movieRepository = movieRepository;
         this.tmdbClient = tmdbClient;
@@ -52,6 +79,7 @@ public class MovieCatalogLookupService {
         this.cachedMovieListRepository = cachedMovieListRepository;
         this.catalogPersistenceService = catalogPersistenceService;
         this.catalogEnrichmentExecutor = catalogEnrichmentExecutor;
+        this.omdbRequestBudget = omdbRequestBudget;
     }
 
     /**
@@ -269,10 +297,18 @@ public class MovieCatalogLookupService {
 
     /**
      * Get or fetch full media details by TMDB ID with media type hint (MOVIE, TV, ANIME).
-     * Returns core details promptly without waiting for optional external enrichment.
+     * Waits briefly for missing OMDb scores (SC04); other optional enrichment runs in the background.
      */
     public Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint) {
         return getOrFetchMovie(tmdbId, mediaTypeHint, true);
+    }
+
+    /**
+     * {@link #getOrFetchMovie(Long, String)}; with {@code waitForScores} false the OMDb lookup still starts but
+     * the details return without waiting for it (entry-page hero slides).
+     */
+    public Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint, boolean waitForScores) {
+        return lookup(tmdbId, mediaTypeHint, waitForScores ? CriticScores.WAIT : CriticScores.IN_BACKGROUND);
     }
 
     /**
@@ -280,10 +316,11 @@ public class MovieCatalogLookupService {
      * never starts background OMDb enrichment: the caller spends its own bounded OMDb budget (PD-08).
      */
     public Movie getOrFetchMovieWithoutOmdb(Long tmdbId) {
-        return getOrFetchMovie(tmdbId, "MOVIE", false);
+        return lookup(tmdbId, "MOVIE", CriticScores.SKIP);
     }
 
-    private Movie getOrFetchMovie(Long tmdbId, String mediaTypeHint, boolean enrichCritics) {
+    private Movie lookup(Long tmdbId, String mediaTypeHint, CriticScores criticScores) {
+        boolean enrichCritics = criticScores != CriticScores.SKIP;
         if (tmdbId == null || tmdbId <= 0) {
             throw new IllegalArgumentException("Provider ID must be positive");
         }
@@ -296,12 +333,15 @@ public class MovieCatalogLookupService {
             if (enrichCritics && isIncomplete(movie) && tmdbClient.isConfigured()) {
                 triggerBackgroundBackfill(movie.getId(), resourceType, tmdbId);
             }
-            if (enrichCritics && movie.getImdbId() != null && movie.getImdbRating() == null && omdbClient.isConfigured()) {
-                triggerBackgroundEnrichment(movie.getId(), movie.getImdbId());
-            }
-            return movie;
+            return withCriticScores(movie, criticScores);
         }
 
+        return withCriticScores(fetchIntoCatalog(tmdbId, resourceType), criticScores);
+    }
+
+    /** First open of a title: fetch it from TMDB and store it in the shared catalog. */
+    private Movie fetchIntoCatalog(Long tmdbId, ResourceType resourceType) {
+        Optional<Movie> existingMovie;
         // Lock to serialize concurrent first-open fetches for the same typed title
         String lockKey = (resourceType + ":" + tmdbId).intern();
         synchronized (lockKey) {
@@ -364,34 +404,71 @@ public class MovieCatalogLookupService {
 
             Movie saved = catalogPersistenceService.saveIfAbsent(movie, resourceType, tmdbId);
             log.info("Cached new {} into shared catalog: {} (TMDB: {})", saved.getMediaType(), saved.getTitle(), tmdbId);
-
-            // Trigger non-blocking background enrichment for critic scores
-            if (enrichCritics && saved.getImdbId() != null && omdbClient.isConfigured()) {
-                triggerBackgroundEnrichment(saved.getId(), saved.getImdbId());
-            }
-
             return saved;
         }
     }
 
-    private void triggerBackgroundEnrichment(Long movieId, String imdbId) {
-        if (movieId == null || imdbId == null || imdbId.isBlank() || !omdbClient.isConfigured()) {
-            return;
+    /**
+     * Ask OMDb for a title's missing scores when {@link OmdbRecheckPolicy} allows it. {@link CriticScores#WAIT}
+     * waits up to {@link #titlePageOmdbWait} for the answer, which is set on the returned title (SC04); a slower
+     * lookup, or one started {@link CriticScores#IN_BACKGROUND}, stores its answer for the next read.
+     */
+    private Movie withCriticScores(Movie movie, CriticScores criticScores) {
+        if (criticScores == CriticScores.SKIP || movie == null || movie.getId() == null || !omdbClient.isConfigured()
+                || !OmdbRecheckPolicy.eligible(movie, LocalDateTime.now(ZoneOffset.UTC))) {
+            return movie;
         }
-        catalogEnrichmentExecutor.execute(() -> {
+        Long movieId = movie.getId();
+        String imdbId = movie.getImdbId();
+        CompletableFuture<Optional<OmdbRatings>> started = new CompletableFuture<>();
+        CompletableFuture<Optional<OmdbRatings>> check = omdbChecksInFlight.putIfAbsent(movieId, started);
+        if (check == null) {
+            check = started;
             try {
-                Optional<OmdbResponse> omdb = omdbClient.getMovieRatings(imdbId);
-                if (omdb.isPresent()) {
-                    Double imdbRating = omdbClient.extractImdbRating(omdb.get());
-                    Integer rtScore = omdbClient.extractRottenTomatoesScore(omdb.get());
-                    if (imdbRating != null || rtScore != null) {
-                        catalogPersistenceService.updateRatings(movieId, imdbRating, rtScore);
+                catalogEnrichmentExecutor.execute(() -> {
+                    try {
+                        started.complete(checkOmdb(movieId, imdbId));
+                    } catch (RuntimeException failure) {
+                        log.warn("OMDb lookup failed for IMDb ID '{}': {}", imdbId, failure.getMessage());
+                        started.complete(Optional.empty());
+                    } finally {
+                        omdbChecksInFlight.remove(movieId, started);
                     }
-                }
-            } catch (Exception e) {
-                log.warn("Background OMDb enrichment failed for IMDb ID '{}': {}", imdbId, e.getMessage());
+                });
+            } catch (RuntimeException rejected) {
+                omdbChecksInFlight.remove(movieId, started);
+                return movie;
             }
-        });
+        }
+        if (criticScores == CriticScores.IN_BACKGROUND) return movie;
+        try {
+            check.get(titlePageOmdbWait.toMillis(), TimeUnit.MILLISECONDS).ifPresent(ratings -> {
+                if (ratings.imdb() != null) movie.setImdbRating(ratings.imdb());
+                if (ratings.rottenTomatoes() != null) movie.setRottenTomatoesRating(ratings.rottenTomatoes());
+            });
+        } catch (TimeoutException slow) {
+            // The lookup carries on and removes itself when it ends; OmdbClient's own timeouts bound it to a few
+            // seconds. A visit meanwhile joins it instead of sending a second OMDb request (SC07).
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException failed) {
+            log.warn("OMDb lookup failed for IMDb ID '{}'", imdbId);
+        }
+        return movie;
+    }
+
+    /**
+     * One budgeted OMDb request for a title. An answer is recorded with {@code omdbCheckedAt}, even without
+     * scores; no answer, or a spent title-page budget (SC07), records nothing.
+     */
+    private Optional<OmdbRatings> checkOmdb(Long movieId, String imdbId) {
+        if (!omdbRequestBudget.tryReserveForTitlePage()) return Optional.empty();
+        OmdbClient.RatingsLookup lookup = omdbClient.lookupRatings(imdbId);
+        if (lookup.outcome() == OmdbClient.RatingsLookup.Outcome.NO_ANSWER) return Optional.empty();
+        Double imdb = lookup.ratings().map(omdbClient::extractImdbRating).orElse(null);
+        Integer rottenTomatoes = lookup.ratings().map(omdbClient::extractRottenTomatoesScore).orElse(null);
+        catalogPersistenceService.recordOmdbCheck(movieId, imdb, rottenTomatoes, LocalDateTime.now(ZoneOffset.UTC));
+        return Optional.of(new OmdbRatings(imdb, rottenTomatoes));
     }
 
     private void triggerBackgroundBackfill(Long movieId, ResourceType resourceType, Long tmdbId) {
@@ -409,12 +486,17 @@ public class MovieCatalogLookupService {
                         ? tmdbClient.getTvDetails(tmdbId) : tmdbClient.getMovieDetails(tmdbId);
                 if (detailsOpt.isPresent()) {
                     ExtractedMetadata meta = extractMetadata(detailsOpt.get(), resourceType);
-                    catalogPersistenceService.backfillCoreDetails(movieId, new CatalogPersistenceService.CoreDetails(
+                    Movie backfilled = catalogPersistenceService.backfillCoreDetails(movieId, new CatalogPersistenceService.CoreDetails(
                             meta.overview(), meta.genres(), meta.director(),
                             meta.castMembers(), meta.trailerKey(), meta.runtimeMinutes(),
                             meta.logoUrl()));
-                    if (meta.imdbId() != null && omdbClient.isConfigured()) {
-                        triggerBackgroundEnrichment(movieId, meta.imdbId());
+                    // A stored title without an IMDb id is checked with the provider's; one with an id is
+                    // already checked by the title page itself.
+                    if (backfilled != null && backfilled.getImdbId() == null && meta.imdbId() != null && omdbClient.isConfigured()
+                            && OmdbRecheckPolicy.eligible(meta.imdbId(), backfilled.getImdbRating(),
+                                    backfilled.getRottenTomatoesRating(), backfilled.getOmdbCheckedAt(),
+                                    LocalDateTime.now(ZoneOffset.UTC))) {
+                        checkOmdb(movieId, meta.imdbId());
                     }
                 }
             } catch (Exception e) {

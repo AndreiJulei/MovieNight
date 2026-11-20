@@ -79,13 +79,23 @@ class MovieCatalogControllerTest {
 
     @Test
     void getMovieDetails_returnsOk() throws Exception {
-        when(lookupService.getOrFetchMovie(283995L, "MOVIE")).thenReturn(sampleMovie);
+        // The title page waits for missing OMDb scores unless the caller opts out (SC04).
+        when(lookupService.getOrFetchMovie(283995L, "MOVIE", true)).thenReturn(sampleMovie);
         when(lookupService.mapToResponse(sampleMovie)).thenReturn(sampleMovieResponse);
 
         mockMvc.perform(get("/api/movies/tmdb/283995").param("mediaType", "MOVIE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Guardians of the Galaxy Vol. 2"))
                 .andExpect(jsonPath("$.director").value("James Gunn"));
+    }
+
+    @Test
+    void getMovieDetails_entryPagesOptOutOfWaitingForScores() throws Exception {
+        when(lookupService.getOrFetchMovie(283995L, "MOVIE", false)).thenReturn(sampleMovie);
+        when(lookupService.mapToResponse(sampleMovie)).thenReturn(sampleMovieResponse);
+
+        mockMvc.perform(get("/api/movies/tmdb/283995").param("mediaType", "MOVIE").param("waitForScores", "false"))
+                .andExpect(status().isOk());
     }
 
     @Test

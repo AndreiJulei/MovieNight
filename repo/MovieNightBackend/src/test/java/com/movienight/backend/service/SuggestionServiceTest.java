@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -184,5 +185,27 @@ class SuggestionServiceTest {
         assertThat(response.getCategories().get(1).getId()).isEqualTo("popular");
         assertThat(response.getCategories().get(1).getState()).isEqualTo("UNAVAILABLE");
         assertThat(response.getCategories().get(1).getMovies()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SC03: an Explore card shows the IMDb and RT values the catalog holds, for titles outside the library")
+    void sc03_exploreRowsCarryCatalogScores() {
+        when(discoverySnapshotRepository.findByMediaType("MOVIE")).thenReturn(java.util.Arrays.stream(new MovieListType[] {
+                        MovieListType.RECENT, MovieListType.POPULAR, MovieListType.TOP_RATED, MovieListType.UPCOMING})
+                .map(type -> DiscoverySnapshot.builder().mediaType("MOVIE").listType(type)
+                        .updatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)).build()).toList());
+        when(cachedMovieListRepository.findByMediaTypeOrderByRankOrderAsc("MOVIE")).thenReturn(List.of(
+                CachedMovieList.builder().mediaType("MOVIE").listType(MovieListType.TOP_RATED).tmdbId(500L).title("The Dark Knight").build(),
+                CachedMovieList.builder().mediaType("MOVIE").listType(MovieListType.TOP_RATED).tmdbId(501L).title("Unscored").build()));
+        when(movieRepository.findByResourceTypeAndTmdbIdIn(eq(ResourceType.MOVIE), anyCollection())).thenReturn(List.of(
+                Movie.builder().tmdbId(500L).mediaType("MOVIE").title("The Dark Knight").imdbRating(9.0).rottenTomatoesRating(94).build()));
+
+        SuggestionsResponse response = suggestionService.getExploreMedia("movies", "john@example.com");
+
+        var topRated = response.getCategories().stream().filter(c -> c.getId().equals("top-rated")).findFirst().orElseThrow();
+        assertThat(topRated.getMovies()).extracting(m -> m.getTmdbId(), m -> m.getImdbRating(), m -> m.getRottenTomatoesRating())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(500L, 9.0, 94.0),
+                        org.assertj.core.groups.Tuple.tuple(501L, null, null));
     }
 }

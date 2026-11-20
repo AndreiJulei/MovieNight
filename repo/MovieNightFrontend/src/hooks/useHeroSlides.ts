@@ -93,6 +93,8 @@ export function useHeroSlides() {
       return moviesApi
         .getByTmdbId(title.tmdbId, title.mediaType, {
           userScope: currentUserId,
+          // Entry pages never wait for OMDb; missing scores show on a later load.
+          waitForScores: false,
         })
         .then((res) => {
           if (reqId !== activeReqId.current || !res) return null

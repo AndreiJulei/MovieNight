@@ -252,15 +252,17 @@ export const moviesApi = {
   },
 
   /**
-   * Get or fetch full media details by TMDB ID. Critic scores (OMDb) are filled in the background
-   * and arrive on a later read, so this never waits for them.
+   * Get or fetch full media details by TMDB ID. When critic scores (OMDb) are missing the server waits up
+   * to about 2 s for them; a slower answer arrives on a later read. `waitForScores: false` skips that wait
+   * (entry-page hero slides) and is cached separately, so the title page never reuses a copy that did not wait.
    */
-  async getByTmdbId(tmdbId: number, mediaType?: string, options?: BoundedReadOptions & { fresh?: boolean }): Promise<ApiMovieResponse | null> {
+  async getByTmdbId(tmdbId: number, mediaType?: string, options?: BoundedReadOptions & { fresh?: boolean; waitForScores?: boolean }): Promise<ApiMovieResponse | null> {
     if (!mediaType) throw new Error("Explicit title resource type is required.");
-    const actionKey = `getByTmdbId:${mediaType.toUpperCase()}:${tmdbId}`;
+    const waitForScores = options?.waitForScores ?? true;
+    const actionKey = `getByTmdbId:${mediaType.toUpperCase()}:${tmdbId}${waitForScores ? "" : ":no-wait"}`;
     const read = (readOptions?: BoundedReadOptions) => boundedRead(actionKey, (signal) => {
       return libraryRequest<ApiMovieResponse>(
-        `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
+        `${API_BASE}/api/movies/tmdb/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}${waitForScores ? "" : "&waitForScores=false"}`,
         { signal },
       );
     }, readOptions);
@@ -405,7 +407,7 @@ export const moviesApi = {
       if (!res.ok) throw new Error("Personal movie request failed.");
       const data = await res.json() as ApiSuggestionsResponse;
       const states = ["READY", "NO_HISTORY", "INSUFFICIENT_COVERAGE", "LIBRARY_EXHAUSTED", "MISSING_METADATA"];
-      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED", "DIRECTOR_SOURCE_UNAVAILABLE"];
+      const limitations = ["TMDB_UNCONFIGURED", "PARTIAL_COVERAGE", "LIBRARY_EXCLUDED", "METADATA_OMITTED", "DIRECTOR_SOURCE_UNAVAILABLE", "ACCLAIMED_SOURCE_UNAVAILABLE"];
       if (!Array.isArray(data?.categories) || data.categories.length !== 1 ||
           data.categories.some((c) => c.id !== "movies" || !states.includes(c.state ?? "") ||
             !Array.isArray(c.limitations) || c.limitations.some((l) => !limitations.includes(l)) ||

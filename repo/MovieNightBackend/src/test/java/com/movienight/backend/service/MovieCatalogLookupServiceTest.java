@@ -45,6 +45,9 @@ class MovieCatalogLookupServiceTest {
     @Mock
     private java.util.concurrent.Executor catalogEnrichmentExecutor;
 
+    @Mock
+    private OmdbRequestBudget omdbRequestBudget;
+
     @InjectMocks
     private MovieCatalogLookupService lookupService;
 
@@ -94,7 +97,7 @@ class MovieCatalogLookupServiceTest {
         assertNotNull(result);
         assertEquals(283995L, result.getTmdbId());
         verify(tmdbClient, never()).getMovieDetails(anyLong());
-        verify(omdbClient, never()).getMovieRatings(anyString());
+        verify(omdbClient, never()).lookupRatings(anyString());
     }
 
     @Test
@@ -128,28 +131,159 @@ class MovieCatalogLookupServiceTest {
         videos.setResults(List.of(video));
         tmdbResponse.setVideos(videos);
 
-        OmdbResponse omdbResponse = new OmdbResponse();
-        omdbResponse.setResponse("True");
-
         when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L)).thenReturn(Optional.empty());
         when(tmdbClient.getMovieDetails(283995L)).thenReturn(Optional.of(tmdbResponse));
-        when(omdbClient.isConfigured()).thenReturn(true);
         when(catalogPersistenceService.saveIfAbsent(any(Movie.class), eq(com.movienight.backend.model.ResourceType.MOVIE), eq(283995L)))
-                .thenReturn(localMovie);
-        doAnswer(invocation -> {
-            ((Runnable) invocation.getArgument(0)).run();
-            return null;
-        }).when(catalogEnrichmentExecutor).execute(any(Runnable.class));
-        when(omdbClient.getMovieRatings("tt3896198")).thenReturn(Optional.of(omdbResponse));
-        when(omdbClient.extractImdbRating(omdbResponse)).thenReturn(7.6);
-        when(omdbClient.extractRottenTomatoesScore(omdbResponse)).thenReturn(85);
+                .thenReturn(unscored(localMovie));
+        omdbAnswers(7.6, 85);
+        executorRunsImmediately();
 
         Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
 
         assertNotNull(result);
         assertEquals("Guardians of the Galaxy Vol. 2", result.getTitle());
         verify(catalogPersistenceService).saveIfAbsent(any(Movie.class), eq(com.movienight.backend.model.ResourceType.MOVIE), eq(283995L));
-        verify(catalogPersistenceService).updateRatings(eq(1L), eq(7.6), eq(85));
+        assertEquals(7.6, result.getImdbRating());
+        assertEquals(85, result.getRottenTomatoesRating());
+        verify(catalogPersistenceService).recordOmdbCheck(eq(1L), eq(7.6), eq(85), any());
+    }
+
+    /** The catalog row without stored scores, as a first visit finds it. */
+    private static Movie unscored(Movie movie) {
+        movie.setImdbRating(null);
+        movie.setRottenTomatoesRating(null);
+        return movie;
+    }
+
+    private void omdbAnswers(Double imdb, Integer rottenTomatoes) {
+        OmdbResponse omdbResponse = new OmdbResponse();
+        omdbResponse.setResponse("True");
+        when(omdbClient.isConfigured()).thenReturn(true);
+        lenient().when(omdbRequestBudget.tryReserveForTitlePage()).thenReturn(true);
+        lenient().when(omdbClient.lookupRatings("tt3896198")).thenReturn(OmdbClient.RatingsLookup.found(omdbResponse));
+        lenient().when(omdbClient.extractImdbRating(omdbResponse)).thenReturn(imdb);
+        lenient().when(omdbClient.extractRottenTomatoesScore(omdbResponse)).thenReturn(rottenTomatoes);
+    }
+
+    private void executorRunsImmediately() {
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(catalogEnrichmentExecutor).execute(any(Runnable.class));
+    }
+
+    @Test
+    void sc04_firstVisitToAStoredTitleWithoutScoresShowsThemOnTheSameVisit() {
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(unscored(localMovie)));
+        omdbAnswers(7.6, 85);
+        executorRunsImmediately();
+
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        assertEquals(7.6, result.getImdbRating());
+        assertEquals(85, result.getRottenTomatoesRating());
+        verify(catalogPersistenceService).recordOmdbCheck(eq(1L), eq(7.6), eq(85), any());
+    }
+
+    @Test
+    void sc04_slowOmdbLoadsThePageWithoutScoresAndStoresThemForTheNextVisit() throws Exception {
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(unscored(localMovie)));
+        omdbAnswers(7.6, 85);
+        java.util.concurrent.atomic.AtomicReference<Runnable> stillRunning = new java.util.concurrent.atomic.AtomicReference<>();
+        doAnswer(invocation -> { stillRunning.set(invocation.getArgument(0)); return null; })
+                .when(catalogEnrichmentExecutor).execute(any(Runnable.class));
+        lookupService.titlePageOmdbWait = java.time.Duration.ofMillis(20);
+
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        assertNull(result.getImdbRating());
+        assertNull(result.getRottenTomatoesRating());
+        // The lookup carries on in the background and stores what OMDb answers.
+        stillRunning.get().run();
+        verify(catalogPersistenceService).recordOmdbCheck(eq(1L), eq(7.6), eq(85), any());
+    }
+
+    @Test
+    void sc07_aVisitDuringALookupThatOutlastedTheWaitJoinsItInsteadOfAskingOmdbAgain() {
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(unscored(localMovie)));
+        omdbAnswers(7.6, 85);
+        java.util.concurrent.atomic.AtomicReference<Runnable> stillRunning = new java.util.concurrent.atomic.AtomicReference<>();
+        doAnswer(invocation -> { stillRunning.set(invocation.getArgument(0)); return null; })
+                .when(catalogEnrichmentExecutor).execute(any(Runnable.class));
+        lookupService.titlePageOmdbWait = java.time.Duration.ofMillis(20);
+
+        lookupService.getOrFetchMovie(283995L, "MOVIE");
+        lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        verify(catalogEnrichmentExecutor, times(1)).execute(any(Runnable.class));
+        stillRunning.get().run();
+        verify(omdbClient, times(1)).lookupRatings("tt3896198");
+        verify(omdbRequestBudget, times(1)).tryReserveForTitlePage();
+    }
+
+    @Test
+    void sc04_aCallerThatDoesNotWaitGetsDetailsAtOnceWhileTheLookupRunsInTheBackground() {
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(unscored(localMovie)));
+        omdbAnswers(7.6, 85);
+        java.util.concurrent.atomic.AtomicReference<Runnable> started = new java.util.concurrent.atomic.AtomicReference<>();
+        doAnswer(invocation -> { started.set(invocation.getArgument(0)); return null; })
+                .when(catalogEnrichmentExecutor).execute(any(Runnable.class));
+        // A long wait shows the call does not wait at all.
+        lookupService.titlePageOmdbWait = java.time.Duration.ofSeconds(30);
+
+        long start = System.nanoTime();
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE", false);
+
+        assertTrue(java.time.Duration.ofNanos(System.nanoTime() - start).toMillis() < 1000);
+        assertNull(result.getImdbRating());
+        started.get().run();
+        verify(catalogPersistenceService).recordOmdbCheck(eq(1L), eq(7.6), eq(85), any());
+    }
+
+    @Test
+    void sc05_aStoredTitleWithImdbButNoRottenTomatoesIsAskedForIt() {
+        localMovie.setRottenTomatoesRating(null);
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(localMovie));
+        omdbAnswers(7.6, 85);
+        executorRunsImmediately();
+
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        assertEquals(85, result.getRottenTomatoesRating());
+    }
+
+    @Test
+    void sc06_aTitleCheckedWithinTheCoolDownIsNotAskedAgain() {
+        Movie checkedYesterday = unscored(localMovie);
+        checkedYesterday.setOmdbCheckedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusDays(1));
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(checkedYesterday));
+        lenient().when(omdbClient.isConfigured()).thenReturn(true);
+
+        lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        verify(omdbClient, never()).lookupRatings(anyString());
+        verify(omdbRequestBudget, never()).tryReserveForTitlePage();
+    }
+
+    @Test
+    void sc07_aSpentTitlePageBudgetMakesNoOmdbRequest() {
+        when(movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, 283995L))
+                .thenReturn(Optional.of(unscored(localMovie)));
+        omdbAnswers(7.6, 85);
+        when(omdbRequestBudget.tryReserveForTitlePage()).thenReturn(false);
+        executorRunsImmediately();
+
+        Movie result = lookupService.getOrFetchMovie(283995L, "MOVIE");
+
+        assertNull(result.getImdbRating());
+        verify(omdbClient, never()).lookupRatings(anyString());
+        verify(catalogPersistenceService, never()).recordOmdbCheck(any(), any(), any(), any());
     }
 
     @Test

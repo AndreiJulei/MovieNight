@@ -521,6 +521,35 @@ public class TmdbClient {
     }
 
     /**
+     * Highest-rated movies with at least {@code minVoteCount} votes in any of the given TMDB genre ids
+     * ({@code "18|80"} is drama OR crime): the acclaimed titles mixed into personal recommendations.
+     */
+    public List<TmdbSearchResponse.TmdbMovieSummary> discoverAcclaimedMovies(String withGenres, int minVoteCount, int page) {
+        if (!isConfigured()) return Collections.emptyList();
+        try {
+            TmdbSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> {
+                        var builder = applyAuth(uriBuilder).path("/discover/movie")
+                                .queryParam("include_adult", false)
+                                .queryParam("include_video", false)
+                                .queryParam("language", "en-US")
+                                .queryParam("sort_by", "vote_average.desc")
+                                .queryParam("vote_count.gte", Math.max(1, minVoteCount))
+                                .queryParam("page", Math.max(1, page));
+                        if (withGenres != null && !withGenres.isBlank()) builder.queryParam("with_genres", withGenres);
+                        return builder.build();
+                    })
+                    .retrieve().body(TmdbSearchResponse.class);
+            if (response == null || response.getResults() == null) {
+                throw new IllegalStateException("Invalid acclaimed discovery provider response");
+            }
+            return response.getResults();
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException("Acclaimed discovery source unavailable. Retry the refresh.", failure);
+        }
+    }
+
+    /**
      * Fetch recommendations for a specific TV show or anime.
      */
     public List<TmdbSearchResponse.TmdbMovieSummary> getTvRecommendations(Long tvId, int page) {

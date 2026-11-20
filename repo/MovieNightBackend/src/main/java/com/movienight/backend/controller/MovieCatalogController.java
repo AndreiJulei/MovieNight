@@ -91,16 +91,17 @@ public class MovieCatalogController {
 
     /**
      * Get or fetch full media details by TMDB ID (enriched with OMDb ratings and cached locally).
-     * Example: GET /api/movies/tmdb/283995?mediaType=TV
+     * Example: GET /api/movies/tmdb/283995?mediaType=TV&waitForScores=false
      */
     @GetMapping("/tmdb/{tmdbId}")
     public ResponseEntity<MovieResponse> getMovieDetails(
             @PathVariable Long tmdbId,
-            @RequestParam(required = false) String mediaType
+            @RequestParam(required = false) String mediaType,
+            @RequestParam(defaultValue = "true") boolean waitForScores
     ) {
-        Movie movie = mediaType != null && !mediaType.isBlank()
-                ? movieCatalogLookupService.getOrFetchMovie(tmdbId, mediaType)
-                : movieCatalogLookupService.getOrFetchMovie(tmdbId);
+        // The title page waits up to 2s for missing OMDb scores; entry-page hero slides pass false (SC04).
+        Movie movie = movieCatalogLookupService.getOrFetchMovie(tmdbId,
+                mediaType != null && !mediaType.isBlank() ? mediaType : null, waitForScores);
         return ResponseEntity.ok(movieCatalogLookupService.mapToResponse(movie));
     }
 

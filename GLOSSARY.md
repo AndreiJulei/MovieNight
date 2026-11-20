@@ -121,6 +121,12 @@ A candidate selected using the user's own watched history and available
 recommendation data.
 _Avoid_: Personalized when referring to general discovery results.
 
+**Acclaimed title**:
+A personalized recommendation chosen from the user's top 3 genres among liked
+films by TMDB audience rating, with at least 3000 votes. It holds every third
+stored place. Defined in `AcclaimedRecommendationSource`.
+_Avoid_: Critically acclaimed; critic approval (the pick is an audience rating).
+
 **Movie similarity**:
 A relationship between two movies derived from patterns in community ratings,
 used as evidence for personalized recommendations.

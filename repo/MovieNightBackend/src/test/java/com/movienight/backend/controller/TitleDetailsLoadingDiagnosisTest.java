@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -264,29 +265,75 @@ class TitleDetailsLoadingDiagnosisTest {
               "imdb_id": "tt8888999"
             }
             """.formatted(tmdbId)));
-        // OMDb takes 2000ms
+        // OMDb answers after 2500ms: slower than the title page's 2s wait, within the client's read timeout.
         responses.put("/?i=tt8888999&apikey=test-omdb-key", new MockResponse(200, """
             {"Response": "True", "imdbRating": "7.5", "Ratings": [{"Source": "Rotten Tomatoes", "Value": "91%"}]}
-            """, 2000));
+            """, 2500));
 
         long startTime = System.currentTimeMillis();
         MvcResult result = mvc.perform(get("/api/movies/tmdb/" + tmdbId + "?mediaType=MOVIE")
                 .header("Authorization", userToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Slow OMDb Movie"))
+                .andExpect(jsonPath("$.imdbRating").isEmpty())
                 .andReturn();
         long duration = System.currentTimeMillis() - startTime;
         sanitizeAndLog("test06_slowOmdb (" + duration + "ms)", result);
 
-        // Core response must NOT wait for OMDb's 2000ms delay
-        assertTrue(duration < 1500, "Core details took " + duration + "ms, waited for OMDb!");
+        // SC04: core details wait for OMDb at most about 2s, then load without scores.
+        assertTrue(duration < 2400, "Core details took " + duration + "ms, waited past the OMDb timeout!");
 
-        // Verify that after background enrichment finishes, the database row is updated with ratings
+        // The lookup finishes in the background, so the scores show on the next visit.
         org.awaitility.Awaitility.await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
             var movieOpt = movieRepository.findByResourceTypeAndTmdbId(com.movienight.backend.model.ResourceType.MOVIE, tmdbId);
             assertTrue(movieOpt.isPresent());
             assertEquals(7.5, movieOpt.get().getImdbRating());
             assertEquals(91, movieOpt.get().getRottenTomatoesRating());
         });
+        mvc.perform(get("/api/movies/tmdb/" + tmdbId + "?mediaType=MOVIE").header("Authorization", userToken))
+                .andExpect(jsonPath("$.imdbRating").value(7.5))
+                .andExpect(jsonPath("$.rottenTomatoesRating").value(91));
+    }
+
+    @Test
+    void sc04_firstVisitShowsOmdbScoresOnTheSameVisit() throws Exception {
+        long tmdbId = idCounter.incrementAndGet();
+        responses.put("/movie/" + tmdbId, new MockResponse(200, """
+            {"id": %d, "title": "Prompt OMDb Movie", "release_date": "2024-04-04",
+             "overview": "Core details available", "imdb_id": "tt7777888"}
+            """.formatted(tmdbId)));
+        responses.put("/?i=tt7777888&apikey=test-omdb-key", new MockResponse(200, """
+            {"Response": "True", "imdbRating": "8.2", "Ratings": [{"Source": "Rotten Tomatoes", "Value": "96%"}]}
+            """, 100));
+
+        mvc.perform(get("/api/movies/tmdb/" + tmdbId + "?mediaType=MOVIE").header("Authorization", userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imdbRating").value(8.2))
+                .andExpect(jsonPath("$.rottenTomatoesRating").value(96));
+    }
+
+    @Test
+    void entryPagesAskWithoutWaitingAndTheScoresAreStoredForTheNextRead() throws Exception {
+        long tmdbId = idCounter.incrementAndGet();
+        responses.put("/movie/" + tmdbId, new MockResponse(200, """
+            {"id": %d, "title": "Hero Slide Movie", "release_date": "2024-05-05",
+             "overview": "Core details available", "imdb_id": "tt6666777"}
+            """.formatted(tmdbId)));
+        responses.put("/?i=tt6666777&apikey=test-omdb-key", new MockResponse(200, """
+            {"Response": "True", "imdbRating": "6.9", "Ratings": [{"Source": "Rotten Tomatoes", "Value": "72%"}]}
+            """, 1500));
+
+        long startTime = System.currentTimeMillis();
+        mvc.perform(get("/api/movies/tmdb/" + tmdbId + "?mediaType=MOVIE&waitForScores=false").header("Authorization", userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Hero Slide Movie"))
+                .andExpect(jsonPath("$.imdbRating").isEmpty());
+        long duration = System.currentTimeMillis() - startTime;
+        assertTrue(duration < 1200, "Details without waiting took " + duration + "ms");
+
+        org.awaitility.Awaitility.await().atMost(4, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(6.9, movieRepository.findByResourceTypeAndTmdbId(
+                        com.movienight.backend.model.ResourceType.MOVIE, tmdbId).orElseThrow().getImdbRating()));
     }
 
     @Test

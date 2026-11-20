@@ -27,8 +27,8 @@ import java.util.stream.Collectors;
  * Bounded OMDb enrichment of personal recommendation candidates (PD-08, #24).
  * <p>
  * Walks candidates in relevance order and asks OMDb for the IMDb audience rating and Rotten Tomatoes
- * critic approval of the highest-ranked ones that clear the audience floor and have never been
- * checked: at most {@value #MAX_REQUESTS_PER_RUN} per run, within the global {@link OmdbRequestBudget}.
+ * critic approval of the highest-ranked ones that clear the audience floor and that
+ * {@link OmdbRecheckPolicy} allows to be checked: at most {@value #MAX_REQUESTS_PER_RUN} per run, within the global {@link OmdbRequestBudget}.
  * A candidate missing from the catalog is first fetched from TMDB (which also supplies its audience
  * rating). Results persist in the shared catalog, so the cost amortises across users.
  * <p>
@@ -156,11 +156,9 @@ public class RecommendationRatingEnricher {
         catalogPersistence.recordOmdbCheck(movie.getId(), imdb, rottenTomatoes, LocalDateTime.now(ZoneOffset.UTC));
     }
 
-    /** Eligible for recommendation, has an IMDb id, no IMDb / Rotten Tomatoes values yet, and OMDb never answered. */
+    /** Eligible for recommendation and for an OMDb check under the shared {@link OmdbRecheckPolicy}. */
     private boolean needsExternalRatings(Movie movie) {
-        return movie.getImdbId() != null && !movie.getImdbId().isBlank()
-                && movie.getImdbRating() == null && movie.getRottenTomatoesRating() == null
-                && movie.getOmdbCheckedAt() == null
+        return OmdbRecheckPolicy.eligible(movie, LocalDateTime.now(ZoneOffset.UTC))
                 && RecommendationQualityPolicy.eligible(movie.getTmdbVoteAverage(), movie.getTmdbVoteCount());
     }
 }

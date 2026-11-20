@@ -140,6 +140,26 @@ class AdditionalDiscoveryPersistenceTest {
     }
 
     @Test
+    void sc03_categoryPageCardsCarryTheCatalogScoresOfTitlesOutsideTheLibrary() throws Exception {
+        String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
+        when(tmdb.isConfigured()).thenReturn(true);
+        when(tmdb.discoverMovies(anyString(), anyInt(), any(), any(), anyInt())).thenAnswer(call ->
+                call.<Integer>getArgument(4) == 1
+                        ? List.of(movie(3101, "Scored", 8.0, 300, 99, yesterday), movie(3102, "Unscored", 8.0, 300, 98, yesterday))
+                        : List.of());
+        movies.save(Movie.builder().tmdbId(3101L).mediaType("MOVIE").title("Scored").imdbRating(8.3).rottenTomatoesRating(91).build());
+        User user = users.save(User.builder().username("user-" + UUID.randomUUID()).password("p").build());
+        var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+
+        mvc.perform(get("/api/movies/explore/movies/popular").header("Authorization", createAuthToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies[0].tmdbId").value(3101))
+                .andExpect(jsonPath("$.movies[0].imdbRating").value(8.3))
+                .andExpect(jsonPath("$.movies[0].rottenTomatoesRating").value(91.0))
+                .andExpect(jsonPath("$.movies[1].imdbRating").isEmpty());
+    }
+
+    @Test
     void categoryPaginationBatchesAndLoadMoreMakesNoProviderCalls() throws Exception {
         String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
         when(tmdb.isConfigured()).thenReturn(true);

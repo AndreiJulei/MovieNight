@@ -13,6 +13,7 @@ const limitations: Record<string, string> = {
   METADATA_OMITTED: "Some candidates were omitted because movie information was missing.",
   LIBRARY_EXCLUDED: "Movies already in your watchlist or watched history are excluded.",
   DIRECTOR_SOURCE_UNAVAILABLE: "Films by directors you liked could not be loaded this time.",
+  ACCLAIMED_SOURCE_UNAVAILABLE: "Highly rated films in your top genres could not be loaded this time.",
 };
 export default function PersonalRecommendationStatus({ suggestions }: { suggestions: ReturnType<typeof usePersonalRecommendations> }) {
   return <div className="mb-6 space-y-3 text-sm text-text-muted">

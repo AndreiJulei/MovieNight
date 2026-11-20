@@ -218,6 +218,7 @@ public class SuggestionService {
         List<SuggestionMovieItem> items = mapCachedItems(cachedMovieListRepository
                 .findByMediaTypeAndListTypeOrderByRankOrderAsc(mediaType, chart.listType), mediaType)
                 .stream().limit(chart.titles).toList();
+        CatalogScores.fill(movieRepository, mediaType, items);
         return category.state(age(snapshot).compareTo(chart.dueAfter) > 0 ? "STALE" : items.isEmpty() ? "EMPTY" : "READY")
                 .updatedAt(snapshot.getUpdatedAt() + "Z").movies(items).totalEligibleInPool(items.size()).build();
     }
@@ -255,6 +256,7 @@ public class SuggestionService {
                 .toList();
         List<SuggestionMovieItem> items = mapCachedItems(filtered, mediaType);
         List<SuggestionMovieItem> previewItems = items.stream().limit(20).toList();
+        CatalogScores.fill(movieRepository, mediaType, previewItems);
         boolean hasMore = items.size() > 20;
 
         String terminalReason = null;
@@ -305,7 +307,7 @@ public class SuggestionService {
         if (snapshot.isEmpty() || Duration.between(snapshot.get().getUpdatedAt(),
                 LocalDateTime.now(ZoneOffset.UTC)).compareTo(Duration.ofDays(7)) > 0) return List.of();
         List<CachedMovieList> cached = cachedMovieListRepository.findByMediaTypeAndListTypeOrderByRankOrderAsc(mediaType, listType);
-        return cached.stream()
+        List<SuggestionMovieItem> items = cached.stream()
                 .filter(item -> !userLibraryTmdbIds.contains(item.getTmdbId()))
                 .map(item -> SuggestionMovieItem.builder()
                         .tmdbId(item.getTmdbId())
@@ -317,6 +319,8 @@ public class SuggestionService {
                         .mediaType(mediaType)
                         .build())
                 .collect(Collectors.toList());
+        CatalogScores.fill(movieRepository, mediaType, items);
+        return items;
     }
 
 
