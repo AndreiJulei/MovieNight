@@ -100,6 +100,7 @@ class RecommendationRatingEnrichmentPersistenceTest {
     void cachedIneligibleAndAlreadyCheckedCandidatesSpendNoBudget() {
         Movie enriched = stored(20_001, 7.5, 2_000);
         enriched.setImdbRating(8.1);
+        enriched.setRottenTomatoesRating(90);
         catalog.save(enriched);
         stored(20_002, 6.4, 50_000);   // below the audience floor
         stored(20_003, 8.0, 120);      // too few votes
@@ -154,5 +155,34 @@ class RecommendationRatingEnrichmentPersistenceTest {
         assertThat(enricher.enrich(ranked)).isEqualTo(10);
         assertThat(reload(ranked.get(0)).getImdbRating()).isEqualTo(7.2);
         assertThat(reload(ranked.get(0)).getOmdbCheckedAt()).isNotNull();
+    }
+
+    @Test
+    void sc05_aCandidateWithImdbButNoRottenTomatoesIsAskedForIt() {
+        Movie imdbOnly = stored(50_001, 7.5, 2_000);
+        imdbOnly.setImdbRating(8.1);
+        catalog.save(imdbOnly);
+
+        assertThat(enricher.enrich(List.of(50_001L))).isEqualTo(1);
+
+        assertThat(reload(50_001L).getRottenTomatoesRating()).isEqualTo(88);
+        assertThat(reload(50_001L).getOmdbCheckedAt()).isNotNull();
+    }
+
+    @Test
+    void sc06_aTitleOmdbAnsweredWithoutScoresIsAskedAgainAfterTheCoolDown() {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+        Movie recent = stored(60_001, 7.5, 2_000);
+        recent.setOmdbCheckedAt(now.minusDays(2));
+        catalog.save(recent);
+        Movie old = stored(60_002, 7.5, 2_000);
+        old.setOmdbCheckedAt(now.minusDays(8));
+        catalog.save(old);
+
+        assertThat(enricher.enrich(List.of(60_001L, 60_002L))).isEqualTo(1);
+
+        verify(omdb).lookupRatings("tt60002");
+        verify(omdb, never()).lookupRatings("tt60001");
+        assertThat(reload(60_002L).getImdbRating()).isEqualTo(7.9);
     }
 }

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
-/** OMDb requests spent by recommendation recomputation on one UTC day (PD-08). No user data. */
+/** OMDb requests spent on one UTC day by recommendation recomputation (PD-08) and by title pages. No user data. */
 @Entity
 @Table(name = "omdb_request_budget")
 @Getter
@@ -24,4 +24,7 @@ public class OmdbRequestBudgetDay {
 
     @Column(name = "recommendation_requests", nullable = false)
     private int recommendationRequests;
+
+    @Column(name = "title_page_requests", nullable = false)
+    private int titlePageRequests;
 }

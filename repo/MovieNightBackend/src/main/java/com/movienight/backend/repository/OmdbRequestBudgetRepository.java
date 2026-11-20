@@ -15,4 +15,10 @@ public interface OmdbRequestBudgetRepository extends JpaRepository<OmdbRequestBu
     @Query("update OmdbRequestBudgetDay b set b.recommendationRequests = b.recommendationRequests + 1 "
             + "where b.budgetDay = :day and b.recommendationRequests < :limit")
     int reserve(@Param("day") LocalDate day, @Param("limit") int limit);
+
+    /** {@link #reserve} for the title-page share. */
+    @Modifying
+    @Query("update OmdbRequestBudgetDay b set b.titlePageRequests = b.titlePageRequests + 1 "
+            + "where b.budgetDay = :day and b.titlePageRequests < :limit")
+    int reserveTitlePage(@Param("day") LocalDate day, @Param("limit") int limit);
 }

@@ -40,26 +40,7 @@ public class CatalogPersistenceService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void updateRatings(Long movieId, Double imdbRating, Integer rtScore) {
-        movieRepository.findById(movieId).ifPresent(m -> {
-            boolean changed = false;
-            if (imdbRating != null && !imdbRating.equals(m.getImdbRating())) {
-                m.setImdbRating(imdbRating);
-                changed = true;
-            }
-            if (rtScore != null && !rtScore.equals(m.getRottenTomatoesRating())) {
-                m.setRottenTomatoesRating(rtScore);
-                changed = true;
-            }
-            if (changed) {
-                movieRepository.save(m);
-                log.debug("Updated ratings for catalog movie {}: IMDb={}, RT={}", movieId, imdbRating, rtScore);
-            }
-        });
-    }
-
-    /** Store OMDb values from recommendation enrichment and remember that OMDb answered (PD-08). */
+    /** Store OMDb values and remember that OMDb answered, even without scores (PD-08, SC06). Every OMDb path uses it. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordOmdbCheck(Long movieId, Double imdbRating, Integer rottenTomatoes, LocalDateTime checkedAt) {
         movieRepository.findById(movieId).ifPresent(m -> {

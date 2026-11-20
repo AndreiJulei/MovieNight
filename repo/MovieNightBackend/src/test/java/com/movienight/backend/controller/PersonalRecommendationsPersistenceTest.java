@@ -20,6 +20,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -116,10 +118,10 @@ class PersonalRecommendationsPersistenceTest {
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].state").value("LIBRARY_EXHAUSTED"));
     }
 
-    @Test void usesMovieProviderSummariesAndSumsSourcesWithDeterministicTopThreeSeedSelection() throws Exception {
+    @Test void usesMovieProviderSummariesAndSumsSourcesWithDeterministicTopFiveSeedSelection() throws Exception {
         when(tmdb.isConfigured()).thenReturn(true);
         // Equal weights select lower IDs first, irrespective of library creation order.
-        for (int i=3; i>=0; i--) save(seed+i*10, "Seed " + i, "MOVIE", "WATCHED", "7.5");
+        for (int i=5; i>=0; i--) save(seed+i*10, "Seed " + i, "MOVIE", "WATCHED", "7.5");
         var first = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
         first.setId(candidate); first.setTitle("Provider movie"); first.setVoteAverage(8.0); first.setVoteCount(300);
         var second = new com.movienight.backend.dto.external.TmdbSearchResponse.TmdbMovieSummary();
@@ -128,8 +130,10 @@ class PersonalRecommendationsPersistenceTest {
         when(tmdb.getMovieRecommendations(seed+10, 1)).thenReturn(List.of(first));
         when(tmdb.getMovieRecommendations(seed+20, 1)).thenReturn(List.of());
         neighbor(seed, candidate, .5);
-        // If a fourth seed is requested the unstubbed null fails the refresh.
         refresh().andExpect(status().isOk());
+        // RF03: the top five seeds, pages 1 and 2; never the sixth.
+        for (int i=0; i<5; i++) { verify(tmdb).getMovieRecommendations(seed+i*10, 1); verify(tmdb).getMovieRecommendations(seed+i*10, 2); }
+        verify(tmdb, never()).getMovieRecommendations(eq(seed+50), anyInt());
         read("/api/suggestions/personal").andExpect(status().isOk())
             .andExpect(jsonPath("$.categories[0].movies", hasSize(2)))
             .andExpect(jsonPath("$.categories[0].movies[0].score").value(closeTo(3.0 * 0.7, 1e-9)))
@@ -256,6 +260,22 @@ class PersonalRecommendationsPersistenceTest {
             .andExpect(jsonPath("$.categories[0].movies[0].imdbRating").value(7.9));
     }
 
+    @Test void sc01_sc02_scoresTheCatalogGainsAfterTheRecomputationShowWithoutOne() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        neighbor(seed, candidate, 1);
+        Movie row = catalog.save(Movie.builder().tmdbId(candidate).mediaType("MOVIE").title("Candidate")
+            .tmdbVoteAverage(8.2).tmdbVoteCount(400).build());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate))
+            .andExpect(jsonPath("$.categories[0].movies[0].imdbRating").isEmpty())
+            .andExpect(jsonPath("$.categories[0].movies[0].rottenTomatoesRating").isEmpty());
+        // A title-page visit (or another user's enrichment) stores both scores after the recomputation.
+        row.setImdbRating(8.1); row.setRottenTomatoesRating(94);
+        catalog.save(row);
+
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[0].imdbRating").value(8.1))
+            .andExpect(jsonPath("$.categories[0].movies[0].rottenTomatoesRating").value(94.0));
+    }
+
     @Test void rm01_dismissedTitleStaysGoneAfterReloadAndRecompute() throws Exception {
         save(seed, "Watched", "MOVIE", "WATCHED", "null");
         neighbor(seed, candidate, 2); metadata(candidate, "MOVIE", "Not for me");
@@ -271,10 +291,10 @@ class PersonalRecommendationsPersistenceTest {
             .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(candidate + 1));
     }
 
-    @Test void rm02_nextStoredTitleTakesTheFreedPlaceWithoutARecompute() throws Exception {
+    @Test void rm02_rf01_nextStoredTitleTakesTheFreedPlaceWithoutARecompute() throws Exception {
         save(seed, "Watched", "MOVIE", "WATCHED", "null");
-        // 35 candidates in a fixed order: seed+1 ranks first, seed+35 last; 30 are stored.
-        for (int i = 1; i <= 35; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
+        // 45 candidates in a fixed order: seed+1 ranks first, seed+45 last; all are stored, 30 are served.
+        for (int i = 1; i <= 45; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
         read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(30)))
             .andExpect(jsonPath("$.categories[0].movies[20].tmdbId").value(seed + 21));
         // Changing the candidates afterwards shows whether the read recomputed.
@@ -282,12 +302,32 @@ class PersonalRecommendationsPersistenceTest {
 
         dismiss(seed + 3).andExpect(status().isNoContent());
 
-        // The Home row shows the first 20: still 20, with the stored 21st sliding in.
-        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(29)))
+        // Home shows the first 20 (the stored 21st slides in); View all still shows 30, now with the stored 31st.
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(30)))
             .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(seed + 1))
             .andExpect(jsonPath("$.categories[0].movies[2].tmdbId").value(seed + 4))
             .andExpect(jsonPath("$.categories[0].movies[19].tmdbId").value(seed + 21))
+            .andExpect(jsonPath("$.categories[0].movies[29].tmdbId").value(seed + 31))
             .andExpect(jsonPath("$.categories[0].movies[*].tmdbId", not(hasItem((int) (seed + 99)))));
+    }
+
+    @Test void rf02_aLowReserveMarksTheUserAndTheNextReadRecomputes() throws Exception {
+        save(seed, "Watched", "MOVIE", "WATCHED", "null");
+        for (int i = 1; i <= 45; i++) { neighbor(seed, seed + i, 2 - i * .01); metadata(seed + i, "MOVIE", "Movie " + i); }
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(30)));
+        neighbor(seed, seed + 99, 50); metadata(seed + 99, "MOVIE", "Only after a recompute");
+
+        // 45 stored, 5 dismissed: 40 undismissed rows are still enough.
+        for (int i = 1; i <= 5; i++) dismiss(seed + i).andExpect(status().isNoContent());
+        assertEquals(false, users.findById(owner.getId()).orElseThrow().isNeedsRecommendationRefresh());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies[*].tmdbId", not(hasItem((int) (seed + 99)))));
+
+        // The sixth leaves 39: the user is marked, and the next read recomputes from the current pool.
+        dismiss(seed + 6).andExpect(status().isNoContent());
+        assertEquals(true, users.findById(owner.getId()).orElseThrow().isNeedsRecommendationRefresh());
+        read("/api/suggestions/personal").andExpect(jsonPath("$.categories[0].movies", hasSize(30)))
+            .andExpect(jsonPath("$.categories[0].movies[0].tmdbId").value(seed + 99))
+            .andExpect(jsonPath("$.categories[0].movies[*].tmdbId", not(hasItem((int) (seed + 6)))));
     }
 
     @Test void rm03_undoRestoresTheTitleToItsPosition() throws Exception {

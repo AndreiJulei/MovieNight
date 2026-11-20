@@ -227,6 +227,9 @@ public class ExploreSessionManager {
             nextCursorIndex = i + 1;
         }
 
+        // IMDb and RT from the shared catalog, as a library title's card would show them (SC03).
+        CatalogScores.fill(movieRepository, type, batch);
+
         boolean hasMore = false;
         for (int i = nextCursorIndex; i < pool.size(); i++) {
             if (!excludedTmdbIds.contains(pool.get(i).getTmdbId())) {

@@ -27,7 +27,6 @@ public class SuggestionController {
     private final com.movienight.backend.service.SuggestionScheduler suggestionScheduler;
     private final com.movienight.backend.service.ExploreSessionManager exploreSessionManager;
     private final com.movienight.backend.service.RecommendationMaintenanceService recommendationMaintenanceService;
-    private final com.movienight.backend.service.RecommendationDismissals recommendationDismissals;
 
     /**
      * Get all suggestion category rows for the authenticated user.
@@ -125,11 +124,12 @@ public class SuggestionController {
 
     /**
      * "Not interested" (#40): permanently removes a title from the caller's personal recommendations.
-     * Idempotent. The next stored recommendation takes its place on the following read.
+     * Idempotent. The next stored recommendation takes its place on the following read; a low reserve marks
+     * the user for a recomputation (RF02).
      */
     @PostMapping("/personal/dismissals/{tmdbId:[0-9]+}")
     public ResponseEntity<Void> dismissPersonalRecommendation(@PathVariable long tmdbId, Authentication authentication) {
-        recommendationDismissals.dismiss(currentUser(authentication), tmdbId);
+        personalizedRecommendationService.dismiss(currentUser(authentication), tmdbId);
         return ResponseEntity.noContent().build();
     }
 
